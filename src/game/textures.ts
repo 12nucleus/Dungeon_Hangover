@@ -109,6 +109,30 @@ const painters: Record<string, Painter> = {
   snow(ctx, rnd, S) {
     noiseFill(ctx, rnd, S, '#e8edf2', ['#dde4ec', '#f4f7fa', '#cfd8e2']);
   },
+  cave_stone(ctx, rnd, S) {
+    noiseFill(ctx, rnd, S, '#3a3a42', ['#2e2e36', '#46464e', '#38383f', '#2a2a32']);
+    ctx.strokeStyle = '#1e1e26'; ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath();
+      let x = rnd() * S, y = rnd() * S;
+      ctx.moveTo(x, y);
+      for (let j = 0; j < 5; j++) { x += (rnd() - 0.5) * 20; y += rnd() * 16; ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+    for (let i = 0; i < 12; i++) px(ctx, rnd() * S, rnd() * S, 2, 2, '#4a4a55');
+  },
+  cave_floor(ctx, rnd, S) {
+    noiseFill(ctx, rnd, S, '#4a3a2a', ['#3d2f22', '#574433', '#422f1f', '#2e2318']);
+    for (let i = 0; i < 15; i++) px(ctx, rnd() * S, rnd() * S, 3, 3, '#5d4a38');
+  },
+  gravel(ctx, rnd, S) {
+    noiseFill(ctx, rnd, S, '#5a554a', ['#4e4a42', '#666058', '#524e46']);
+    for (let i = 0; i < 25; i++) px(ctx, rnd() * S, rnd() * S, 2, 2, '#6e6860');
+  },
+  dark_water(ctx, rnd, S) {
+    noiseFill(ctx, rnd, S, '#0a1a2e', ['#081424', '#0c2040', '#061020'], 8);
+    for (let i = 0; i < 6; i++) px(ctx, rnd() * S, rnd() * S, 8 + rnd() * 10, 1, '#163a55');
+  },
 };
 
 export interface TextureSet {

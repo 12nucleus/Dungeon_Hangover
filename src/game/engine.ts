@@ -10,6 +10,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { VoxelWorld, WORLD_SIZE } from './world';
+import { caveLevel } from '../levels/cave';
 import { ParticleSystem, FX } from './particles';
 import { buildCharacter, updateRig, type Rig } from './characters';
 import { Combat } from './combat';
@@ -164,28 +165,31 @@ export class GameEngine {
     this.container.appendChild(this.renderer.domElement);
 
     this.iso = new IsoCamera(w / h);
-    this.scene.fog = new THREE.FogExp2(0x141d2e, 0.016);
-    this.scene.background = new THREE.Color(0x141d2e);
+    const L = caveLevel;
+    this.scene.fog = new THREE.FogExp2(L.fogColor, L.fogDensity);
+    this.scene.background = new THREE.Color(L.fogColor);
 
-    // lights — moody dusk
-    const hemi = new THREE.HemisphereLight(0x93a8d0, 0x3a3226, 0.75);
+    // lights — cave (dim ambient + no sun + crystal/torch fills)
+    const hemi = new THREE.HemisphereLight(0x93a8d0, 0x3a3226, L.ambient);
     this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffc890, 1.9);
-    sun.position.set(20, 30, 10);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -32; sun.shadow.camera.right = 32;
-    sun.shadow.camera.top = 32; sun.shadow.camera.bottom = -32;
-    sun.shadow.camera.far = 90;
-    sun.shadow.bias = -0.0008;
-    this.scene.add(sun);
-    this.scene.add(sun.target);
-    const fill = new THREE.DirectionalLight(0x6a80b8, 0.35);
+    if (L.sun > 0) {
+      const sun = new THREE.DirectionalLight(0xffc890, L.sun);
+      sun.position.set(20, 30, 10);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.left = -32; sun.shadow.camera.right = 32;
+      sun.shadow.camera.top = 32; sun.shadow.camera.bottom = -32;
+      sun.shadow.camera.far = 90;
+      sun.shadow.bias = -0.0008;
+      this.scene.add(sun);
+      this.scene.add(sun.target);
+    }
+    const fill = new THREE.DirectionalLight(0x6a80b8, L.fill);
     fill.position.set(-15, 20, -18);
     this.scene.add(fill);
 
-    // world
-    this.world = new VoxelWorld();
+    // world — underground cave level
+    this.world = new VoxelWorld(caveLevel, 1337);
     this.scene.add(this.world.group);
     this.world.group.traverse((o) => { if (o instanceof THREE.InstancedMesh) this.pickables.push(o); });
     this.pickables.push(this.world.water);

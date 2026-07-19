@@ -1,0 +1,57 @@
+// The Underdrek — an underground cave level.
+// Uses the same roster as the surface but with cave spawn positions.
+import type { LevelDef } from './levelTypes';
+import { createRoster } from '../game/skills';
+
+export const caveLevel: LevelDef = {
+  name: 'The Underdrek',
+  icon: '??',
+  description: 'A vast cave system beneath the tavern floor. The only light comes from crystals and your torch.',
+  groundMats: ['cave_floor', 'cave_stone', 'cave_stone', 'gravel'],
+  fillMats: ['cave_floor', 'cave_floor', 'cave_stone', 'cave_floor'],
+  arena: { x0: 2, z0: 2, x1: 44, z1: 44 },
+  spawn: {
+    party: [{ x: 10, z: 10 }],
+    enemies: [
+      { x: 30, z: 30 }, { x: 35, z: 25 }, { x: 28, z: 35 }, { x: 38, z: 32 },
+      { x: 15, z: 38 }, { x: 40, z: 15 }, { x: 20, z: 42 }, { x: 42, z: 8 },
+    ],
+  },
+  props: [
+    { kind: 'stalagmite', x: 15, z: 12, seed: 0.7 },
+    { kind: 'stalagmite', x: 22, z: 18, seed: 0.4 },
+    { kind: 'stalagmite', x: 8, z: 25, seed: 0.9 },
+    { kind: 'stalagmite', x: 35, z: 15, seed: 0.5 },
+    { kind: 'stalagmite', x: 28, z: 8, seed: 0.6 },
+    { kind: 'stalagmite', x: 12, z: 35, seed: 0.3 },
+    { kind: 'stalagmite', x: 40, z: 38, seed: 0.8 },
+    { kind: 'stalactite', x: 18, z: 14, seed: 0.6 },
+    { kind: 'stalactite', x: 30, z: 22, seed: 0.4 },
+    { kind: 'stalactite', x: 38, z: 28, seed: 0.7 },
+    { kind: 'stalactite', x: 14, z: 30, seed: 0.5 },
+    { kind: 'crystal', x: 14, z: 20, seed: 0.5 },
+    { kind: 'crystal', x: 33, z: 12, seed: 0.7 },
+    { kind: 'crystal', x: 24, z: 32, seed: 0.3 },
+    { kind: 'crystal', x: 38, z: 28, seed: 0.9 },
+    { kind: 'crystal', x: 6, z: 30, seed: 0.6 },
+    { kind: 'boulder', x: 20, z: 10, seed: 0.4 },
+    { kind: 'boulder', x: 26, z: 26, seed: 0.7 },
+    { kind: 'boulder', x: 10, z: 18, seed: 0.6 },
+    { kind: 'bones', x: 16, z: 30, seed: 0.5 },
+    { kind: 'bones', x: 36, z: 20, seed: 0.8 },
+    { kind: 'bones', x: 25, z: 38, seed: 0.3 },
+    { kind: 'torch', x: 10, z: 10, seed: 0.5 },
+    { kind: 'torch', x: 30, z: 30, seed: 0.7 },
+    { kind: 'torch', x: 20, z: 20, seed: 0.4 },
+    { kind: 'torch', x: 15, z: 35, seed: 0.6 },
+    { kind: 'torch', x: 35, z: 38, seed: 0.8 },
+  ],
+  ambient: 0.2,
+  sun: 0.0,
+  fill: 0.15,
+  fogColor: 0x0a0a12,
+  fogDensity: 0.04,
+  waterColor: 0x0a1a2e,
+  waterY: -0.28,
+  roster: createRoster(),
+};

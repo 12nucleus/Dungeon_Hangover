@@ -197,9 +197,9 @@ function mkUnit(partial: Partial<Unit> & Pick<Unit, 'name' | 'title' | 'team' | 
 export function createRoster(): Unit[] {
   uid = 0;
   return [
-    // ── the party ──
+    // ── the party — one warrior, alone in the cave ──
     mkUnit({
-      name: 'Kael', title: 'Human Fighter', team: 'party', klass: 'fighter', pos: { x: 33, z: 37 },
+      name: 'Kael', title: 'Human Fighter', team: 'party', klass: 'fighter', pos: { x: 10, z: 10 },
       maxHp: 38, hp: 38, ac: 16,
       abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 11, cha: 12 },
       knownSkills: ['slash', 'cleave', 'shield_bash'],
@@ -207,27 +207,9 @@ export function createRoster(): Unit[] {
       weapon: 'sword', xpValue: 0,
       equipment: { weapon: makeItem('sword1'), armor: makeItem('padded') },
     }),
-    mkUnit({
-      name: 'Lyra', title: 'Elven Wizard', team: 'party', klass: 'wizard', pos: { x: 31, z: 39 },
-      maxHp: 24, hp: 24, ac: 12,
-      abilities: { str: 8, dex: 14, con: 12, int: 17, wis: 13, cha: 11 },
-      knownSkills: ['fireball', 'magic_missile', 'frost_nova'],
-      scheme: { skin: 0xe8c39a, cloth: 0x3b2d5c, accent: 0x7c5cbf, hair: 0xd9d3c0, hood: true },
-      weapon: 'staff', xpValue: 0,
-      equipment: { weapon: makeItem('staff1'), trinket: makeItem('cloak') },
-    }),
-    mkUnit({
-      name: 'Brannoc', title: 'Dwarven Cleric', team: 'party', klass: 'cleric', pos: { x: 35, z: 39 },
-      maxHp: 32, hp: 32, ac: 15,
-      abilities: { str: 13, dex: 9, con: 15, int: 10, wis: 16, cha: 12 },
-      knownSkills: ['cure_wounds', 'sacred_flame', 'bless'],
-      scheme: { skin: 0xc98f5e, cloth: 0x8a6d1f, accent: 0xd9b84a, hair: 0xa34d1c, hood: false, bulk: 0.92 },
-      weapon: 'mace', xpValue: 0,
-      equipment: { weapon: makeItem('mace1'), armor: makeItem('chain') },
-    }),
     // ── the goblin warband at the ruins ──
     mkUnit({
-      name: 'Snik', title: 'Goblin Cutthroat', team: 'enemy', klass: 'goblin', pos: { x: 33, z: 12 },
+      name: 'Snik', title: 'Goblin Cutthroat', team: 'enemy', klass: 'goblin', pos: { x: 30, z: 30 },
       maxHp: 14, hp: 14, ac: 12,
       abilities: { str: 10, dex: 14, con: 10, int: 8, wis: 8, cha: 8 },
       knownSkills: ['scimitar'], moveRange: 6,
@@ -236,7 +218,7 @@ export function createRoster(): Unit[] {
       equipment: { weapon: makeItem('dagger1') },
     }),
     mkUnit({
-      name: 'Grib', title: 'Goblin Archer', team: 'enemy', klass: 'goblin', pos: { x: 30, z: 9 },
+      name: 'Grib', title: 'Goblin Archer', team: 'enemy', klass: 'goblin', pos: { x: 35, z: 25 },
       maxHp: 12, hp: 12, ac: 12,
       abilities: { str: 8, dex: 15, con: 10, int: 8, wis: 10, cha: 8 },
       knownSkills: ['shortbow'], moveRange: 6,
@@ -245,7 +227,7 @@ export function createRoster(): Unit[] {
       equipment: { weapon: makeItem('bow1') },
     }),
     mkUnit({
-      name: 'Zik', title: 'Goblin Archer', team: 'enemy', klass: 'goblin', pos: { x: 38, z: 9 },
+      name: 'Zik', title: 'Goblin Archer', team: 'enemy', klass: 'goblin', pos: { x: 28, z: 35 },
       maxHp: 12, hp: 12, ac: 12,
       abilities: { str: 8, dex: 15, con: 10, int: 8, wis: 10, cha: 8 },
       knownSkills: ['shortbow'], moveRange: 6,
@@ -254,7 +236,7 @@ export function createRoster(): Unit[] {
       equipment: { weapon: makeItem('bow1') },
     }),
     mkUnit({
-      name: 'Boss Skar', title: 'Hobgoblin Boss', team: 'enemy', klass: 'goblin', pos: { x: 34, z: 8 },
+      name: 'Boss Skar', title: 'Hobgoblin Boss', team: 'enemy', klass: 'goblin', pos: { x: 38, z: 32 },
       maxHp: 30, hp: 30, ac: 14,
       abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 10, cha: 10 },
       knownSkills: ['boss_club'], moveRange: 5,
