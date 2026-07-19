@@ -1,9 +1,9 @@
-// Level definition — a self-contained data pack describing
+// Level definition ï¿½ a self-contained data pack describing
 // terrain materials, prop placement, lighting, spawn positions
 // and the monster roster for one dungeon level.
 import type { GridPos, Unit } from '../game/types';
 
-export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'boulder' | 'bones' | 'torch';
+export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'boulder' | 'bones' | 'torch' | 'bonfire';
 
 export interface PropPlacement {
   kind: PropKind;

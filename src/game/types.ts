@@ -26,7 +26,7 @@ export interface CharacterScheme {
   orc?: boolean;        // green-skin features: pointed ears, tusks, brow
 }
 
-export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club';
+export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club' | 'torch';
 export type Klass = 'fighter' | 'wizard' | 'cleric' | 'goblin';
 
 export type ParticleFX =
@@ -120,6 +120,8 @@ export interface UISnapshot {
   showInventory: boolean;
   showSkillTree: boolean;
   sneaking: boolean;
+  torchLit: boolean;
+  torchEquipped: boolean;
 }
 
 // ── combat events: the pure-logic layer (combat.ts) emits these,

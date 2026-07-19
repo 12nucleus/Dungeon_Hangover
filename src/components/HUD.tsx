@@ -73,7 +73,7 @@ export function HUD({ snap, engine }: Props) {
             )}
             {phase === 'victory'
               ? <button className="btn-primary" onClick={() => engine?.continueAfterVictory()}>🧭 Keep exploring</button>
-              : <button className="btn-primary" onClick={() => window.location.reload()}>↻ Rise again</button>}
+              : <button className="btn-primary" onClick={() => engine?.respawn()}>🔥 Kindle again</button>}
           </div>
         </div>
       )}
@@ -135,6 +135,13 @@ export function HUD({ snap, engine }: Props) {
               </div>
             ))}
           </div>
+
+          {/* torch indicator */}
+          {snap.torchEquipped && (
+            <div className="torch-indicator" onClick={() => engine?.toggleTorch()} title="Toggle torch [T]">
+              {snap.torchLit ? '🔥' : '🕯'} Torch {snap.torchLit ? 'ON' : 'OFF'}
+            </div>
+          )}
 
           {/* hotbar */}
           {phase === 'combat' && active && active.team === 'party' && (

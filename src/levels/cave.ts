@@ -1,4 +1,4 @@
-// The Underdrek — an underground cave level.
+// The Underdrek ï¿½ an underground cave level.
 // Uses the same roster as the surface but with cave spawn positions.
 import type { LevelDef } from './levelTypes';
 import { createRoster } from '../game/skills';
@@ -10,14 +10,15 @@ export const caveLevel: LevelDef = {
   groundMats: ['cave_floor', 'cave_stone', 'cave_stone', 'gravel'],
   fillMats: ['cave_floor', 'cave_floor', 'cave_stone', 'cave_floor'],
   arena: { x0: 2, z0: 2, x1: 44, z1: 44 },
-  spawn: {
-    party: [{ x: 10, z: 10 }],
+spawn: {
+    party: [{ x: 10, z: 8 }],
     enemies: [
       { x: 30, z: 30 }, { x: 35, z: 25 }, { x: 28, z: 35 }, { x: 38, z: 32 },
       { x: 15, z: 38 }, { x: 40, z: 15 }, { x: 20, z: 42 }, { x: 42, z: 8 },
     ],
   },
-  props: [
+props: [
+    { kind: 'bonfire', x: 10, z: 10, seed: 0.5 },
     { kind: 'stalagmite', x: 15, z: 12, seed: 0.7 },
     { kind: 'stalagmite', x: 22, z: 18, seed: 0.4 },
     { kind: 'stalagmite', x: 8, z: 25, seed: 0.9 },
@@ -40,8 +41,7 @@ export const caveLevel: LevelDef = {
     { kind: 'bones', x: 16, z: 30, seed: 0.5 },
     { kind: 'bones', x: 36, z: 20, seed: 0.8 },
     { kind: 'bones', x: 25, z: 38, seed: 0.3 },
-    { kind: 'torch', x: 10, z: 10, seed: 0.5 },
-    { kind: 'torch', x: 30, z: 30, seed: 0.7 },
+{ kind: 'torch', x: 30, z: 30, seed: 0.7 },
     { kind: 'torch', x: 20, z: 20, seed: 0.4 },
     { kind: 'torch', x: 15, z: 35, seed: 0.6 },
     { kind: 'torch', x: 35, z: 38, seed: 0.8 },

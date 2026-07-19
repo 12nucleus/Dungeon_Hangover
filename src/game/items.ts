@@ -89,6 +89,8 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   staff1: B({ kind: 'weapon', name: 'Gnarled Staff', icon: '🪄', tier: 1, weaponKind: 'staff', damageDice: '1d6', damageType: 'bludgeoning', value: 10, desc: 'Humms faintly with power.' }),
   staff2: B({ kind: 'weapon', name: 'Runed Staff', icon: '🪄', tier: 2, weaponKind: 'staff', damageDice: '1d6+2', damageType: 'bludgeoning', value: 36, desc: 'Runes crawl along its length.' }),
   staff3: B({ kind: 'weapon', name: 'Archmage Staff', icon: '🪄', tier: 3, weaponKind: 'staff', damageDice: '2d6+2', damageType: 'bludgeoning', value: 120, desc: 'It remembers older spells.' }),
+  // torch — utility weapon, deals minimal damage but emits light
+  torch1: B({ kind: 'weapon', name: 'Lit Torch', icon: '🔥', tier: 1, weaponKind: 'torch', damageDice: '1d4', damageType: 'bludgeoning', value: 3, desc: 'Pierces the dark of the Underdrek. Burns dimly.' }),
   // armor
   padded: B({ kind: 'armor', name: 'Padded Garb', icon: '🥋', tier: 1, acBonus: 0, value: 5, desc: 'Quilted comfort. Mostly comfort.' }),
   leather: B({ kind: 'armor', name: 'Leather Armor', icon: '🦺', tier: 1, acBonus: 1, value: 20, desc: '+1 AC. Boiled and sturdy.' }),

@@ -97,6 +97,10 @@ function buildWeapon(kind: WeaponKind, accent: number): THREE.Group {
       v.add(-1, -1, 0, 0x6b4a2e); v.add(-1, 5, 0, 0x6b4a2e); // recurves
       v.fill(-1, 0, 0, -1, 4, 0, DARK, 0.02);    // string
       break;
+    case 'torch':
+      v.fill(0, 0, 0, 0, 4, 0, 0x6b4a2e);        // stick
+      v.fill(-1, 4, -1, 1, 5, 1, 0x3a2a18);      // rag wrap
+      break;
   }
   g.add(v.mesh());
   if (kind === 'staff') {
@@ -104,6 +108,14 @@ function buildWeapon(kind: WeaponKind, accent: number): THREE.Group {
     orb.position.set(0, 10.6 * C, 0);
     orb.castShadow = true;
     g.add(orb);
+  }
+  if (kind === 'torch') {
+    const flameMat = new THREE.MeshLambertMaterial({ color: 0xffb545, emissive: 0xff7a1f, emissiveIntensity: 0.8 });
+    const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.12), flameMat);
+    f1.position.set(0, 5.4 * C, 0);
+    const f2 = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 0.10), flameMat);
+    f2.position.set(0, 6.3 * C, 0);
+    g.add(f1, f2);
   }
   return g;
 }
@@ -224,10 +236,15 @@ export function buildCharacter(scheme: CharacterScheme, weapon: WeaponKind): Rig
     }
   }
 
-  // weapon in right hand (must remain the ONLY Group child of `group`)
+  // weapon in right hand
   const wg = buildWeapon(weapon, accent);
-  wg.position.set(0.38, 0.5, 0.08);
-  wg.rotation.x = weapon === 'bow' ? 0 : -0.5;
+  if (weapon === 'torch') {
+    wg.position.set(0.38, 0.72, 0.08);
+    wg.rotation.x = -0.12;  // held upward, flame at top
+  } else {
+    wg.position.set(0.38, 0.5, 0.08);
+    wg.rotation.x = weapon === 'bow' ? 0 : -0.5;
+  }
   group.add(wg);
   parts.weapon = wg as unknown as THREE.Mesh;
 

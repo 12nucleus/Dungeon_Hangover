@@ -1,6 +1,6 @@
 // Voxel world: seeded heightmap terrain rendered as ONE InstancedMesh
 // per material (top faces + exposed side skirts only). Props are placed
-// from a LevelDef (if provided) — otherwise fall back to surface defaults.
+// from a LevelDef (if provided) ï¿½ otherwise fall back to surface defaults.
 import * as THREE from 'three';
 import { getTextures } from './textures';
 import type { LevelDef } from '../levels/levelTypes';
@@ -84,7 +84,7 @@ export class VoxelWorld {
         }
         const n = vnoise(x * 0.09, z * 0.09, this.seed) * 0.7 + vnoise(x * 0.22, z * 0.22, this.seed + 9) * 0.3;
         let h = Math.floor(n * (MAX_H + 1.6));
-        // river: winding band along x˜10 with sine wobble
+        // river: winding band along xï¿½10 with sine wobble
         const riverX = 10 + Math.sin(z * 0.25) * 2.5;
         const dRiver = Math.abs(x - riverX);
         if (dRiver < 1.6) h = -1;
@@ -343,6 +343,48 @@ export class VoxelWorld {
           g.add(light);
           this.group.add(g);
           this.torches.push({ pos: new THREE.Vector3(wx, h + 1.5, wz), light, base: 14 });
+this.blocked[p.x][p.z] = true;
+          break;
+        }
+        case 'bonfire': {
+          const stoneMat = new THREE.MeshLambertMaterial({ map: getTextures().map.stone, color: 0x5a5560 });
+          const woodMat = new THREE.MeshLambertMaterial({ map: getTextures().map.wood });
+          const geo = new THREE.BoxGeometry(1, 1, 1);
+          const m4 = new THREE.Matrix4();
+          const q = new THREE.Quaternion();
+          const sc = new THREE.Vector3();
+          const e = new THREE.Euler();
+          const g = new THREE.Group();
+          g.position.set(wx, h, wz);
+          g.userData.isBonfire = true;
+          g.userData.lit = false;
+          this.group.add(g);
+          // stone ring
+          for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2;
+            const sx = Math.cos(angle) * 0.55;
+            const sz = Math.sin(angle) * 0.55;
+            e.set(0, angle, 0);
+            m4.compose(new THREE.Vector3(sx, 0.12, sz), q.setFromEuler(e), sc.set(0.3, 0.25, 0.18));
+            const im = new THREE.InstancedMesh(geo, stoneMat, 1);
+            im.setMatrixAt(0, m4);
+            im.castShadow = true;
+            g.add(im);
+          }
+          // wood pile (scattered chunks, not a pole)
+          for (let i = 0; i < 5; i++) {
+            const ax = (seed * 3 + i * 1.7) % 1 - 0.5;
+            const az = (seed * 5 + i * 2.3) % 1 - 0.5;
+            const ry = (seed * 7 + i) * Math.PI;
+            const sx = 0.25 + Math.abs(Math.sin(i * 1.3)) * 0.2;
+            const sz = 0.25 + Math.abs(Math.cos(i * 1.7)) * 0.2;
+            e.set(0.1, ry, 0.05);
+            m4.compose(new THREE.Vector3(ax * 0.25, 0.28, az * 0.25), q.setFromEuler(e), sc.set(sx, 0.10, sz));
+            const im = new THREE.InstancedMesh(geo, woodMat, 1);
+            im.setMatrixAt(0, m4);
+            im.castShadow = true;
+            g.add(im);
+          }
           this.blocked[p.x][p.z] = true;
           break;
         }
