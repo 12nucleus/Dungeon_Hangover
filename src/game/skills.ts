@@ -203,7 +203,7 @@ export function createRoster(): Unit[] {
       maxHp: 38, hp: 38, ac: 16,
       abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 11, cha: 12 },
       knownSkills: ['slash', 'cleave', 'shield_bash'],
-      scheme: { skin: 0xd9a066, cloth: 0x8c2f2f, accent: 0x5a5f6b, hair: 0x3a2a18, hood: false },
+      scheme: { skin: 0xd9a066, cloth: 0xffffff, accent: 0x6b7280, hair: 0x4a2f1a, hood: false, style: 'normal' },
       weapon: 'torch', xpValue: 0,
       equipment: { weapon: makeItem('torch1'), armor: makeItem('padded') },
     }),

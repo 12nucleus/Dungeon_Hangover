@@ -24,6 +24,7 @@ export interface CharacterScheme {
   hood: boolean;
   bulk?: number;        // group scale (goblins ~0.85, bosses ~1.15)
   orc?: boolean;        // green-skin features: pointed ears, tusks, brow
+  style?: 'normal' | 'chibi';  // normal proportions or chibi stubby
 }
 
 export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club' | 'torch';

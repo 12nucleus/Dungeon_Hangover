@@ -1031,7 +1031,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       if (Math.random() < 0.5) FX.dust(this.particles, p.clone());
     }
     v.rig.anim.mode = 'idle';
-    v.proxy.position.copy(v.rig.group.position).y += 0.9;
+    v.proxy.position.copy(v.rig.group.position).y += v.rig.pivots ? 2.2 : 0.9;
     // check combat trap trigger at destination
     const u = this.byId(unitId);
     if (u) {
@@ -1373,7 +1373,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       const rig = player ? this.visuals.get(player.id)?.rig : null;
       const weaponG = rig ? rig.parts.weapon as THREE.Object3D : null;
       if (weaponG) {
-        const flamePos = new THREE.Vector3(0.02, 0.58, 0.02);  // flame cubes are at weapon-local y=5.4*C to 6.3*C, tilted forward with weapon rotation
+        const flamePos = new THREE.Vector3(0.02, rig?.pivots ? 5.85 * 0.055 : 0.58, 0.02);  // flame cubes are at weapon-local y=5.4*C to 6.3*C
         weaponG.localToWorld(flamePos);
         this.torchLight.position.copy(flamePos);
         if (player && player.weapon === 'torch' && this.torchLit) {
@@ -1410,7 +1410,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       v.yaw += dy * Math.min(1, dt * 10);
       if (v.rig.anim.mode !== 'dead') v.rig.group.rotation.y = v.yaw;
       updateRig(v.rig, dt, u.conditions.some((c) => c.id === 'slowed') ? 0.6 : 1);
-      v.proxy.position.copy(v.rig.group.position).y += 0.9;
+      v.proxy.position.copy(v.rig.group.position).y += v.rig.pivots ? 2.2 : 0.9;
       // explore-mode walkers (non-combat movement)
       if (v.walker && v.rig.anim.mode === 'walk') {
         const wk = v.walker;
@@ -1567,7 +1567,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       const u = this.byId(id);
       if (!u || !u.alive || this.phase === 'menu') { if (v.bar.style.display !== 'none') v.bar.style.display = 'none'; continue; }
       v.bar.style.display = 'block';
-      const sp = v.rig.group.position.clone(); sp.y += 2.05;
+      const sp = v.rig.group.position.clone(); sp.y += v.rig.pivots ? 2.8 : 2.05;
       sp.project(this.iso.cam);
       if (sp.z > 1) { v.bar.style.display = 'none'; continue; }
       v.bar.style.transform = `translate(${(sp.x * 0.5 + 0.5) * w}px, ${(-sp.y * 0.5 + 0.5) * h}px) translate(-50%,-100%)`;
