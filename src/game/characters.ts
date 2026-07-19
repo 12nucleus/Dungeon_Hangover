@@ -247,6 +247,7 @@ export function buildCharacter(scheme: CharacterScheme, weapon: WeaponKind): Rig
   }
   group.add(wg);
   parts.weapon = wg as unknown as THREE.Mesh;
+  (wg as any).userData.kind = weapon;
 
   group.scale.setScalar(scheme.bulk ?? 1);
 
@@ -290,7 +291,8 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
 
   // weapon follows right arm
   const weapon = rig.group.children.find((c) => c.type === 'Group')!;
-  weapon.rotation.x = -0.5 + p.armR.rotation.x * 0.9;
+  const weaponBase = (weapon as any).userData?.kind === 'torch' ? 0.4 : -0.5;
+  weapon.rotation.x = weaponBase + p.armR.rotation.x * 0.9;
 
   // body bob & breathe
   const bob = walking ? Math.abs(Math.sin(a.t * 11)) * 0.07 : idle * 0.02;

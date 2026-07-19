@@ -96,6 +96,11 @@ export function HUD({ snap, engine }: Props) {
       {/* ══ HOVER INFO ══ */}
       {snap.hoverInfo && phase !== 'menu' && <div className="hover-info">{snap.hoverInfo}</div>}
 
+      {/* ══ BIG MESSAGE ══ */}
+      {snap.bigMessage && phase !== 'menu' && (
+        <div key={snap.bigMessage} className="big-message">{snap.bigMessage}</div>
+      )}
+
       {/* ══ TARGETING HINT ══ */}
       {snap.targeting && playerTurn && (
         <div className="targeting-hint">

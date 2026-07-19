@@ -134,6 +134,8 @@ export class GameEngine {
   private bonfireGroup: THREE.Group | null = null;
   private bonfirePos: GridPos | null = null;
   private bonfireLit = false;
+  private pendingSmash: { unitId: string; propId: string } | null = null;
+  private bigMessage: string | null = null;
   private hoverInfo: string | null = null;
   private keys = new Set<string>();
   private enemyCones: { mesh: THREE.Mesh; yaw: number; targetYaw: number; unitId: string }[] = [];
@@ -444,7 +446,21 @@ export class GameEngine {
         // smash it if any living party member stands adjacent
         const near = this.combat.living('party').find((u) => Combat.dist(u.pos, prop.pos) <= 1);
         if (near) { void this.smashProp(near, prop); return; }
-        this.setHoverInfoOnce(`${prop.def.icon} Move a party member next to the ${prop.def.name} to smash it.`);
+        // walk to it and auto-smash
+        const leader = this.byId(this.selectedId ?? '') ?? this.combat.living('party')[0];
+        if (leader) {
+          const adj = this.closestWalkableAdjacent(prop.pos, leader);
+          if (adj) {
+            const path = this.combat.pathTo(leader, adj.x, adj.z);
+            if (path && path.length) {
+              this.pendingSmash = { unitId: leader.id, propId: prop.id };
+              this.moveUnitAlong(leader, path);
+              this.emitSnapshot();
+              return;
+            }
+          }
+        }
+        this.setHoverInfoOnce(`${prop.def.icon} Can't reach the ${prop.def.name}.`);
         return;
       }
     }
@@ -496,16 +512,29 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
-  private moveUnitAlong(u: Unit, path: GridPos[]) {
+private moveUnitAlong(u: Unit, path: GridPos[]) {
     const v = this.visuals.get(u.id)!;
     const pts = path.map((t) => this.unitWorld(t));
     v.walker = { path: pts, idx: 0 };
     v.rig.anim.mode = 'walk';
     const dest = path[path.length - 1];
     u.pos = { ...dest };
-    // check trap trigger on destination
     const trap = this.trapManager.at(dest.x, dest.z);
     if (trap && !trap.triggered) this.triggerTrap(u, trap);
+  }
+
+  private closestWalkableAdjacent(pos: GridPos, leader: Unit): GridPos | null {
+    const offsets = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+    let best: GridPos | null = null;
+    let bestDist = Infinity;
+    for (const [dx, dz] of offsets) {
+      const tx = pos.x + dx, tz = pos.z + dz;
+      if (this.world.isWalkable(tx, tz)) {
+        const d = Math.abs(leader.pos.x - tx) + Math.abs(leader.pos.z - tz);
+        if (d < bestDist) { bestDist = d; best = { x: tx, z: tz }; }
+      }
+    }
+    return best;
   }
 
   private clickCombat(unitId: string | undefined, tile: GridPos | null, propId?: string) {
@@ -652,21 +681,23 @@ export class GameEngine {
       const sx = Math.cos(angle) * 0.12;
       const sz = Math.sin(angle) * 0.12;
       e.set(i * 0.2, angle, 0);
-      m4.compose(new THREE.Vector3(sx, 0.42, sz), q.setFromEuler(e), sc.set(0.10, 0.18, 0.10));
+      m4.compose(new THREE.Vector3(sx, 0.42, sz), q.setFromEuler(e), sc.set(0.20, 0.36, 0.10));
       const im = new THREE.InstancedMesh(geo, flameMat, 1);
       im.setMatrixAt(0, m4);
       im.name = 'bf_flame';
       this.bonfireGroup.add(im);
     }
-    // glow light
-    const wpp = this.world.tileToWorld(10, 10);
+    // glow light (relative to bonfire group position)
     const light = new THREE.PointLight(0xff9540, 26, 16, 1.7);
-    light.position.set(wpp.x, 1.2, wpp.z);
+    light.position.set(0, 0.7, 0);
     light.name = 'bf_light';
     this.bonfireGroup.add(light);
     this.pushLog('The bonfire roars to life. This place feels safer now...', 'system');
     this.audio.play('ui_click', 0.6);
+    this.audio.play('bonfire_lit', 1.0); // placeholder: add lit_bonfire.wav to public/audio/
+    this.bigMessage = 'Bonfire Lit!';
     this.emitSnapshot();
+    setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2500);
   }
 
   respawn() {
@@ -1321,11 +1352,14 @@ export class GameEngine {
     // torch flames
     for (const t of this.world.torches) FX.flame(this.particles, t.pos.clone());
 
-    // bonfire flames (warm constant source)
+    // bonfire (flame + smoke particles)
     if (this.bonfireLit && this.bonfirePos) {
       const bfp = this.world.tileToWorld(this.bonfirePos.x, this.bonfirePos.z);
       bfp.y += 0.9;
       FX.flame(this.particles, bfp);
+      if (Math.random() < 0.6) {
+        this.particles.burst({ pos: bfp.clone().add(new THREE.Vector3((Math.random()-0.5)*0.3, 0.6+Math.random()*0.8, (Math.random()-0.5)*0.3)), count: 6, color: [0x3a3a3a, 0x555555, 0x2a2a2a], speed: [0.3, 1.0], life: [0.6, 1.8], size: [0.4, 1.0], gravity: -1.5, up: 1.0, endScale: 1.2, solid: true });
+      }
     }
 
     // player torch light
@@ -1336,9 +1370,10 @@ export class GameEngine {
     }
     if (this.torchLight) {
       const wpp = this.unitWorld(player ? player.pos : { x: 0, z: 0 });
-      this.torchLight.position.set(wpp.x, wpp.y + 1.3, wpp.z);
+      this.torchLight.position.set(wpp.x, wpp.y + 0.9, wpp.z);
       if (player && player.weapon === 'torch' && this.torchLit) {
         this.torchLight.intensity = 12;
+        this.torchLight.distance = 14;
         FX.flame(this.particles, new THREE.Vector3(wpp.x, wpp.y + 1.1, wpp.z));
       } else {
         this.torchLight.intensity = 0;
@@ -1376,7 +1411,15 @@ export class GameEngine {
         if (dist < 0.06) {
           pos.copy(target);
           wk.idx++;
-          if (wk.idx >= wk.path.length) { v.walker = null; v.rig.anim.mode = 'idle'; }
+          if (wk.idx >= wk.path.length) { v.walker = null; v.rig.anim.mode = 'idle';
+        if (this.pendingSmash && this.pendingSmash.unitId === id) {
+          const ps = this.pendingSmash;
+          this.pendingSmash = null;
+          const prop = this.props.byId(ps.propId);
+          const unit = this.byId(ps.unitId);
+          if (prop && unit && unit.alive) void this.smashProp(unit, prop);
+        }
+      }
           else FX.dust(this.particles, pos.clone());
         } else {
           d.normalize();
@@ -1550,6 +1593,7 @@ export class GameEngine {
       sneaking: this.sneaking,
       torchLit: this.torchLit,
       torchEquipped: this.combat?.living('party')[0]?.weapon === 'torch',
+      bigMessage: this.bigMessage,
     });
   }
 

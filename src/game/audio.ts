@@ -7,7 +7,7 @@
 
 const SFX_FILES = [
   'sword_hit', 'fireball', 'heal', 'magic_missile',
-  'arrow', 'dice', 'victory', 'ui_click',
+  'arrow', 'dice', 'victory', 'ui_click', 'bonfire_lit',
 ] as const;
 
 export type SfxName = (typeof SFX_FILES)[number];

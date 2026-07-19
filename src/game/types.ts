@@ -122,6 +122,7 @@ export interface UISnapshot {
   sneaking: boolean;
   torchLit: boolean;
   torchEquipped: boolean;
+  bigMessage: string | null;
 }
 
 // ── combat events: the pure-logic layer (combat.ts) emits these,

@@ -328,6 +328,21 @@ html, body, #root {
 }
 .hud-btn.sneak.on { border-color: #3b82f6; box-shadow: 0 0 10px rgba(59,130,246,0.4); }
 
+.big-message {
+  position: fixed; top: 25%; left: 50%; transform: translate(-50%, -50%);
+  font-size: 84px; font-weight: 900; letter-spacing: 4px;
+  color: #ffb545; text-shadow: 0 0 40px rgba(255, 180, 69, 0.9), 0 0 80px rgba(255, 154, 40, 0.6);
+  z-index: 800; pointer-events: none;
+  animation: bigMsgFade 2.5s ease-out forwards;
+}
+@keyframes bigMsgFade {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+  25% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  80% { opacity: 0.8; }
+  100% { opacity: 0; transform: translate(-50%, -60%) scale(1.1); }
+}
+
 @media (max-width: 900px) {
   .combat-log { width: 230px; }
   .menu-inner h1 { font-size: 42px; }
