@@ -1365,18 +1365,28 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     // player torch light
     const player = this.combat?.living('party')[0];
     if (!this.torchLight) {
-      this.torchLight = new THREE.PointLight(0xffb545, 122, 224, 0.5);  // torch radius: change '14' (distance) to widen/narrow
+      this.torchLight = new THREE.PointLight(0xffb545, 12, 14, 1.5);  // torch radius: change '14' (distance) to widen/narrow
       this.scene.add(this.torchLight);
     }
     if (this.torchLight) {
-      const wpp = this.unitWorld(player ? player.pos : { x: 0, z: 0 });
-      this.torchLight.position.set(wpp.x, wpp.y + 0.9, wpp.z);
-      if (player && player.weapon === 'torch' && this.torchLit) {
-        this.torchLight.intensity = 12;
-        this.torchLight.distance = 14;
-        FX.flame(this.particles, new THREE.Vector3(wpp.x, wpp.y + 1.1, wpp.z));
-      } else {
-        this.torchLight.intensity = 0;
+      // position light at the actual torch flame, not player center
+      const rig = player ? this.visuals.get(player.id)?.rig : null;
+      const weaponG = rig ? rig.parts.weapon as THREE.Object3D : null;
+      if (weaponG) {
+        const flamePos = new THREE.Vector3(0.02, 0.58, 0.02);  // flame cubes are at weapon-local y=5.4*C to 6.3*C, tilted forward with weapon rotation
+        weaponG.localToWorld(flamePos);
+        this.torchLight.position.copy(flamePos);
+        if (player && player.weapon === 'torch' && this.torchLit) {
+          this.torchLight.intensity = 12;
+          this.torchLight.distance = 14;
+          FX.flame(this.particles, flamePos.clone());
+          if (Math.random() < 0.35) {
+            const sp = flamePos.clone().add(new THREE.Vector3((Math.random()-0.5)*0.25, 0.3+Math.random()*0.4, (Math.random()-0.5)*0.25));
+            this.particles.burst({ pos: sp, count: 3, color: [0x3a3a3a, 0x4a4a4a], speed: [0.2, 0.6], life: [0.4, 1.0], size: [0.2, 0.5], gravity: -1.0, up: 0.5, endScale: 1.5, solid: true });
+          }
+        } else {
+          this.torchLight.intensity = 0;
+        }
       }
     }
 
