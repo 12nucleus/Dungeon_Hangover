@@ -227,4 +227,9 @@ export const FX = {
     ps.burst({ pos: p, count, color: colors, speed: [1.5, 4.5], life: [0.5, 1.1], size: [0.5, 1.1], gravity: 12, drag: 0.5, up: 3.2, endScale: 0.75, solid: true });
     ps.burst({ pos: p, count: 6, color: [0x9c8f74, 0xb7a98c], speed: [0.4, 1.2], life: [0.4, 0.8], size: [0.6, 1.2], gravity: -0.5, up: 1, endScale: 1.5, solid: true });
   },
+  /** low earthy dust plume + a few body-coloured flecks when a corpse hits the floor */
+  impactDust(ps: ParticleSystem, p: THREE.Vector3, flecks: number[] = []) {
+    ps.burst({ pos: p, count: 22, color: [0x6b5a44, 0x8a7659, 0x9c8f74, 0x5a4d3a], speed: [0.7, 2.6], life: [0.5, 1.2], size: [0.7, 1.6], gravity: -0.6, up: 0.5, drag: 0.6, endScale: 2.1, solid: true });
+    if (flecks.length) ps.burst({ pos: p, count: 8, color: flecks, speed: [1, 3], life: [0.4, 0.9], size: [0.4, 0.9], gravity: 9, up: 1.4, drag: 0.4, endScale: 0.5, solid: true });
+  },
 };

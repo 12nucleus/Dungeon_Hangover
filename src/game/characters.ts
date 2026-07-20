@@ -9,6 +9,19 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { orcModel } from './voxelModels.mjs';
 import type { CharacterScheme, WeaponKind } from './types';
 
+// Soft-body / ragdoll collapse state, created the first frame a rig dies.
+// Every joint is a critically-under-damped spring that swings toward a
+// randomised "crumpled" target, while the whole group topples and the
+// torso/head jiggle (squash-and-stretch) so the body reads as soft.
+export interface DeathState {
+  gvx: number; gvz: number; gtx: number; gtz: number;   // group pitch/roll velocity + target
+  gvy: number; gty: number;                             // group posY velocity + target
+  pv: Record<string, THREE.Vector3>;                    // per-part angular velocity (euler xyz)
+  pt: Record<string, THREE.Vector3>;                    // per-part target euler
+  jelly: number;                                        // decaying wobble amplitude
+  impacted: boolean;                                    // true once the body has hit the ground (for FX)
+}
+
 export interface Rig {
   group: THREE.Group;
   parts: Record<string, THREE.Mesh>;
@@ -20,6 +33,7 @@ export interface Rig {
     lungeDir: THREE.Vector3;
     bob: number;
     crouch: number;
+    death?: DeathState;
   };
   pivots?: {
     hip: number; torso: number; head: number; eye: number;
@@ -605,6 +619,53 @@ export function setWeapon(rig: Rig, kind: WeaponKind | null, accent: number) {
 }
 
 // ────── ANIMATION ──────
+// Build the randomised crumple pose + initial impact velocities for a fresh
+// corpse. Only targets parts that actually exist on the rig, so it works for
+// player / chibi / orc rigs alike.
+function initDeath(rig: Rig): DeathState {
+  const rand = (a: number, b: number) => a + Math.random() * (b - a);
+  const fwd = Math.random() < 0.6 ? 1 : -1;               // topple forward or backward
+  const p = rig.parts;
+  const d: DeathState = {
+    gvx: fwd * rand(3.5, 6),                              // initial topple kick (rad/s)
+    gvz: rand(-2, 2),
+    gtx: fwd * (Math.PI / 2) * rand(0.86, 1.0),           // end lying on face/back
+    gtz: rand(-0.6, 0.6),                                 // slight sideways lean
+    gvy: 0,
+    // The body topples about its feet (group origin sits at ground = baseY), so
+    // it naturally comes to rest flat at ground level — only a small settle sink.
+    gty: (rig.group.userData.baseY as number) - 0.06,
+    pv: {}, pt: {},
+    jelly: 0.2,
+    impacted: false,
+  };
+  const set = (name: string, tx: number, ty: number, tz: number) => {
+    if (!p[name]) return;
+    d.pt[name] = new THREE.Vector3(tx, ty, tz);
+    d.pv[name] = new THREE.Vector3(rand(-3, 3), rand(-3, 3), rand(-3, 3)); // impact jolt
+  };
+  set('legL', rand(-1.6, -0.8), rand(-0.4, 0.4), rand(0.3, 0.9));   // buckle + splay out
+  set('legR', rand(-1.6, -0.8), rand(-0.4, 0.4), rand(-0.9, -0.3));
+  set('armL', rand(0.5, 1.4), 0, rand(0.7, 1.6));                   // flung out + droop
+  set('armR', rand(0.5, 1.4), 0, rand(-1.6, -0.7));
+  set('handL', rand(0.3, 0.9), 0, rand(0.4, 1.0));
+  set('handR', rand(0.3, 0.9), 0, rand(-1.0, -0.4));
+  set('head', rand(0.5, 1.2) * fwd, rand(-0.5, 0.5), rand(-0.7, 0.7)); // head lolls
+  set('torso', rand(-0.22, 0.22), 0, rand(-0.28, 0.28));
+  set('hair', rand(0.2, 0.7), 0, rand(-0.3, 0.3));
+  set('hood', rand(0.2, 0.6), 0, 0);
+  set('hoodTip', rand(0.4, 0.9), 0, 0);
+  set('padL', rand(0.2, 0.7), 0, rand(0.2, 0.7));
+  set('padR', rand(0.2, 0.7), 0, rand(-0.7, -0.2));
+  return d;
+}
+
+// one step of a semi-implicit damped spring; returns [newValue, newVelocity]
+function springStep(x: number, target: number, v: number, dt: number, stiff: number, damp: number): [number, number] {
+  v += (stiff * (target - x) - damp * v) * dt;
+  return [x + v * dt, v];
+}
+
 export function updateRig(rig: Rig, dt: number, speed = 1) {
   const a = rig.anim;
   a.t += dt * speed;
@@ -612,10 +673,41 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const P = rig.pivots;
 
   if (a.mode === 'dead') {
-    const k = Math.min(1, a.t * 2.2);
-    rig.group.rotation.x = -k * Math.PI / 2 * 0.9;
-    rig.group.position.y = rig.group.userData.baseY - k * 0.15;
+    const d = a.death ?? (a.death = initDeath(rig));
+    const g = rig.group;
+    const h = Math.min(dt, 1 / 30);                       // clamp step for stability
+    const STIFF = 130, DAMP = 13;                         // under-damped → soft overshoot
+    // whole-body topple + sink to the floor
+    [g.rotation.x, d.gvx] = springStep(g.rotation.x, d.gtx, d.gvx, h, STIFF, DAMP);
+    [g.rotation.z, d.gvz] = springStep(g.rotation.z, d.gtz, d.gvz, h, STIFF, DAMP);
+    [g.position.y, d.gvy] = springStep(g.position.y, d.gty, d.gvy, h, 90, 16);
+    // flag the ground impact once the body has toppled most of the way (for dust FX)
+    if (!d.impacted && Math.abs(g.rotation.x) >= Math.abs(d.gtx) * 0.7) d.impacted = true;
+    // per-joint crumple
+    for (const name in d.pt) {
+      const m = p[name]; if (!m) continue;
+      const t = d.pt[name], v = d.pv[name];
+      [m.rotation.x, v.x] = springStep(m.rotation.x, t.x, v.x, h, STIFF, DAMP);
+      [m.rotation.y, v.y] = springStep(m.rotation.y, t.y, v.y, h, STIFF, DAMP);
+      [m.rotation.z, v.z] = springStep(m.rotation.z, t.z, v.z, h, STIFF, DAMP);
+    }
+    // squash-and-stretch jiggle that decays → "soft body" wobble
+    d.jelly *= Math.exp(-h * 3.2);
+    const wob = Math.sin(a.t * 19) * d.jelly;
+    if (p.torso) p.torso.scale.set(1 + wob * 0.7, 1 - wob * 0.9, 1 + wob * 0.5);
+    if (p.head) p.head.scale.setScalar(1 + wob * 0.5);
     return;
+  }
+
+  // revived/reset: undo any leftover ragdoll transforms once
+  if (a.death) {
+    a.death = undefined;
+    rig.group.rotation.z = 0;
+    for (const name in p) {
+      const m = p[name]; if (!m) continue;
+      m.rotation.set(0, 0, 0);
+      m.scale.setScalar(1);
+    }
   }
 
   rig.group.rotation.x = 0;

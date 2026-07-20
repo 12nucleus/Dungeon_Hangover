@@ -79,6 +79,15 @@ class IsoCamera {
 interface Floater { el: HTMLDivElement; wp: THREE.Vector3; t: number; }
 interface Walker { path: THREE.Vector3[]; idx: number; }
 
+// a weapon that has detached from a dying rig and is tumbling to the floor
+interface DroppedWeapon {
+  obj: THREE.Object3D;
+  vx: number; vy: number; vz: number;
+  spin: THREE.Vector3;
+  restY: number;
+  settled: boolean;
+}
+
 interface UnitVisual {
   rig: Rig;
   proxy: THREE.Mesh;
@@ -87,6 +96,7 @@ interface UnitVisual {
   walker: Walker | null;
   yaw: number;
   targetYaw: number;
+  dustDone?: boolean;   // corpse-impact dust already spawned
 }
 
 export class GameEngine {
@@ -101,6 +111,7 @@ export class GameEngine {
   readonly audio = new AudioManager();
 
   private visuals = new Map<string, UnitVisual>();
+  private droppedWeapons: DroppedWeapon[] = [];
   private pickables: THREE.Object3D[] = [];
   private unitProxies: THREE.Object3D[] = [];
   private ray = new THREE.Raycaster();
@@ -338,6 +349,50 @@ export class GameEngine {
   unitWorld(p: GridPos): THREE.Vector3 {
     const h = this.world.heightAt(p.x, p.z);
     return new THREE.Vector3(p.x - WORLD_SIZE / 2 + 0.5, h + 0.5, p.z - WORLD_SIZE / 2 + 0.5);
+  }
+
+  // Detach a dying unit's held weapon from its rig and let it tumble to the
+  // floor on its own, so it lands separately from the ragdolling corpse.
+  private dropWeapon(v: UnitVisual) {
+    const wpn = v.rig.parts.weapon as unknown as THREE.Object3D | undefined;
+    if (!wpn || !wpn.parent) return;
+    const baseY = (v.rig.group.userData.baseY as number) ?? wpn.getWorldPosition(new THREE.Vector3()).y;
+    this.scene.attach(wpn);                       // reparent, preserving world transform
+    const dir = Math.random() * Math.PI * 2, spd = 0.8 + Math.random() * 1.2;
+    this.droppedWeapons.push({
+      obj: wpn,
+      vx: Math.cos(dir) * spd,
+      vz: Math.sin(dir) * spd,
+      vy: 1.5 + Math.random() * 1.8,
+      spin: new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10),
+      restY: baseY + 0.04,
+      settled: false,
+    });
+    delete (v.rig.parts as { weapon?: THREE.Mesh }).weapon;   // rig stops animating it
+  }
+
+  // Simple gravity + tumble + one small bounce, then the weapon lies flat.
+  private updateDroppedWeapons(dt: number) {
+    for (const d of this.droppedWeapons) {
+      if (d.settled) continue;
+      d.vy -= 14 * dt;
+      d.obj.position.x += d.vx * dt;
+      d.obj.position.z += d.vz * dt;
+      d.obj.position.y += d.vy * dt;
+      d.obj.rotation.x += d.spin.x * dt;
+      d.obj.rotation.y += d.spin.y * dt;
+      d.obj.rotation.z += d.spin.z * dt;
+      if (d.obj.position.y <= d.restY) {
+        d.obj.position.y = d.restY;
+        if (d.vy < -1.6) {                        // bounce, shedding energy
+          d.vy = -d.vy * 0.32; d.vx *= 0.45; d.vz *= 0.45; d.spin.multiplyScalar(0.4);
+        } else {                                  // settle flat on the ground
+          d.vy = 0; d.vx = 0; d.vz = 0;
+          d.obj.rotation.set(Math.PI / 2, d.obj.rotation.y, 0);
+          d.settled = true;
+        }
+      }
+    }
   }
 
   // ══ input ═════════════════════════════════════════════════
@@ -974,7 +1029,10 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       case 'save': this.spawnFloater(ev.unitId, ev.success ? `Save ${ev.total} ✓` : `Save ${ev.total} ✗`, ev.success ? 'save-ok' : 'save-fail'); await delay(60); break;
       case 'death': {
         const v = this.visuals.get(ev.unitId);
-        if (v) { v.rig.anim.mode = 'dead'; v.rig.anim.t = 0; v.bar.style.display = 'none'; }
+        if (v) {
+          v.rig.anim.mode = 'dead'; v.rig.anim.t = 0; v.bar.style.display = 'none';
+          this.dropWeapon(v);
+        }
         this.audio.play('sword_hit', 0.4, 0.6);
         await delay(500);
         break;
@@ -1359,6 +1417,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
 
     this.iso.update(dt);
     this.world.update(dt);
+    this.updateDroppedWeapons(dt);
 
     // torch flames
     for (const t of this.world.torches) FX.flame(this.particles, t.pos.clone());
@@ -1409,7 +1468,8 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       const u = this.byId(id);
       if (!u) continue;
       // sneak crouch visual (party only in explore, all in combat)
-      if ((this.phase === 'explore' && u.team === 'party') || this.phase === 'combat') {
+      // dead units are left entirely to the ragdoll collapse in updateRig
+      if (v.rig.anim.mode !== 'dead' && ((this.phase === 'explore' && u.team === 'party') || this.phase === 'combat')) {
         // crouchLerp eases toward 0 when not sneaking, so standing up plays the crouch in reverse
         const c = u.team === 'party' ? this.crouchLerp : 0;
         v.rig.anim.crouch = c;   // rig bends the knees & hunches — feet stay planted
@@ -1423,6 +1483,12 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       v.yaw += dy * Math.min(1, dt * 10);
       if (v.rig.anim.mode !== 'dead') v.rig.group.rotation.y = v.yaw;
       updateRig(v.rig, dt, u.conditions.some((c) => c.id === 'slowed') ? 0.6 : 1);
+      // dust plume the moment the ragdoll body slaps the ground
+      if (v.rig.anim.mode === 'dead' && v.rig.anim.death?.impacted && !v.dustDone) {
+        v.dustDone = true;
+        FX.impactDust(this.particles, v.rig.group.position.clone().setY((v.rig.group.userData.baseY as number) + 0.08), [u.scheme.skin, u.scheme.cloth]);
+        this.audio.play('sword_hit', 0.25, 0.5);
+      }
       v.proxy.position.copy(v.rig.group.position).y += v.rig.pivots ? 2.2 : 0.9;
       // explore-mode walkers (non-combat movement)
       if (v.walker && v.rig.anim.mode === 'walk') {
@@ -1628,6 +1694,8 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     window.removeEventListener('resize', this.onResize);
     for (const c of this.enemyCones) { this.scene.remove(c.mesh); c.mesh.geometry.dispose(); (c.mesh.material as THREE.Material).dispose(); }
     this.enemyCones = [];
+    for (const d of this.droppedWeapons) { this.scene.remove(d.obj); d.obj.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); }); }
+    this.droppedWeapons = [];
     if (this.playerCone) { this.scene.remove(this.playerCone); }
     if (this.playerConeGeo) this.playerConeGeo.dispose();
     if (this.coneGeo) this.coneGeo.dispose();
