@@ -12,7 +12,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { VoxelWorld, WORLD_SIZE } from './world';
 import { caveLevel } from '../levels/cave';
 import { ParticleSystem, FX } from './particles';
-import { buildCharacter, updateRig, type Rig } from './characters';
+import { buildCharacter, updateRig, setWeapon, type Rig } from './characters';
 import { Combat } from './combat';
 import { SKILLS, CONDITIONS, createRoster } from './skills';
 import { AudioManager } from './audio';
@@ -734,6 +734,12 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     const old = u.equipment[slot];
     if (old) this.inventory.push(old);
     u.equipment[slot] = item;
+    // reflect a newly-equipped weapon on the character's hand
+    if (slot === 'weapon' && item.weaponKind) {
+      u.weapon = item.weaponKind;
+      const rig = this.visuals.get(u.id)?.rig;
+      if (rig) setWeapon(rig, item.weaponKind, u.scheme.accent);
+    }
     this.audio.play('ui_click', 0.7);
     this.pushLog(`${u.name} equips ${item.icon} ${item.name}.`, 'system');
     this.emitSnapshot();
@@ -746,6 +752,11 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     if (!item) return;
     u.equipment[slot] = undefined;
     this.inventory.push(item);
+    // remove the weapon from the character's hand so it's no longer visible
+    if (slot === 'weapon') {
+      const rig = this.visuals.get(u.id)?.rig;
+      if (rig) setWeapon(rig, null, u.scheme.accent);
+    }
     this.audio.play('ui_click', 0.5);
     this.pushLog(`${u.name} unequips ${item.icon} ${item.name}.`, 'system');
     this.emitSnapshot();
@@ -1399,9 +1410,11 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       if (!u) continue;
       // sneak crouch visual (party only in explore, all in combat)
       if ((this.phase === 'explore' && u.team === 'party') || this.phase === 'combat') {
-        const c = this.sneaking && u.team === 'party' ? this.crouchLerp : 0;
-        v.rig.group.scale.y = (u.scheme.bulk ?? 1) * (1 - c * 0.15);
-        v.rig.group.position.y = (v.rig.group.userData.baseY as number) + (v.walker ? Math.sin(performance.now() * 0.02) * 0.02 : 0) - c * 0.15;
+        // crouchLerp eases toward 0 when not sneaking, so standing up plays the crouch in reverse
+        const c = u.team === 'party' ? this.crouchLerp : 0;
+        v.rig.anim.crouch = c;   // rig bends the knees & hunches — feet stay planted
+        v.rig.group.scale.y = (u.scheme.bulk ?? 1);
+        v.rig.group.position.y = (v.rig.group.userData.baseY as number) + (v.walker ? Math.sin(performance.now() * 0.02) * 0.02 : 0);
       }
       // smooth facing
       let dy = v.targetYaw - v.yaw;

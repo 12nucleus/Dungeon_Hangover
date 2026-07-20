@@ -18,6 +18,7 @@ export interface Rig {
     flinch: number;
     lungeDir: THREE.Vector3;
     bob: number;
+    crouch: number;
   };
   pivots?: {
     hip: number; torso: number; head: number; eye: number;
@@ -155,7 +156,6 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   const C_BELT = 0x3a2a1a, BUCKLE = 0xc9a94a, BUCKLE_D = 0xa2842f;
   const EYE_W = 0xf5f2ec, IRIS = 0x6b4426, PUPIL = 0x15100c, EYE_HI = 0xffffff;
   const M_MOUTH = 0xb05a4a, M_MOUTHD = 0x8a3a30;
-  const PR_Y = 0xf5c022, PR_YD = 0xd49a0c, PR_B = 0x2f66c4, PR_OUT = 0x1a1a1a;
   const POCK = shade(cloth, 0.97), POCK_ST = shade(cloth, 0.78);
 
   // ── grid pivots ──
@@ -241,7 +241,7 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   rbox(-8, 33, -4, 8, 36, 4, 2, pant);
   box(-1, 33, 3, 1, 36, 4, pantD);
   box(-1, 33, -4, 1, 36, -4, pantD2);
-  for (const s of [-1, 1]) { box(s * 4, 34, 4, s * 6, 36, 4, pantD); put(s * 4, 33, 4, seam); put(s * 6, 33, 4, seam); }
+  for (const s of [-1, 1]) { box(Math.min(s * 4, s * 6), 34, 4, Math.max(s * 4, s * 6), 36, 4, pantD); put(s * 4, 33, 4, seam); put(s * 6, 33, 4, seam); }
   rbox(-8, 35, -4, 8, 37, 5, 2, C_BELT);
   box(-2, 35, 5, 2, 37, 5, BUCKLE);
   box(-1, 35, 5, 1, 36, 5, BUCKLE_D);
@@ -263,11 +263,6 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   put(2, 46, 5, POCK_ST); put(5, 46, 5, POCK_ST);
   box(2, 46, 5, 2, 50, 5, POCK_ST);
   box(5, 46, 5, 5, 50, 5, POCK_ST);
-  for (let y = 40; y <= 50; y++) for (let x = -6; x <= 0; x++) { const dx = (x + 3) / 3.2, dy = (y - 45) / 5.2; if (dx * dx + dy * dy <= 1.0) put(x, y, 5, PR_B); }
-  for (let a = 0; a < 32; a++) { const ang = a / 32 * Math.PI * 2; put(Math.round(-3 + Math.cos(ang) * 3.2), Math.round(45 + Math.sin(ang) * 5.2), 5, PR_OUT); }
-  const bolt: [number, number][] = [[-2, 49], [-2, 48], [-3, 47], [-3, 46], [-2, 46], [-3, 45], [-3, 44], [-2, 44], [-4, 43], [-4, 42], [-3, 42], [-3, 41]];
-  for (const [bx, by] of bolt) put(bx, by, 5, PR_Y);
-  put(-3, 46, 5, PR_YD); put(-3, 44, 5, PR_YD);
   colf(0, -1, 55, 58, 2.2, 2.0, skin);
   put(0, 56, -2, skinD2);
   box(-2, 56, 2, 2, 57, 2, skinD);
@@ -312,12 +307,11 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
     put(ex - 1, 63, 6, EYE_W); put(ex + 1, 63, 6, EYE_W);
     put(ex - 1, 62, 6, EYE_W); put(ex + 1, 62, 6, EYE_W);
     put(ex, 63, 6, IRIS); put(ex, 62, 6, PUPIL);
-    put(ex, 63, 7, IRIS);
-    put(ex + s, 63, 7, EYE_HI);
+    put(ex + s, 63, 6, EYE_HI);   // catch-light, kept flush with the face (z=6)
     box(ex - 1, 64, 6, ex + 1, 64, 6, skinD2);
     put(ex, 61, 6, skinD);
   }
-  for (const s of [-1, 1]) { box(s * 2, 65, 6, s * 4, 65, 6, hairD); put(s * 3, 66, 6, hairD2); }
+  for (const s of [-1, 1]) { box(Math.min(s * 2, s * 4), 65, 6, Math.max(s * 2, s * 4), 65, 6, hairD); put(s * 3, 66, 6, hairD2); }
   box(0, 61, 6, 0, 63, 6, skin);
   put(0, 61, 7, skinHL);
   putM(1, 61, 6, skinD2);
@@ -342,12 +336,12 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
     const dx = x / 7.2, dy = (y - HR_CY) / 9.0, dz = z / 7.0;
     const d = dx * dx + dy * dy + dz * dz;
     if (d > 1.05 || d < 0.62) continue;
-    if (z > 2 && y < 66) continue;
-    if (z > 4 && y < 69) continue;
+    if (z > 2 && y < 68) continue;
+    if (z > 4 && y < 71) continue;
     put(x, y, z, hairShade(x, y, z));
   }
   ellipsoid(0, 70, 0, 6.6, 6.0, 6.4, hair, 0.55);
-  const fringe: [number, number, number][] = [[-5,70,6],[-4,69,6],[-4,68,7],[-3,67,7],[-3,70,7],[-2,68,7],[-1,67,7],[0,66,7],[0,69,7],[1,67,7],[2,68,7],[3,67,7],[3,70,7],[4,68,7],[4,69,6],[5,70,6],[-2,66,6],[2,66,6],[1,66,7],[-1,66,7]];
+  const fringe: [number, number, number][] = [[-5,70,6],[-4,69,6],[-4,68,7],[-3,70,7],[-2,68,7],[0,69,7],[2,68,7],[3,70,7],[4,68,7],[4,69,6],[5,70,6]];
   for (const [x, y, z] of fringe) put(x, y, z, hair);
   const sHI: [number, number, number][] = [[-6,72,3],[-4,74,4],[-2,75,3],[0,76,2],[2,75,4],[4,74,3],[6,72,2],[-5,72,5],[-3,71,6],[3,71,6],[5,72,5],[-1,74,5],[1,74,5],[-6,70,1],[6,70,1],[-3,75,1],[3,75,1]];
   for (const [x, y, z] of sHI) put(x, y, z, hairHI);
@@ -376,7 +370,7 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
     for (let y = 53; y <= 67; y++) { put(s * 6, y, -2, hair); put(s * 6, y, -4, hair); put(s * 7, y, -3, hairD); put(s * 5, y, -5, hair); }
     put(s * 6, 52, -3, hair); put(s * 5, 51, -4, hairD); put(s * 6, 66, 3, hairHI);
   }
-  for (const s of [-1, 1]) { box(s * 6, 64, 3, s * 7, 68, 5, hair); put(s * 7, 66, 5, hairHI); put(s * 6, 63, 4, hairD); }
+  for (const s of [-1, 1]) { box(Math.min(s * 6, s * 7), 66, 3, Math.max(s * 6, s * 7), 68, 4, hair); put(s * 7, 67, 4, hairHI); }
 
   // ═══ BUILD PART MESHES ═══
   const JIT = 0.035;
@@ -405,8 +399,9 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   }
 
   // ═══ WEAPON (kept at C_NORMAL so torch-flame light offset holds) ═══
+  const WEAPON_Y = 34;   // grid height so the grip sits up in the right hand (hand pivot 31)
   const wg = buildWeapon(weapon, scheme.accent, WC);
-  wg.position.set(ARM_X * C + 0.03, 20 * C, 5 * C);
+  wg.position.set(ARM_X * C + 0.03, WEAPON_Y * C, 5 * C);
   wg.rotation.x = weapon === 'bow' || weapon === 'torch' ? -0.12 : -0.6;
   group.add(wg);
   parts.weapon = wg as unknown as THREE.Mesh;
@@ -416,10 +411,10 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
 
   return {
     group, parts,
-    anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0 },
+    anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
     pivots: {
       hip: HIP_G * C, torso: TORSO_G * C, head: HEAD_G * C, eye: EYE_G * C,
-      hair: HAIR_G * C, arm: ARM_G * C, hand: HAND_G * C, weapon: 20 * C,
+      hair: HAIR_G * C, arm: ARM_G * C, hand: HAND_G * C, weapon: WEAPON_Y * C,
       pad: PAD_G * C,
     },
   };
@@ -504,11 +499,39 @@ function buildChibiRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   parts.weapon = wg as unknown as THREE.Mesh;
   (wg as any).userData.kind = weapon;
   group.scale.setScalar(scheme.bulk ?? 1);
-  return { group, parts, anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0 } };
+  return { group, parts, anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 } };
 }
 
 export function buildCharacter(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   return scheme.style === 'normal' ? buildPlayerRig(scheme, weapon) : buildChibiRig(scheme, weapon);
+}
+
+/** Swap (or remove) the weapon held in the rig's hand. Pass null to unequip. */
+export function setWeapon(rig: Rig, kind: WeaponKind | null, accent: number) {
+  // remove existing weapon group
+  const existing = rig.parts.weapon as unknown as THREE.Object3D | undefined;
+  if (existing) {
+    rig.group.remove(existing);
+    existing.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
+    delete (rig.parts as { weapon?: THREE.Mesh }).weapon;
+  }
+  if (!kind) return;
+
+  const detailed = !!rig.pivots;
+  const C = detailed ? C_DETAIL : C_CHIBI;
+  const WC = detailed ? C_NORMAL : C_CHIBI;
+  const wg = buildWeapon(kind, accent, WC);
+  if (detailed) {
+    wg.position.set(10 * C + 0.03, (rig.pivots!.weapon ?? 28 * C), 5 * C);
+    wg.rotation.x = kind === 'bow' || kind === 'torch' ? -0.12 : -0.6;
+  } else if (kind === 'torch') {
+    wg.position.set(0.38, 0.72, 0.08); wg.rotation.x = -0.12;
+  } else {
+    wg.position.set(0.38, 0.5, 0.08); wg.rotation.x = kind === 'bow' ? 0 : -0.5;
+  }
+  rig.group.add(wg);
+  rig.parts.weapon = wg as unknown as THREE.Mesh;
+  (wg as unknown as THREE.Object3D).userData.kind = kind;
 }
 
 // ────── ANIMATION ──────
@@ -530,20 +553,33 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const w = walking ? Math.sin(a.t * 11) : 0;
   const idle = Math.sin(a.t * 2.2);
 
+  // crouch pose: hips sink while feet stay planted.
+  // The leg mesh pivots at the hip with the foot at ground level (leg length == hip height),
+  // so scaling the leg by (1 - DROP/HIP) keeps the foot on the floor as the hip drops.
+  const cr = a.crouch ?? 0;
   const HIP = P?.hip ?? 0.25;
+  const DROP = cr * 0.26;                                  // world units the hips sink
+  const legScaleY = HIP > 0 ? Math.max(0.5, 1 - DROP / HIP) : 1;
+
   p.legL.rotation.x = w * 0.75;
   p.legR.rotation.x = -w * 0.75;
-  p.legL.position.y = HIP + Math.max(0, w) * 0.06;
-  p.legR.position.y = HIP + Math.max(0, -w) * 0.06;
+  p.legL.rotation.z = 0;
+  p.legR.rotation.z = 0;
+  p.legL.scale.y = legScaleY;
+  p.legR.scale.y = legScaleY;
+  p.legL.position.y = HIP - DROP + Math.max(0, w) * 0.06;
+  p.legR.position.y = HIP - DROP + Math.max(0, -w) * 0.06;
 
-  p.armL.rotation.x = -w * 0.6 + idle * 0.05;
-  p.armR.rotation.x = w * 0.6 + idle * 0.05 + (a.lunge > 0 ? -Math.sin(a.lunge * Math.PI) * 2.2 : 0);
+  p.armL.rotation.x = -w * 0.6 + idle * 0.05 + cr * 0.25;
+  p.armR.rotation.x = w * 0.6 + idle * 0.05 + cr * 0.25 + (a.lunge > 0 ? -Math.sin(a.lunge * Math.PI) * 2.2 : 0);
   p.handL.rotation.x = p.armL.rotation.x;
   p.handR.rotation.x = p.armR.rotation.x;
 
-  const weapon = rig.group.children.find((c) => c.type === 'Group')!;
-  const weaponBase = (weapon as any).userData?.kind === 'torch' ? 0.4 : -0.5;
-  weapon.rotation.x = weaponBase + p.armR.rotation.x * 0.9;
+  const weapon = rig.group.children.find((c) => c.type === 'Group') as THREE.Object3D | undefined;
+  if (weapon) {
+    const weaponBase = (weapon as any).userData?.kind === 'torch' ? 0.4 : -0.5;
+    weapon.rotation.x = weaponBase + p.armR.rotation.x * 0.9;
+  }
 
   const bob = walking ? Math.abs(Math.sin(a.t * 11)) * 0.07 : idle * 0.02;
   a.bob = bob;
@@ -560,16 +596,18 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const PA = P?.pad ?? 1.02;
   const bb = bob * 1.2;
 
-  p.torso.position.y = TO + bob;
+  p.torso.position.y = TO + bob - DROP;
   p.torso.scale.y = 1 + idle * 0.02;
-  p.head.position.y = HO + bb;
-  if (p.eyeL) { p.eyeL.position.y = EO + bb; p.eyeR.position.y = EO + bb; }
-  if (p.hood) { p.hood.position.y = HUD + bb; p.hoodTip!.position.y = HT + bb; }
-  if (p.hair) p.hair.position.y = HRO + bb;
-  p.armL.position.y = AR + bob; p.armR.position.y = AR + bob;
-  p.handL.position.y = HA + bob; p.handR.position.y = HA + bob;
-  weapon.position.y = WO + bob;
-  if (p.padL) { p.padL.position.y = PA + bob; p.padR!.position.y = PA + bob; }
+  p.torso.rotation.x = cr * 0.2;                           // hunch forward
+  p.head.position.y = HO + bb - DROP;
+  p.head.rotation.x = -cr * 0.12;                          // keep eyes forward
+  if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP; p.eyeR.position.y = EO + bb - DROP; }
+  if (p.hood) { p.hood.position.y = HUD + bb - DROP; p.hoodTip!.position.y = HT + bb - DROP; }
+  if (p.hair) { p.hair.position.y = HRO + bb - DROP; p.hair.rotation.x = -cr * 0.12; }
+  p.armL.position.y = AR + bob - DROP; p.armR.position.y = AR + bob - DROP;
+  p.handL.position.y = HA + bob - DROP; p.handR.position.y = HA + bob - DROP;
+  if (weapon) weapon.position.y = WO + bob - DROP;
+  if (p.padL) { p.padL.position.y = PA + bob - DROP; p.padR!.position.y = PA + bob - DROP; }
 
   if (a.lunge > 0) a.lunge = Math.max(0, a.lunge - dt * 3.2);
   if (a.flinch > 0) {

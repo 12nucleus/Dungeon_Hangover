@@ -14,8 +14,7 @@ const SKIN_HL = 0xf3cca0, BLUSH   = 0xe09a82;
 const HAIR    = 0x5a3a20, HAIR_D  = 0x3c2513, HAIR_D2 = 0x281809, HAIR_HI = 0x7d5230, HAIR_HL = 0x9c6b40;
 // Shirt (white tee)
 const SHIRT   = 0xf6f5ef, SHIRT_D = 0xdadace, SHIRT_D2= 0xc2c2b4, SHIRT_HI= 0xffffff;
-// Print graphic (lightning emblem)
-const PR_Y    = 0xf5c022, PR_YD   = 0xd49a0c, PR_R = 0xe0402c, PR_B = 0x2f66c4, PR_OUT = 0x1a1a1a;
+// Print graphic removed (plain shirt)
 // Pocket
 const POCK    = 0xececdf, POCK_ST = 0xbfbfae;
 // Pants (gray jeans)
@@ -34,7 +33,10 @@ const key = (x, y, z) => `${x},${y},${z}`;
 function add(x, y, z, c) { store.set(key(Math.round(x), Math.round(y), Math.round(z)), c); }
 function addM(x, y, z, c) { add(x, y, z, c); add(-x, y, z, c); } // mirror across x=0
 function box(x0, y0, z0, x1, y1, z1, c) {
-  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) add(x, y, z, c);
+  const xa = Math.min(x0, x1), xb = Math.max(x0, x1);
+  const ya = Math.min(y0, y1), yb = Math.max(y0, y1);
+  const za = Math.min(z0, z1), zb = Math.max(z0, z1);
+  for (let x = xa; x <= xb; x++) for (let y = ya; y <= yb; y++) for (let z = za; z <= zb; z++) add(x, y, z, c);
 }
 // elliptical column along Y (rounded limbs/torso)
 function col(cx, cz, y0, y1, rx, rz, c) {
@@ -170,24 +172,6 @@ add(2, 46, 5, POCK_ST); add(5, 46, 5, POCK_ST);      // bottom corners
 box(2, 46, 5, 2, 50, 5, POCK_ST);                    // left stitch
 box(5, 46, 5, 5, 50, 5, POCK_ST);                    // right stitch
 
-// ── printed graphic: lightning bolt in a circle (center-left chest) ──
-// backing circle
-for (let y = 40; y <= 50; y++) for (let x = -6; x <= 0; x++) {
-  const dx = (x + 3) / 3.2, dy = (y - 45) / 5.2;
-  if (dx * dx + dy * dy <= 1.0) add(x, y, 5, PR_B);
-}
-// outline ring
-for (let a = 0; a < 32; a++) {
-  const ang = a / 32 * Math.PI * 2;
-  const px = Math.round(-3 + Math.cos(ang) * 3.2);
-  const py = Math.round(45 + Math.sin(ang) * 5.2);
-  add(px, py, 5, PR_OUT);
-}
-// lightning bolt (yellow zigzag)
-const bolt = [[-2, 49], [-2, 48], [-3, 47], [-3, 46], [-2, 46], [-3, 45], [-3, 44], [-2, 44], [-4, 43], [-4, 42], [-3, 42], [-3, 41]];
-for (const [bx, by] of bolt) add(bx, by, 5, PR_Y);
-add(-3, 46, 5, PR_YD); add(-3, 44, 5, PR_YD);        // bolt shading
-
 // ═══════════════════ ARMS (short sleeves + bare forearms) ═══════════════════
 for (const s of [-1, 1]) {
   const cx = s * 10;
@@ -259,9 +243,8 @@ for (const s of [-1, 1]) {
   add(ex - 1, 62, 6, EYE_W); add(ex + 1, 62, 6, EYE_W);
   // iris + pupil (center)
   add(ex, 63, 6, IRIS); add(ex, 62, 6, PUPIL);
-  add(ex, 63, 7, IRIS);                              // slight bulge
-  // catchlight
-  add(ex + s, 63, 7, EYE_HI);
+  // catchlight (kept flush with the face at z=6 so the eye doesn't poke out)
+  add(ex + s, 63, 6, EYE_HI);
   // upper lid / lash line
   box(ex - 1, 64, 6, ex + 1, 64, 6, SKIN_D2);
   // lower lid
@@ -304,18 +287,17 @@ for (let x = -8; x <= 8; x++) for (let y = 63; y <= 82; y++) for (let z = -8; z 
   const d = dx * dx + dy * dy + dz * dz;
   if (d > 1.05 || d < 0.62) continue;                // shell thickness
   // skip the face opening (front-lower area)
-  if (z > 2 && y < 66) continue;
-  if (z > 4 && y < 69) continue;
+  if (z > 2 && y < 68) continue;
+  if (z > 4 && y < 71) continue;
   add(x, y, z, hairShade(x, y, z));
 }
 // scalp fill on top to avoid holes
 ellipsoid(0, 70, 0, 6.6, 6.0, 6.4, HAIR, 0.55);
 
-// ── fringe / bangs over forehead (front, y 66..71) ──
+// ── fringe / bangs over forehead (front, raised to y 68..71 so the forehead & eyes show) ──
 const fringe = [
-  [-5, 70, 6], [-4, 69, 6], [-4, 68, 7], [-3, 67, 7], [-3, 70, 7], [-2, 68, 7], [-1, 67, 7],
-  [0, 66, 7], [0, 69, 7], [1, 67, 7], [2, 68, 7], [3, 67, 7], [3, 70, 7], [4, 68, 7], [4, 69, 6], [5, 70, 6],
-  [-2, 66, 6], [2, 66, 6], [1, 66, 7], [-1, 66, 7],
+  [-5, 70, 6], [-4, 69, 6], [-4, 68, 7], [-3, 70, 7], [-2, 68, 7],
+  [0, 69, 7], [2, 68, 7], [3, 70, 7], [4, 68, 7], [4, 69, 6], [5, 70, 6],
 ];
 for (const [x, y, z] of fringe) add(x, y, z, HAIR);
 
@@ -373,11 +355,10 @@ for (const s of [-1, 1]) {
   add(s * 6, 66, 3, HAIR_HI);                        // highlight near temple
 }
 
-// ── sideburns / front side wisps ──
+// ── sideburns / front side wisps (kept light so the ears show) ──
 for (const s of [-1, 1]) {
-  box(s * 6, 64, 3, s * 7, 68, 5, HAIR);
-  add(s * 7, 66, 5, HAIR_HI);
-  add(s * 6, 63, 4, HAIR_D);
+  box(s * 6, 66, 3, s * 7, 68, 4, HAIR);
+  add(s * 7, 67, 4, HAIR_HI);
 }
 
 // ═══════════════════ PRUNE DISCONNECTED VOXELS ═══════════════════
