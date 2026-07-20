@@ -147,7 +147,9 @@ export class VoxelWorld {
   private buildMeshes() {
     const S = WORLD_SIZE;
     const tex = getTextures().map;
-    const geo = new THREE.BoxGeometry(TILE, TILE, TILE);
+    const CAVE_VOX = 0.16;   // character-scale voxel (matches monster/player detail)
+    const N = Math.round(TILE / CAVE_VOX);  // ~6 sub-voxels per tile side
+    const geo = new THREE.BoxGeometry(CAVE_VOX, CAVE_VOX, CAVE_VOX);
     const L = this.level;
 
     interface Inst { x: number; y: number; z: number; tint: number; }
@@ -159,20 +161,40 @@ export class VoxelWorld {
 
     for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
       const h = this.heights[x][z];
-      const wx = (x - S / 2 + 0.5) * TILE, wz = (z - S / 2 + 0.5) * TILE;
-      if (h < 0) { push('sand', wx, -1, wz); continue; }
-      if (this.topMat[x][z] === 'cave_wall') { push('cave_wall', wx, h, wz); continue; }
-      const inArena = x >= this.arena.x0 && x <= this.arena.x1 && z >= this.arena.z0 && z <= this.arena.z1;
-      const top = inArena ? 'stone' : this.topMat[x][z];
-      push(top, wx, h, wz);
-      // side skirts
-      let minN = h;
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + dx, nz = z + dz;
-        const nh = this.inBounds(nx, nz) ? this.heights[nx][nz] : -1;
-        minN = Math.min(minN, nh);
+      const tx = (x - S / 2 + 0.5) * TILE, tz = (z - S / 2 + 0.5) * TILE;
+      const cx = tx - TILE / 2 + CAVE_VOX / 2;   // sub-grid origin (corner offset)
+      const cz = tz - TILE / 2 + CAVE_VOX / 2;
+      if (h < 0) { push('sand', tx, -1, tz); continue; }
+
+      if (this.topMat[x][z] === 'cave_wall') {
+        // rough carved-rock wall: every sub-column gets its own height from
+        // smooth fine noise, so the surface is jagged (not a flat-topped block)
+        // and neighbouring tiles differ — reads as hewn cavern stone.
+        let exposed = false;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, nz = z + dz;
+          if (this.inBounds(nx, nz) && this.heights[nx][nz] < MAX_H) { exposed = true; break; }
+        }
+        const thick = exposed ? 2 : 1;   // thicker solid at the visible faces, hollow inside
+        const baseH = 6 + Math.floor(hash(x, z, this.seed + 99) * 5);   // 6..10 base height
+        for (let ix = 0; ix < N; ix++) for (let iz = 0; iz < N; iz++) {
+          const edgeDist = Math.min(ix, iz, N - 1 - ix, N - 1 - iz);
+          if (!exposed && edgeDist >= thick) continue;      // skip interior when sealed
+          // smooth per-column height (sub-tile frequency) → rolling rocky top
+          const n = vnoise(x + (ix - N / 2) * 0.55, z + (iz - N / 2) * 0.55, this.seed + 77);
+          const amp = edgeDist === 0 ? 5 : 2.5;            // exposed faces get more relief
+          const colH = Math.max(2, Math.min(16, Math.round(baseH + (n - 0.5) * amp * 2)));
+          for (let iy = 0; iy < colH; iy++) {
+            push('cave_wall', cx + ix * CAVE_VOX, iy * CAVE_VOX, cz + iz * CAVE_VOX);
+          }
+        }
+        continue;
       }
-      for (let y = h - 1; y > minN; y--) push(top === 'sand' ? 'sand' : 'dirt', wx, y, wz);
+
+      // walkable floor — flat layer of sub-voxels at the surface
+      for (let ix = 0; ix < N; ix++) for (let iz = 0; iz < N; iz++) {
+        push('stone', cx + ix * CAVE_VOX, h, cz + iz * CAVE_VOX);
+      }
     }
 
     const matFor = (name: string) => {

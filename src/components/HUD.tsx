@@ -42,13 +42,13 @@ export function HUD({ snap, engine }: Props) {
   return (
     <div className="hud">
       {/* ══ MAIN MENU ══ */}
-      {phase === 'menu' && (
+      {phase === 'menu' && !snap.cinematic && (
         <div className="overlay-screen menu">
           <div className="menu-inner">
             <div className="menu-rune">◆ ◆ ◆</div>
-            <h1>VOXEL REALMS</h1>
-            <h2>— Tactics of the Broken Shrine —</h2>
-            <p className="menu-tag">A voxel tactical-RPG demo in the spirit of Baldur's Gate 3</p>
+            <h1>DUNGEON HANGOVER</h1>
+            <h2>— 50 Floors of Regret —</h2>
+            <p className="menu-tag">A turn-based voxel roguelite. You wake at the bottom in your underwear, with a headache and a rusty dagger. The only way out is up.</p>
             <button className="btn-primary" onClick={() => engine?.startGame()}>⚔ Enter the Realm</button>
             <div className="menu-features">
               <span>🎲 d20 rolls &amp; initiative</span><span>🔥 15+ skills &amp; AoE spells</span>
@@ -97,8 +97,8 @@ export function HUD({ snap, engine }: Props) {
       {snap.hoverInfo && phase !== 'menu' && <div className="hover-info">{snap.hoverInfo}</div>}
 
       {/* ══ BIG MESSAGE ══ */}
-      {snap.bigMessage && phase !== 'menu' && (
-        <div key={snap.bigMessage} className="big-message">{snap.bigMessage}</div>
+      {snap.bigMessage && (
+        <div key={snap.bigMessage} className={`big-message ${snap.cinematic ? 'cinematic' : ''}`}>{snap.bigMessage}</div>
       )}
 
       {/* ══ TARGETING HINT ══ */}

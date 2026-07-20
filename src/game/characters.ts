@@ -24,9 +24,9 @@ export interface DeathState {
 
 export interface Rig {
   group: THREE.Group;
-  parts: Record<string, THREE.Mesh>;
+  parts: Record<string, THREE.Object3D>;
   anim: {
-    mode: 'idle' | 'walk' | 'dead';
+    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'crack';
     t: number;
     lunge: number;
     flinch: number;
@@ -38,7 +38,7 @@ export interface Rig {
   pivots?: {
     hip: number; torso: number; head: number; eye: number;
     hair: number; arm: number; hand: number; weapon: number;
-    hood?: number; hoodTip?: number; pad?: number;
+    hood?: number; hoodTip?: number; pad?: number; knee?: number; elbow?: number;
   };
 }
 
@@ -103,6 +103,46 @@ class Vox {
     return m;
   }
   count() { return this.geos.length; }
+}
+
+// Build a two-bone limb (thigh+shin or upper+forearm) as nested Groups so the
+// lower segment pivots at the knee/elbow and follows the upper segment's swing.
+// `splitY` is the grid height of the joint (knee / elbow). `upperAbove` true →
+// voxels with gy >= splitY go to the upper bone, the rest to the lower bone.
+// Returns { upper, lower, upperMesh, lowerMesh } where `lower` is parented to
+// `upper` at the correct local joint offset.
+interface Limb {
+  upper: THREE.Group; lower: THREE.Group; hand?: THREE.Mesh;
+}
+function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, splitY: number, C: number, handBucket?: Map<string, number>, handCy?: number): Limb {
+  const JIT = 0.035;
+  const upper = new THREE.Group();
+  const lower = new THREE.Group();
+  const voU = new Vox(C), voL = new Vox(C);
+  for (const [k, c] of bucket) {
+    const [gx, gy, gz] = k.split(',').map(Number);
+    if (gy >= splitY) voU.add(gx - cx, gy - cyUpper, gz, c, JIT);
+    else voL.add(gx - cx, gy - splitY, gz, c, JIT);   // lower bone pivots at the joint
+  }
+  // upper-group origin sits at the hip/shoulder pivot; mesh hangs below it.
+  upper.position.set(0, cyUpper * C, 0);
+  const um = voU.mesh(); um.position.set(cx * C, 0, 0); upper.add(um);
+  // lower-group origin sits at the knee/elbow (relative to upper); mesh hangs below it.
+  lower.position.set(0, (cyUpper - splitY) * C, 0);
+  const lm = voL.mesh(); lm.position.set(cx * C, 0, 0); lower.add(lm);
+  upper.add(lower);
+  let hand: THREE.Mesh | undefined;
+  if (handBucket && handCy !== undefined) {
+    const vh = new Vox(C);
+    for (const [k, c] of handBucket) {
+      const [gx, gy, gz] = k.split(',').map(Number);
+      vh.add(gx - cx, gy - handCy!, gz, c, JIT);
+    }
+    // hand centre relative to the lower-group (elbow) origin
+    hand = vh.mesh(); hand.position.set(cx * C, (handCy - splitY) * C, 0);
+    lower.add(hand);
+  }
+  return { upper, lower, hand };
 }
 
 function buildWeapon(kind: WeaponKind, accent: number, C: number): THREE.Group {
@@ -173,7 +213,7 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   const C = C_DETAIL;
   const WC = C_NORMAL;   // weapon scale (keeps torch-flame light offset valid)
   const group = new THREE.Group();
-  const parts: Record<string, THREE.Mesh> = {};
+  const parts: Record<string, THREE.Object3D> = {};
   const martial = weapon === 'sword' || weapon === 'mace' || weapon === 'club';
 
   // ── palette derived from scheme (+ fixed accents) ──
@@ -406,19 +446,30 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   for (const s of [-1, 1]) { box(Math.min(s * 6, s * 7), 66, 3, Math.max(s * 6, s * 7), 68, 4, hair); put(s * 7, 67, 4, hairHI); }
 
   // ═══ BUILD PART MESHES ═══
-  const JIT = 0.035;
-  for (const [name, info] of Object.entries(partInfo)) {
+  // torso / head / hair are rigid single meshes; legs & arms are two-bone
+  // limbs (thigh+shin, upper+forearm) so they can bend at knee / elbow.
+  for (const name of ['torso', 'head', 'hair'] as const) {
+    const info = partInfo[name];
     const vo = new Vox(C);
     for (const [k, c] of buckets[name]) {
       const [gx, gy, gz] = k.split(',').map(Number);
-      vo.add(gx - info.cx, gy - info.cy, gz, c, JIT);
+      vo.add(gx - info.cx, gy - info.cy, gz, c, 0.035);
     }
     const m = vo.mesh();
     m.position.set(info.cx * C, info.cy * C, 0);
     parts[name] = m; group.add(m);
   }
+  const KNEE_G = 22, ELBOW_G = 48;
+  for (const s of [-1, 1] as const) {
+    const lm = buildLimb(s < 0 ? buckets.legL : buckets.legR, s * LEG_X, HIP_G, KNEE_G, C);
+    parts[s < 0 ? 'legL' : 'legR'] = lm.upper; parts[s < 0 ? 'shinL' : 'shinR'] = lm.lower; group.add(lm.upper);
+    const am = buildLimb(s < 0 ? buckets.armL : buckets.armR, s * ARM_X, ARM_G, ELBOW_G, C, s < 0 ? buckets.handL : buckets.handR, HAND_G);
+    parts[s < 0 ? 'armL' : 'armR'] = am.upper; parts[s < 0 ? 'foreL' : 'foreR'] = am.lower;
+    if (am.hand) parts[s < 0 ? 'handL' : 'handR'] = am.hand;
+    group.add(am.upper);
+  }
 
-  // ═══ SHOULDER PADS (martial only) ═══
+  // ═══ SHOULDER PADS (martial only) — ride on the upper arm ═══
   if (martial) {
     for (const [name, sx] of [['padL', -ARM_X], ['padR', ARM_X]] as const) {
       const vo = new Vox(C);
@@ -431,12 +482,13 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
     }
   }
 
-  // ═══ WEAPON (kept at C_NORMAL so torch-flame light offset holds) ═══
-  const WEAPON_Y = 34;   // grid height so the grip sits up in the right hand (hand pivot 31)
+  // ═══ WEAPON — parented to the right hand so it follows the arm ═══
+  const WEAPON_Y = 34;
   const wg = buildWeapon(weapon, scheme.accent, WC);
-  wg.position.set(ARM_X * C + 0.03, WEAPON_Y * C, 5 * C);
-  wg.rotation.x = weapon === 'bow' || weapon === 'torch' ? -0.12 : -0.6;
-  group.add(wg);
+  wg.position.set(0.03, (WEAPON_Y - HAND_G) * C, 5 * C);
+  wg.rotation.x = weapon === 'bow' || weapon === 'torch' ? -0.12 : 1.35;
+  const handR = parts.handR as THREE.Mesh | undefined;
+  if (handR) handR.add(wg); else group.add(wg);
   parts.weapon = wg as unknown as THREE.Mesh;
   (wg as any).userData.kind = weapon;
 
@@ -448,7 +500,7 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
     pivots: {
       hip: HIP_G * C, torso: TORSO_G * C, head: HEAD_G * C, eye: EYE_G * C,
       hair: HAIR_G * C, arm: ARM_G * C, hand: HAND_G * C, weapon: WEAPON_Y * C,
-      pad: PAD_G * C,
+      pad: PAD_G * C, knee: KNEE_G * C, elbow: ELBOW_G * C,
     },
   };
 }
@@ -527,7 +579,7 @@ function buildChibiRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   }
   const wg = buildWeapon(weapon, accent, C);
   if (weapon === 'torch') { wg.position.set(0.38, 0.72, 0.08); wg.rotation.x = -0.12; }
-  else { wg.position.set(0.38, 0.5, 0.08); wg.rotation.x = weapon === 'bow' ? 0 : -0.5; }
+  else { wg.position.set(0.38, 0.5, 0.08); wg.rotation.x = weapon === 'bow' ? 0 : 1.35; }
   group.add(wg);
   parts.weapon = wg as unknown as THREE.Mesh;
   (wg as any).userData.kind = weapon;
@@ -660,7 +712,7 @@ function buildSkeletonRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
     m.position.set(x, 1.32, 0.24); m.castShadow = false; parts[name] = m; group.add(m);
   }
   const wg = buildWeapon(weapon, scheme.accent, C);
-  wg.position.set(0.36, 0.5, 0.08); wg.rotation.x = weapon === 'bow' ? 0 : -0.5;
+  wg.position.set(0.36, 0.5, 0.08); wg.rotation.x = weapon === 'bow' ? 0 : 1.35;
   group.add(wg); parts.weapon = wg as unknown as THREE.Mesh; (wg as unknown as THREE.Object3D).userData.kind = weapon;
 
   group.scale.setScalar(scheme.bulk ?? 1);
@@ -706,7 +758,7 @@ function buildOrcRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   // held weapon (animated Group — kept in characters.ts for torch flame/orb)
   const wg = buildWeapon(weapon, scheme.accent, 0.07);
   if (weapon === 'torch') { wg.position.set(0.42, 0.72, 0.1); wg.rotation.x = -0.12; }
-  else { wg.position.set(0.42, 0.5, 0.1); wg.rotation.x = weapon === 'bow' ? 0 : -0.5; }
+  else { wg.position.set(0.42, 0.5, 0.1); wg.rotation.x = weapon === 'bow' ? 0 : 1.35; }
   group.add(wg);
   parts.weapon = wg as unknown as THREE.Mesh;
   (wg as unknown as THREE.Object3D).userData.kind = weapon;
@@ -715,10 +767,190 @@ function buildOrcRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   return { group, parts, anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 } };
 }
 
+// ─────────────────────────────────────────────────────────────
+//  DISTINGUISHED TAVERN NPCS — wizard / barmaid / bouncer.
+//  One compact, feature-driven humanoid builder re-used for all three
+//  so each gets a CLEARLY different silhouette (not a Greg colour-swap):
+//    wizard  → long robe, pointy star hat, white beard, holds a staff
+//    barmaid → short dress + apron + hair bun, carries a tray
+//    bouncer → bald dome, black bouncer vest, bulky (no tusks)
+//  Uses the SAME part contract + pivots as buildPlayerRig, so updateRig()
+//  animates sit / lie / drink / lunge identically.
+// ─────────────────────────────────────────────────────────────
+interface HumanoidFeat {
+  robe?: boolean; dress?: boolean; beard?: boolean; hat?: boolean;
+  bun?: boolean; bald?: boolean; apron?: boolean; vest?: boolean;
+  stars?: boolean; tray?: boolean;
+}
+function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind, feat: HumanoidFeat): Rig {
+  const C = C_DETAIL;
+  const WC = C_NORMAL;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Object3D> = {};
+  const skin = scheme.skin, skinD = shade(skin, 0.86), skinHL = shade(skin, 1.1);
+  const cloth = scheme.cloth, clothD = shade(cloth, 0.85);
+  const pant = scheme.accent, pantD = shade(pant, 0.8);
+  const hairC = scheme.hair;
+  const STAR = 0xf3c969, WHITE = 0xf2efe6, WHITED = 0xcfc9bd, VEST = 0x20232b;
+
+  const LEG_X = 4, ARM_X = 10;
+  const HIP_G = 34, TORSO_G = 45, ARM_G = 55, HAND_G = 31, HEAD_G = 64, HAIR_G = 66, EYE_G = 63, PAD_G = 56;
+  const partInfo: Record<string, { cx: number; cy: number }> = {
+    legL: { cx: -LEG_X, cy: HIP_G }, legR: { cx: LEG_X, cy: HIP_G },
+    torso: { cx: 0, cy: TORSO_G },
+    armL: { cx: -ARM_X, cy: ARM_G }, armR: { cx: ARM_X, cy: ARM_G },
+    handL: { cx: -ARM_X, cy: HAND_G }, handR: { cx: ARM_X, cy: HAND_G },
+    head: { cx: 0, cy: HEAD_G }, hair: { cx: 0, cy: HAIR_G },
+  };
+  const buckets: Record<string, Map<string, number>> = {};
+  for (const k of Object.keys(partInfo)) buckets[k] = new Map();
+  let cur: Map<string, number> = buckets.torso;
+  const put = (x: number, y: number, z: number, c: number) =>
+    cur.set(`${Math.round(x)},${Math.round(y)},${Math.round(z)}`, c);
+  const putM = (x: number, y: number, z: number, c: number) => { put(x, y, z, c); put(-x, y, z, c); };
+  const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, c: number) => {
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) put(x, y, z, c);
+  };
+  const colf = (cx: number, cz: number, y0: number, y1: number, rx: number, rz: number, c: number) => {
+    for (let y = y0; y <= y1; y++)
+      for (let x = Math.ceil(cx - rx); x <= Math.floor(cx + rx); x++)
+        for (let z = Math.ceil(cz - rz); z <= Math.floor(cz + rz); z++) {
+          const dx = (x - cx) / rx, dz = (z - cz) / rz;
+          if (dx * dx + dz * dz <= 1.02) put(x, y, z, c);
+        }
+  };
+  const ell = (cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, c: number, inner = 0) => {
+    for (let x = Math.ceil(cx - rx); x <= Math.floor(cx + rx); x++)
+      for (let y = Math.ceil(cy - ry); y <= Math.floor(cy + ry); y++)
+        for (let z = Math.ceil(cz - rz); z <= Math.floor(cz + rz); z++) {
+          const dx = (x - cx) / rx, dy = (y - cy) / ry, dz = (z - cz) / rz;
+          const d = dx * dx + dy * dy + dz * dz;
+          if (d <= 1.02 && d >= inner) put(x, y, z, c);
+        }
+  };
+
+  // ── LEGS ──
+  for (const s of [-1, 1] as const) {
+    cur = s < 0 ? buckets.legL : buckets.legR;
+    const cx = s * LEG_X;
+    if (feat.robe) {
+      colf(cx, 0, 0, 34, 3, 3, cloth);                 // hidden inside the robe
+    } else {
+      box(cx - 3, 0, -4, cx + 3, 2, 6, 0x3a2a1a);      // boot
+      colf(cx, 0.5, 2, 34, 3.2, 3.4, pant);            // trouser leg
+      for (let y = 4; y <= 33; y += 3) put(cx, y, 4, pantD);
+      if (feat.dress) { colf(cx, 0.5, 2, 44, 2.6, 2.8, skin); box(cx - 3, 44, -4, cx + 3, 46, 6, 0x3a2a1a); }
+    }
+  }
+
+  // ── TORSO ──
+  cur = buckets.torso;
+  if (feat.robe || feat.dress) {
+    const top = feat.robe ? 56 : 44;
+    for (let y = 0; y <= top; y++) {
+      const rx = feat.robe ? 5.6 - y * 0.015 : 5.6 - y * 0.05;
+      const rz = feat.robe ? 4.6 : 4.0;
+      colf(0, 0, y, y, Math.max(2, rx), rz, y < 33 ? pant : cloth);
+    }
+  }
+  for (let y = 37; y <= 55; y++) { const t = (y - 37) / 18; const hx = Math.round(7 + t * 1.8); for (let x = -hx; x <= hx; x++) for (let z = -5; z <= 5; z++) put(x, y, z, cloth); }
+  box(-8, 33, 4, 8, 36, 5, 0x2a2018); put(0, 34, 5, 0xc9a94a);   // belt + buckle
+  box(-11, 53, 0, 11, 56, 4, clothD);                              // shoulders
+  colf(0, -1, 55, 58, 2.2, 2.0, skin);                            // neck
+  if (feat.vest) for (let y = 37; y <= 54; y++) for (let x = -6; x <= 6; x++) for (let z = 3; z <= 5; z++) put(x, y, z, VEST);
+  if (feat.vest) put(0, 45, 5, 0xc9a94a);
+  if (feat.apron) for (let y = 37; y <= 50; y++) for (let x = -4; x <= 4; x++) for (let z = 4; z <= 5; z++) put(x, y, z, WHITE);
+  if (feat.stars) for (const [sx, sy] of [[-3, 46], [3, 46], [0, 50], [-2, 52], [2, 52]] as const) { put(sx, sy, 6, STAR); put(sx, sy + 1, 6, STAR); }
+
+  // ── ARMS ──
+  for (const s of [-1, 1] as const) {
+    cur = s < 0 ? buckets.armL : buckets.armR;
+    const cx = s * ARM_X;
+    colf(cx, 0, 48, 55, 2.6, 2.6, feat.robe || feat.dress ? cloth : cloth);
+    colf(cx, 0, 34, 47, 2.2, 2.3, skin);
+    if (feat.vest) for (let y = 48; y <= 55; y++) for (let z = -2; z <= 2; z++) put(cx, y, z, VEST);
+  }
+  // ── HANDS ──
+  for (const s of [-1, 1] as const) {
+    cur = s < 0 ? buckets.handL : buckets.handR;
+    const cx = s * ARM_X;
+    ell(cx, 0, 0, 2.2, 2.4, 2.2, skin);
+    for (let f = -1; f <= 1; f++) box(cx + f, 28, -1, cx + f, 30, 1, skin);
+  }
+  // ── HEAD + face ──
+  cur = buckets.head;
+  ell(0, HEAD_G, 0, 6, 8, 6, skin);
+  ell(0, 58, 1, 4.5, 3.5, 5, skin);
+  for (const s of [-1, 1]) { const ex = s * 3; box(ex - 1, 62, 5, ex + 1, 63, 6, skinD); put(ex, 63, 6, 0xf5f2ec); put(ex, 62, 6, 0x6b4426); }
+  put(0, 60, 6, skinD); box(-2, 59, 6, 2, 59, 6, 0xb05a4a);
+  if (feat.beard) for (let y = 57; y <= 63; y++) { const w = Math.max(0, Math.round((63 - y) * 0.8)); for (let x = -w; x <= w; x++) put(x, y, 5 + Math.round((63 - y) * 0.25), y > 60 ? WHITE : WHITED); }
+  // ── HAIR / HAT / BALD ──
+  cur = buckets.hair;
+  if (feat.bald) {
+    // shiny bald dome — a faint highlight ring, nothing else
+    for (let y = 70; y <= 73; y++) for (let x = -3; x <= 3; x++) put(x, y, 3, skinHL);
+  } else if (feat.hat) {
+    box(-6, 64, -6, 6, 66, 6, clothD);                                   // brim
+    for (let y = 66; y <= 82; y++) { const r = Math.max(1, Math.round(5 - (y - 66) * 0.28)); for (let x = -r; x <= r; x++) for (let z = -r; z <= r; z++) if (x * x + z * z <= r * r + 1) put(x, y, z, cloth); }
+    put(0, 82, 0, STAR); put(0, 80, 1, STAR); putM(0, 68, 7, STAR);
+  } else if (feat.bun) {
+    ell(0, 78, -2, 3, 3, 3, hairC);
+    for (let y = 63; y <= 76; y++) { const w = Math.round(5 - (y - 63) * 0.2); for (let x = -w; x <= w; x++) for (let z = -5; z <= 1; z++) put(x, y, z, hairC); }
+  } else {
+    for (let y = 63; y <= 78; y++) { const w = Math.round(5 - (y - 63) * 0.2); for (let x = -w; x <= w; x++) for (let z = -5; z <= 1; z++) put(x, y, z, hairC); }
+  }
+
+  // ── build part meshes ──
+  // torso / head / hair rigid; legs & arms are two-bone limbs (knee / elbow).
+  for (const name of ['torso', 'head', 'hair'] as const) {
+    const info = partInfo[name];
+    const vo = new Vox(C);
+    for (const [k, c] of buckets[name]) { const [gx, gy, gz] = k.split(',').map(Number); vo.add(gx - info.cx, gy - info.cy, gz, c, 0.035); }
+    const m = vo.mesh(); m.position.set(info.cx * C, info.cy * C, 0); parts[name] = m; group.add(m);
+  }
+  const KNEE_G = 22, ELBOW_G = 48;
+  for (const s of [-1, 1] as const) {
+    const lm = buildLimb(s < 0 ? buckets.legL : buckets.legR, s * LEG_X, HIP_G, KNEE_G, C);
+    parts[s < 0 ? 'legL' : 'legR'] = lm.upper; parts[s < 0 ? 'shinL' : 'shinR'] = lm.lower; group.add(lm.upper);
+    const am = buildLimb(s < 0 ? buckets.armL : buckets.armR, s * ARM_X, ARM_G, ELBOW_G, C, s < 0 ? buckets.handL : buckets.handR, HAND_G);
+    parts[s < 0 ? 'armL' : 'armR'] = am.upper; parts[s < 0 ? 'foreL' : 'foreR'] = am.lower;
+    if (am.hand) parts[s < 0 ? 'handL' : 'handR'] = am.hand;
+    group.add(am.upper);
+  }
+
+  // ── held weapon OR tray ──
+  if (feat.tray) {
+    const tray = new THREE.Group();
+    const tm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.5), new THREE.MeshLambertMaterial({ color: WHITE }));
+    tray.add(tm);
+    const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.13, 8), new THREE.MeshLambertMaterial({ color: 0x8a5a2a }));
+    mug.position.set(0.1, 0.09, 0.1); tray.add(mug);
+    const handR = parts.handR as THREE.Mesh | undefined;
+    if (handR) handR.add(tray); else group.add(tray);
+  } else {
+    const wg = buildWeapon(weapon, scheme.accent, WC);
+    wg.position.set(0.03, (34 - HAND_G) * C, 5 * C);
+    wg.rotation.x = weapon === 'bow' || weapon === 'torch' ? -0.12 : 1.35;
+    const handR = parts.handR as THREE.Mesh | undefined;
+    if (handR) handR.add(wg); else group.add(wg);
+    parts.weapon = wg as unknown as THREE.Mesh; (wg as any).userData.kind = weapon;
+  }
+
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: HIP_G * C, torso: TORSO_G * C, head: HEAD_G * C, eye: EYE_G * C, hair: HAIR_G * C, arm: ARM_G * C, hand: HAND_G * C, weapon: 34 * C, pad: PAD_G * C, knee: KNEE_G * C, elbow: ELBOW_G * C },
+  };
+}
+
 export function buildCharacter(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   if (scheme.monster === 'rat') return buildRatRig(scheme);
   if (scheme.monster === 'bat') return buildBatRig(scheme);
   if (scheme.monster === 'skeleton') return buildSkeletonRig(scheme, weapon);
+  if (scheme.kind === 'wizard') return buildHumanoidRig(scheme, weapon, { robe: true, beard: true, hat: true, stars: true });
+  if (scheme.kind === 'barmaid') return buildHumanoidRig(scheme, weapon, { dress: true, apron: true, bun: true, tray: true });
+  if (scheme.kind === 'bouncer') return buildHumanoidRig(scheme, weapon, { bald: true, vest: true });
   if (scheme.style === 'normal') return buildPlayerRig(scheme, weapon);
   if (scheme.orc) return buildOrcRig(scheme, weapon);
   return buildChibiRig(scheme, weapon);
@@ -729,7 +961,7 @@ export function setWeapon(rig: Rig, kind: WeaponKind | null, accent: number) {
   // remove existing weapon group
   const existing = rig.parts.weapon as unknown as THREE.Object3D | undefined;
   if (existing) {
-    rig.group.remove(existing);
+    existing.parent?.remove(existing);
     existing.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
     delete (rig.parts as { weapon?: THREE.Mesh }).weapon;
   }
@@ -740,14 +972,23 @@ export function setWeapon(rig: Rig, kind: WeaponKind | null, accent: number) {
   const WC = detailed ? C_NORMAL : C_CHIBI;
   const wg = buildWeapon(kind, accent, WC);
   if (detailed) {
-    wg.position.set(10 * C + 0.03, (rig.pivots!.weapon ?? 28 * C), 5 * C);
-    wg.rotation.x = kind === 'bow' || kind === 'torch' ? -0.12 : -0.6;
+    const handR = rig.parts.handR as THREE.Mesh | undefined;
+    if (handR) {
+      wg.position.set(0.03, ((rig.pivots!.weapon ?? 34 * C) / C - 31) * C, 5 * C);
+      wg.rotation.x = kind === 'bow' || kind === 'torch' ? -0.12 : 1.35;
+      handR.add(wg);
+    } else {
+      wg.position.set(10 * C + 0.03, (rig.pivots!.weapon ?? 28 * C), 5 * C);
+      wg.rotation.x = kind === 'bow' || kind === 'torch' ? -0.12 : -0.6;
+      rig.group.add(wg);
+    }
   } else if (kind === 'torch') {
     wg.position.set(0.38, 0.72, 0.08); wg.rotation.x = -0.12;
+    rig.group.add(wg);
   } else {
-    wg.position.set(0.38, 0.5, 0.08); wg.rotation.x = kind === 'bow' ? 0 : -0.5;
+    wg.position.set(0.38, 0.5, 0.08); wg.rotation.x = kind === 'bow' ? 0 : 1.35;
+    rig.group.add(wg);
   }
-  rig.group.add(wg);
   rig.parts.weapon = wg as unknown as THREE.Mesh;
   (wg as unknown as THREE.Object3D).userData.kind = kind;
 }
@@ -780,8 +1021,12 @@ function initDeath(rig: Rig): DeathState {
   };
   set('legL', rand(-1.6, -0.8), rand(-0.4, 0.4), rand(0.3, 0.9));   // buckle + splay out
   set('legR', rand(-1.6, -0.8), rand(-0.4, 0.4), rand(-0.9, -0.3));
+  set('shinL', rand(0.4, 1.2), rand(-0.3, 0.3), rand(-0.3, 0.3));   // lower leg flops
+  set('shinR', rand(0.4, 1.2), rand(-0.3, 0.3), rand(-0.3, 0.3));
   set('armL', rand(0.5, 1.4), 0, rand(0.7, 1.6));                   // flung out + droop
   set('armR', rand(0.5, 1.4), 0, rand(-1.6, -0.7));
+  set('foreL', rand(0.3, 1.0), 0, rand(-0.3, 0.3));
+  set('foreR', rand(0.3, 1.0), 0, rand(-0.3, 0.3));
   set('handL', rand(0.3, 0.9), 0, rand(0.4, 1.0));
   set('handR', rand(0.3, 0.9), 0, rand(-1.0, -0.4));
   set('head', rand(0.5, 1.2) * fwd, rand(-0.5, 0.5), rand(-0.7, 0.7)); // head lolls
@@ -850,26 +1095,80 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const idle = Math.sin(a.t * 2.2);
 
   // crouch pose: hips sink while feet stay planted.
-  // The leg mesh pivots at the hip with the foot at ground level (leg length == hip height),
-  // so scaling the leg by (1 - DROP/HIP) keeps the foot on the floor as the hip drops.
   const cr = a.crouch ?? 0;
   const HIP = P?.hip ?? 0.25;
-  const DROP = cr * 0.26;                                  // world units the hips sink
-  const legScaleY = HIP > 0 ? Math.max(0.5, 1 - DROP / HIP) : 1;
+  let DROP = cr * 0.26;                                  // world units the hips sink
+  let legScaleY = HIP > 0 ? Math.max(0.5, 1 - DROP / HIP) : 1;
 
-  p.legL.rotation.x = w * 0.75;
-  p.legR.rotation.x = -w * 0.75;
-  p.legL.rotation.z = 0;
-  p.legR.rotation.z = 0;
-  p.legL.scale.y = legScaleY;
-  p.legR.scale.y = legScaleY;
-  p.legL.position.y = HIP - DROP + Math.max(0, w) * 0.06;
-  p.legR.position.y = HIP - DROP + Math.max(0, -w) * 0.06;
+  // base limb targets (idle / walk)
+  let legLX = w * 0.75, legRX = -w * 0.75;
+  let armLX = -w * 0.6 + idle * 0.05 + cr * 0.25;
+  let armRX = w * 0.6 + idle * 0.05 + cr * 0.25;
+  let torsoX = cr * 0.2, headX = -cr * 0.12;
+  let hipY = HIP - DROP;
+  let lieTilt = 0;
+  const hasKnee = !!P && !!p.shinL;                       // two-bone limbs (player / NPC)
+  let kneeL = 0.15, kneeR = 0.15, elbowL = 0.2, elbowR = 0.2;   // bend at the joints
 
-  p.armL.rotation.x = -w * 0.6 + idle * 0.05 + cr * 0.25;
-  p.armR.rotation.x = w * 0.6 + idle * 0.05 + cr * 0.25 + (a.lunge > 0 ? -Math.sin(a.lunge * Math.PI) * 2.2 : 0);
-  p.handL.rotation.x = p.armL.rotation.x;
-  p.handR.rotation.x = p.armR.rotation.x;
+  // ── pose presets ──
+  if (a.mode === 'sit') {                                 // seated on a stool / chair
+    DROP += 0.20; legScaleY = Math.max(0.5, 1 - DROP / HIP);
+    legLX = legRX = -1.2; armLX = -0.25 + idle * 0.04; armRX = -0.25 + idle * 0.04;
+    torsoX = 0.06; headX = -0.05; hipY = HIP - 0.22;
+    kneeL = kneeR = 1.45; elbowL = elbowR = 0.5;
+  } else if (a.mode === 'floor') {                        // sitting on the floor
+    DROP += 0.55; legScaleY = Math.max(0.45, 1 - DROP / HIP);
+    legLX = legRX = -1.05; armLX = 0.15 + idle * 0.05; armRX = 0.15 + idle * 0.05;
+    torsoX = 0.16; headX = -0.1; hipY = HIP - 0.55;
+    kneeL = kneeR = 1.3; elbowL = elbowR = 0.4;
+  } else if (a.mode === 'lie') {                          // lying down / asleep
+    lieTilt = -1.45;
+    legLX = legRX = 0.15; armLX = 0.35 + idle * 0.03; armRX = 0.35 + idle * 0.03;
+    torsoX = 0; headX = 0; DROP = 0; legScaleY = 1; hipY = HIP;
+    kneeL = kneeR = 0.1; elbowL = elbowR = 0.25;
+  } else if (a.mode === 'drink') {                        // raise a tankard to the mouth / eat
+    armRX = -2.35 + Math.sin(a.t * 6) * 0.12; armLX = 0.2 + idle * 0.05;
+    headX = -0.16; torsoX = 0.05; legLX = w * 0.4; legRX = -w * 0.4;
+    elbowR = -1.1; elbowL = 0.4;
+  } else if (a.mode === 'crack') {                         // crack knuckles — fists meet at the chest, pumping
+    const pump = Math.sin(a.t * 16) * 0.28;
+    armLX = -1.7 + pump; armRX = -1.7 - pump;
+    legLX = legRX = 0; torsoX = 0.06; headX = -0.05; hipY = HIP;
+    elbowL = -1.3 - pump; elbowR = -1.3 + pump;
+  }
+  // attack swing (combat) — layered on top of the idle/pose
+  if (a.lunge > 0) {
+    const L = Math.sin(a.lunge * Math.PI);
+    armRX = -L * 2.4; torsoX -= L * 0.14;                 // lean into the strike
+    if (a.mode === 'idle' || a.mode === 'walk') legRX = -w * 0.6 - L * 0.5;
+    elbowR = -L * 0.6;
+  }
+
+  rig.group.rotation.x = lieTilt;
+
+  // ── legs: swing the thigh, then bend the knee (relative) ──
+  p.legL.rotation.x = legLX; p.legR.rotation.x = legRX;
+  p.legL.rotation.z = 0; p.legR.rotation.z = 0;
+  if (hasKnee) {
+    // walking knees: bend the leg that is swinging forward (lift the foot)
+    if (walking) { kneeL = 0.25 + Math.max(0, -w) * 0.7; kneeR = 0.25 + Math.max(0, w) * 0.7; }
+    if (a.crouch > 0) { kneeL = kneeR = 0.2 + a.crouch * 1.3; }   // sink by bending, not scaling
+    p.shinL.rotation.x = kneeL; p.shinR.rotation.x = kneeR;
+    p.legL.position.y = hipY; p.legR.position.y = hipY;
+  } else {
+    p.legL.scale.y = legScaleY; p.legR.scale.y = legScaleY;
+    p.legL.position.y = hipY + Math.max(0, w) * 0.06;
+    p.legR.position.y = hipY + Math.max(0, -w) * 0.06;
+  }
+
+  // ── arms: swing the upper arm, then bend the elbow (relative) ──
+  p.armL.rotation.x = armLX; p.armR.rotation.x = armRX;
+  if (hasKnee && p.foreL) {
+    p.foreL.rotation.x = elbowL; p.foreR.rotation.x = elbowR;
+    if (p.handL) p.handL.rotation.x = 0; if (p.handR) p.handR.rotation.x = 0;   // hands ride the forearm
+  } else {
+    p.handL.rotation.x = armLX; p.handR.rotation.x = armRX;
+  }
 
   // membranous wings (bats): flap on Z about the shoulder pivot instead of swinging on X
   if (rig.group.userData.flap) {
@@ -879,10 +1178,10 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
     p.handL.rotation.z = f; p.handR.rotation.z = -f;
   }
 
-  const weapon = rig.group.children.find((c) => c.type === 'Group') as THREE.Object3D | undefined;
+  const weapon = p.weapon as unknown as THREE.Object3D | undefined;
   if (weapon) {
-    const weaponBase = (weapon as any).userData?.kind === 'torch' ? 0.4 : -0.5;
-    weapon.rotation.x = weaponBase + p.armR.rotation.x * 0.9;
+    const weaponBase = (weapon as any).userData?.kind === 'torch' ? 0.4 : 1.35;   // blade points FORWARD (+Z)
+    weapon.rotation.x = weaponBase + (hasKnee && p.foreR ? p.foreR.rotation.x + p.armR.rotation.x : p.armR.rotation.x) * 0.9;
   }
 
   const bob = walking ? Math.abs(Math.sin(a.t * 11)) * 0.07 : idle * 0.02;
@@ -902,15 +1201,15 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
 
   p.torso.position.y = TO + bob - DROP;
   p.torso.scale.y = 1 + idle * 0.02;
-  p.torso.rotation.x = cr * 0.2;                           // hunch forward
+  p.torso.rotation.x = torsoX;                            // hunch / lean
   p.head.position.y = HO + bb - DROP;
-  p.head.rotation.x = -cr * 0.12;                          // keep eyes forward
+  p.head.rotation.x = headX;                              // keep eyes forward
   if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP; p.eyeR.position.y = EO + bb - DROP; }
   if (p.hood) { p.hood.position.y = HUD + bb - DROP; p.hoodTip!.position.y = HT + bb - DROP; }
-  if (p.hair) { p.hair.position.y = HRO + bb - DROP; p.hair.rotation.x = -cr * 0.12; }
+  if (p.hair) { p.hair.position.y = HRO + bb - DROP; p.hair.rotation.x = headX; }
   p.armL.position.y = AR + bob - DROP; p.armR.position.y = AR + bob - DROP;
-  p.handL.position.y = HA + bob - DROP; p.handR.position.y = HA + bob - DROP;
-  if (weapon) weapon.position.y = WO + bob - DROP;
+  if (!hasKnee) { p.handL.position.y = HA + bob - DROP; p.handR.position.y = HA + bob - DROP; }
+  if (weapon && !hasKnee) weapon.position.y = WO + bob - DROP;
   if (p.padL) { p.padL.position.y = PA + bob - DROP; p.padR!.position.y = PA + bob - DROP; }
 
   if (a.lunge > 0) a.lunge = Math.max(0, a.lunge - dt * 3.2);
