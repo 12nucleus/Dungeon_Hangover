@@ -1,0 +1,788 @@
+// ─────────────────────────────────────────────────────────────
+//  Shared voxel-model library — pure ESM, framework agnostic.
+//  Consumed by both the browser (src/game/props.ts builds THREE
+//  meshes) and the node exporters (scripts/*.mjs write .vox files),
+//  so prop geometry lives in ONE place.
+//
+//  Every model builder returns:
+//    { voxels:[{x,y,z,c}], cube, glow?, particles?, anim?, blocks?,
+//      hang?, name }
+//  where voxels are grid coords (y up), colours are 0xRRGGBB, and
+//  effect metadata (glow/particles/anim) is ignored by the .vox
+//  exporter but honoured in-game.
+// ─────────────────────────────────────────────────────────────
+
+// ── deterministic RNG (mulberry32) ──
+export function rng(seed) {
+  let a = (seed * 0x9e3779b1) >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ── colour helpers ──
+export function shade(hex, f) {
+  const r = Math.min(255, Math.round(((hex >> 16) & 255) * f));
+  const g = Math.min(255, Math.round(((hex >> 8) & 255) * f));
+  const b = Math.min(255, Math.round((hex & 255) * f));
+  return (r << 16) | (g << 8) | b;
+}
+export function mix(a, b, t) {
+  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return (r << 16) | (g << 8) | bl;
+}
+
+// ── voxel store (coord-dedup, last write wins) ──
+export class Vox {
+  constructor() { this.m = new Map(); }
+  add(x, y, z, c) { this.m.set(`${Math.round(x)},${Math.round(y)},${Math.round(z)}`, c); return this; }
+  addM(x, y, z, c) { this.add(x, y, z, c); this.add(-x, y, z, c); return this; }
+  has(x, y, z) { return this.m.has(`${Math.round(x)},${Math.round(y)},${Math.round(z)}`); }
+  box(x0, y0, z0, x1, y1, z1, c) {
+    const xa = Math.min(x0, x1), xb = Math.max(x0, x1);
+    const ya = Math.min(y0, y1), yb = Math.max(y0, y1);
+    const za = Math.min(z0, z1), zb = Math.max(z0, z1);
+    for (let x = xa; x <= xb; x++) for (let y = ya; y <= yb; y++) for (let z = za; z <= zb; z++) this.add(x, y, z, c);
+    return this;
+  }
+  // solid elliptic column along Y
+  col(cx, cz, y0, y1, rx, rz, c) {
+    for (let y = y0; y <= y1; y++)
+      for (let x = Math.ceil(cx - rx); x <= Math.floor(cx + rx); x++)
+        for (let z = Math.ceil(cz - rz); z <= Math.floor(cz + rz); z++) {
+          const dx = (x - cx) / rx, dz = (z - cz) / rz;
+          if (dx * dx + dz * dz <= 1.05) this.add(x, y, z, c);
+        }
+    return this;
+  }
+  // hollow elliptic ring along Y
+  ring(cx, cz, y0, y1, rx, rz, c, thick = 1.15) {
+    for (let y = y0; y <= y1; y++)
+      for (let x = Math.ceil(cx - rx); x <= Math.floor(cx + rx); x++)
+        for (let z = Math.ceil(cz - rz); z <= Math.floor(cz + rz); z++) {
+          const dx = (x - cx) / rx, dz = (z - cz) / rz;
+          const d = dx * dx + dz * dz;
+          const inner = (rx - thick) / rx;
+          if (d <= 1.05 && d >= inner * inner) this.add(x, y, z, c);
+        }
+    return this;
+  }
+  ellipsoid(cx, cy, cz, rx, ry, rz, c, inner = 0) {
+    for (let x = Math.ceil(cx - rx); x <= Math.floor(cx + rx); x++)
+      for (let y = Math.ceil(cy - ry); y <= Math.floor(cy + ry); y++)
+        for (let z = Math.ceil(cz - rz); z <= Math.floor(cz + rz); z++) {
+          const dx = (x - cx) / rx, dy = (y - cy) / ry, dz = (z - cz) / rz;
+          const d = dx * dx + dy * dy + dz * dz;
+          if (d <= 1.03 && d >= inner) this.add(x, y, z, c);
+        }
+    return this;
+  }
+  // tapered spike (radius shrinks along +Y). tip at y1. lean adds drift.
+  spike(cx, cz, y0, y1, r0, r1, c, leanX = 0, leanZ = 0, colorFn = null) {
+    const h = y1 - y0;
+    for (let y = y0; y <= y1; y++) {
+      const t = h === 0 ? 0 : (y - y0) / h;
+      const r = r0 + (r1 - r0) * t;
+      const ox = cx + leanX * t, oz = cz + leanZ * t;
+      for (let x = Math.ceil(ox - r); x <= Math.floor(ox + r); x++)
+        for (let z = Math.ceil(oz - r); z <= Math.floor(oz + r); z++) {
+          const dx = (x - ox) / (r + 0.0001), dz = (z - oz) / (r + 0.0001);
+          if (dx * dx + dz * dz <= 1.05) this.add(x, y, z, colorFn ? colorFn(y, t) : c);
+        }
+    }
+    return this;
+  }
+  list() {
+    const out = [];
+    for (const [k, c] of this.m) { const [x, y, z] = k.split(',').map(Number); out.push({ x, y, z, c }); }
+    return out;
+  }
+  get size() { return this.m.size; }
+}
+
+// small hash-noise colour picker for organic speckle
+function speckle(pick, x, y, z) {
+  const h = (((x + 91) * 73856093) ^ ((y + 47) * 19349663) ^ ((z + 13) * 83492791)) >>> 0;
+  return pick[h % pick.length];
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ROCK PALETTES
+// ══════════════════════════════════════════════════════════════
+const ROCK = 0x6d6a73, ROCK_D = 0x4c4a52, ROCK_D2 = 0x35343b, ROCK_HI = 0x8a8792, ROCK_HL = 0x9f9caa;
+const MOSS = 0x4d6a2e, MOSS_D = 0x37501f, MOSS_HI = 0x6f8a44;
+
+function rockShade(y, t) {
+  // lighter near tip, mossy/dark near base handled by caller
+  const r = (((y + 7) * 2654435761) >>> 0) % 100;
+  if (r < 8) return ROCK_HL;
+  if (r < 20) return ROCK_HI;
+  if (r < 30) return ROCK_D;
+  return ROCK;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  DECORATIVE PROP BUILDERS
+// ══════════════════════════════════════════════════════════════
+
+// STALAGMITE — floor spike, high detail, optional twin, mossy base
+export function propStalagmite(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 1);
+  const v = new Vox();
+  const cube = 0.05;
+  const H = 26 + Math.floor(R() * 16);         // grid height
+  const r0 = 5 + Math.floor(R() * 2);
+  const lean = (R() - 0.5) * 6;
+  const leanZ = (R() - 0.5) * 4;
+  v.spike(0, 0, 0, H, r0, 0.6, ROCK, lean, leanZ, (y, t) => {
+    const n = R();
+    if (t > 0.82 && n < 0.6) return ROCK_HL;
+    if (t > 0.6 && n < 0.5) return ROCK_HI;
+    return rockShade(y, t);
+  });
+  // secondary smaller spike beside it
+  if (R() < 0.7) {
+    const sx = (R() < 0.5 ? -1 : 1) * (r0 + 1);
+    const h2 = Math.floor(H * (0.45 + R() * 0.25));
+    v.spike(sx, (R() - 0.5) * 3, 0, h2, 3, 0.5, ROCK, lean * 0.5, 0, (y, t) => rockShade(y, t));
+  }
+  // mossy base ring
+  for (let a = 0; a < 40; a++) {
+    const ang = (a / 40) * Math.PI * 2;
+    const rr = r0 + 1 + R() * 1.5;
+    const bx = Math.round(Math.cos(ang) * rr), bz = Math.round(Math.sin(ang) * rr);
+    if (R() < 0.55) v.add(bx, 0, bz, R() < 0.5 ? MOSS : MOSS_D);
+    if (R() < 0.3) v.add(bx, 1, bz, MOSS_HI);
+  }
+  // moss dabs climbing the lower shaft
+  for (let y = 1; y < H * 0.4; y++) for (const s of [-1, 1]) {
+    if (R() < 0.15) v.add(Math.round(s * (r0 - 1 - y * 0.1)), y, 0, MOSS);
+  }
+  return { name: 'stalagmite', voxels: v.list(), cube, blocks: true };
+}
+
+// STALACTITE — ceiling spike (hangs). built downward from y=0.
+export function propStalactite(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 7);
+  const v = new Vox();
+  const cube = 0.05;
+  const H = 18 + Math.floor(R() * 14);
+  const r0 = 4 + Math.floor(R() * 2);
+  const lean = (R() - 0.5) * 4;
+  v.spike(0, 0, -H, 0, 0.6, r0, ROCK, 0, 0, (y, t) => rockShade(-y, 1 - t));
+  // re-do properly: spike from top(0) tapering down. Use downward build:
+  v.m.clear();
+  for (let i = 0; i <= H; i++) {
+    const y = -i;
+    const t = i / H;
+    const r = r0 * (1 - t) + 0.4;
+    const ox = lean * t;
+    for (let x = Math.ceil(ox - r); x <= Math.floor(ox + r); x++)
+      for (let z = Math.ceil(-r); z <= Math.floor(r); z++) {
+        const dx = (x - ox) / (r + 0.001), dz = z / (r + 0.001);
+        if (dx * dx + dz * dz <= 1.05) v.add(x, y, z, rockShade(i, t));
+      }
+  }
+  // drip highlight at tip
+  v.add(Math.round(lean), -H, 0, ROCK_HL);
+  return { name: 'stalactite', voxels: v.list(), cube, hang: true };
+}
+
+// CRYSTAL — glowing gem cluster. hue selectable.
+function crystalCluster(seed, base, glowColor) {
+  const R = rng(Math.floor(seed * 1000) + 3);
+  const v = new Vox();
+  const cube = 0.05;
+  const lo = shade(base, 0.6), hi = shade(base, 1.35), tip = mix(base, 0xffffff, 0.55);
+  const shards = 3 + Math.floor(R() * 4);
+  let maxH = 0;
+  for (let i = 0; i < shards; i++) {
+    const ang = (i / shards) * Math.PI * 2 + R();
+    const dist = i === 0 ? 0 : 2 + R() * 3;
+    const cx = Math.round(Math.cos(ang) * dist);
+    const cz = Math.round(Math.sin(ang) * dist);
+    const h = (i === 0 ? 16 : 8) + Math.floor(R() * 8);
+    maxH = Math.max(maxH, h);
+    const r0 = i === 0 ? 3 : 2;
+    const lx = (R() - 0.5) * 4, lz = (R() - 0.5) * 4;
+    v.spike(cx, cz, 0, h, r0, 0.4, base, lx, lz, (yy, t) => {
+      if (t > 0.7) return tip;
+      if (t > 0.35) return hi;
+      const n = (yy * 2654435761 >>> 0) % 10;
+      return n < 3 ? lo : base;
+    });
+  }
+  // scattered rubble crystals at base
+  for (let a = 0; a < 14; a++) {
+    if (R() < 0.5) v.add(Math.round((R() - 0.5) * 10), 0, Math.round((R() - 0.5) * 10), R() < 0.5 ? lo : base);
+  }
+  return {
+    name: 'crystal', voxels: v.list(), cube,
+    glow: { color: glowColor, intensity: 6, dist: 8, decay: 1.8, y: maxH * cube * 0.6, flicker: 0.25 },
+    particles: { type: 'sparkle', color: glowColor, y: maxH * cube, spread: 0.35, rate: 1.4, count: 10 },
+    anim: 'pulse',
+  };
+}
+export function propCrystal(seed = 0.5) { return crystalCluster(seed, 0x8b5cf0, 0x8a5cf0); }
+export function propCrystalBlue(seed = 0.5) { const m = crystalCluster(seed, 0x3aa0e8, 0x49b6ff); m.name = 'crystal_blue'; return m; }
+export function propCrystalGreen(seed = 0.5) { const m = crystalCluster(seed, 0x36d17a, 0x49ffa0); m.name = 'crystal_green'; return m; }
+
+// BOULDER — rounded mossy rock
+export function propBoulder(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 11);
+  const v = new Vox();
+  const cube = 0.05;
+  const rx = 8 + Math.floor(R() * 3), ry = 6 + Math.floor(R() * 2), rz = 8 + Math.floor(R() * 3);
+  for (let x = -rx; x <= rx; x++) for (let y = 0; y <= ry * 2; y++) for (let z = -rz; z <= rz; z++) {
+    const dx = x / rx, dy = (y - ry) / ry, dz = z / rz;
+    const d = dx * dx + dy * dy + dz * dz;
+    // lumpy surface
+    const bump = 0.9 + speckle([0, 0.06, 0.12, -0.05], x, y, z);
+    if (d <= bump) {
+      let c = speckle([ROCK, ROCK, ROCK_D, ROCK_HI, ROCK_D2], x, y, z);
+      // moss on the top
+      if (y > ry * 1.3 && R() < 0.5) c = speckle([MOSS, MOSS_D, MOSS_HI], x, y, z);
+      v.add(x, y, z, c);
+    }
+  }
+  return { name: 'boulder', voxels: v.list(), cube, blocks: true };
+}
+
+// BONES — skull + ribcage + scattered shards
+export function propBones(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 13);
+  const v = new Vox();
+  const cube = 0.045;
+  const BONE = 0xd8d2c0, BONE_D = 0xb3ab93, BONE_D2 = 0x8f866c, SOCK = 0x2a2620;
+  // skull
+  const sx = -4, sy = 2, sz = 0;
+  v.ellipsoid(sx, sy + 2, sz, 4, 4, 4, BONE);
+  v.box(sx - 2, sy - 1, sz - 2, sx + 2, sy, sz + 2, BONE_D);   // jaw
+  v.add(sx - 2, sy + 2, sz + 3, SOCK); v.add(sx + 2, sy + 2, sz + 3, SOCK); // eye sockets
+  v.add(sx - 1, sy + 2, sz + 4, SOCK); v.add(sx + 1, sy + 2, sz + 4, SOCK);
+  v.box(sx - 1, sy - 1, sz + 3, sx + 1, sy - 1, sz + 3, BONE_D2); // teeth line
+  // spine + ribs
+  for (let i = 0; i < 8; i++) {
+    const bx = sx + 4 + i;
+    v.add(bx, 0, 0, BONE_D);
+    if (i % 2 === 0) {
+      const rr = 3 - i * 0.15;
+      for (let a = -1; a <= 1; a += 2) {
+        for (let k = 1; k <= rr; k++) v.add(bx, Math.round(k * 0.6), Math.round(a * k), BONE);
+        v.add(bx, Math.round(rr * 0.6) + 1, Math.round(a * rr), BONE_D);
+      }
+    }
+  }
+  // scattered shards
+  for (let i = 0; i < 10; i++) {
+    const bx = Math.round((R() - 0.5) * 18), bz = Math.round((R() - 0.5) * 14);
+    const len = 1 + Math.floor(R() * 3);
+    for (let k = 0; k < len; k++) v.add(bx + k, 0, bz, R() < 0.5 ? BONE : BONE_D);
+  }
+  return { name: 'bones', voxels: v.list(), cube };
+}
+
+// TORCH — wall/standing torch with wrapped rag head + embers
+export function propTorch(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 17);
+  const v = new Vox();
+  const cube = 0.05;
+  const WOOD = 0x6b4a2e, WOOD_D = 0x4a3320, WOOD_HI = 0x855f3a;
+  const RAG = 0x3a2f24, IRON = 0x50535c;
+  // pole
+  for (let y = 0; y <= 26; y++) {
+    const c = y % 5 === 0 ? WOOD_D : (y % 5 === 2 ? WOOD_HI : WOOD);
+    v.add(0, y, 0, c); v.add(1, y, 0, WOOD_D); v.add(0, y, 1, WOOD_D);
+    v.add(-1, y, 0, c); v.add(0, y, -1, c);
+  }
+  // iron bracket bands
+  v.ring(0, 0, 8, 9, 1.6, 1.6, IRON);
+  // rag-wrapped head
+  v.ellipsoid(0, 29, 0, 3, 3, 3, RAG);
+  v.box(-1, 27, -1, 1, 30, 1, RAG);
+  return {
+    name: 'torch', voxels: v.list(), cube, blocks: true,
+    glow: { color: 0xff9540, intensity: 14, dist: 10, decay: 1.7, y: 30 * cube, flicker: 2.4 },
+    particles: { type: 'flame', color: 0xffb545, y: 30 * cube, spread: 0.08, rate: 8, count: 14 },
+    flame: { y: 30 * cube },
+    anim: 'flicker',
+  };
+}
+
+// BRAZIER — iron bowl on legs, glowing coals (NEW)
+export function propBrazier(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 19);
+  const v = new Vox();
+  const cube = 0.05;
+  const IRON = 0x4a4d55, IRON_D = 0x33353c, IRON_HI = 0x6a6d78;
+  const COAL = 0x1c1410, EMBER = 0xff5a1e, EMBER_HI = 0xffb545;
+  // three legs
+  for (const a of [0, 1, 2]) {
+    const ang = (a / 3) * Math.PI * 2;
+    const lx = Math.round(Math.cos(ang) * 4), lz = Math.round(Math.sin(ang) * 4);
+    for (let y = 0; y <= 10; y++) v.add(Math.round(lx * (1 - y / 20)), y, Math.round(lz * (1 - y / 20)), y < 2 ? IRON_D : IRON);
+  }
+  // bowl
+  v.ring(0, 0, 10, 15, 6, 6, IRON, 1.6);
+  v.col(0, 0, 10, 11, 6, 6, IRON_D);       // bottom
+  for (let a = 0; a < 30; a++) { const ang = a / 30 * Math.PI * 2; v.add(Math.round(Math.cos(ang) * 6), 15, Math.round(Math.sin(ang) * 6), IRON_HI); }
+  // coals
+  for (let x = -4; x <= 4; x++) for (let z = -4; z <= 4; z++) {
+    if (x * x + z * z <= 16) {
+      const n = R();
+      v.add(x, 12, z, n < 0.35 ? EMBER : (n < 0.5 ? EMBER_HI : COAL));
+    }
+  }
+  return {
+    name: 'brazier', voxels: v.list(), cube, blocks: true,
+    glow: { color: 0xff7a2a, intensity: 12, dist: 9, decay: 1.7, y: 13 * cube, flicker: 2.2 },
+    particles: { type: 'flame', color: 0xffb545, y: 15 * cube, spread: 0.22, rate: 10, count: 18 },
+    flame: { y: 15 * cube, big: true },
+    anim: 'flicker',
+  };
+}
+
+// MUSHROOM CLUSTER — glowing caps (NEW)
+export function propMushroom(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 23);
+  const v = new Vox();
+  const cube = 0.045;
+  const STEM = 0xe8e0d0, STEM_D = 0xc7bda6, GILL = 0xc98a4a;
+  const capHues = [0x49b6ff, 0x8a5cf0, 0x36d17a];
+  const cap = capHues[Math.floor(R() * capHues.length)];
+  const capHi = mix(cap, 0xffffff, 0.5), capD = shade(cap, 0.7);
+  const n = 2 + Math.floor(R() * 3);
+  let maxTop = 0;
+  for (let i = 0; i < n; i++) {
+    const cx = i === 0 ? 0 : Math.round((R() - 0.5) * 12);
+    const cz = i === 0 ? 0 : Math.round((R() - 0.5) * 12);
+    const H = (i === 0 ? 10 : 6) + Math.floor(R() * 5);
+    const stemR = i === 0 ? 1.6 : 1.1;
+    v.col(cx, cz, 0, H, stemR, stemR, STEM);
+    v.col(cx, cz, 0, 2, stemR + 0.4, stemR + 0.4, STEM_D);   // foot
+    // cap dome
+    const capR = stemR + 2.5 + R();
+    for (let x = -Math.ceil(capR); x <= Math.ceil(capR); x++) for (let z = -Math.ceil(capR); z <= Math.ceil(capR); z++) {
+      const d = Math.hypot(x, z) / capR;
+      if (d <= 1.02) {
+        const yy = H + Math.round((1 - d * d) * 3);
+        v.add(cx + x, yy, cz + z, d > 0.8 ? capD : (((x + z) & 1) ? cap : capHi));
+        maxTop = Math.max(maxTop, yy);
+      }
+    }
+    // gills under cap
+    for (let x = -Math.floor(capR); x <= Math.floor(capR); x++) for (let z = -Math.floor(capR); z <= Math.floor(capR); z++) {
+      if (Math.hypot(x, z) <= capR - 0.5) v.add(cx + x, H - 1, cz + z, GILL);
+    }
+    // glowing spots on cap
+    for (let s = 0; s < 3; s++) if (R() < 0.7) v.add(cx + Math.round((R() - 0.5) * capR), H + 3, cz + Math.round((R() - 0.5) * capR), capHi);
+  }
+  return {
+    name: 'mushroom', voxels: v.list(), cube,
+    glow: { color: mix(cap, 0xffffff, 0.3), intensity: 3.2, dist: 5, decay: 2, y: maxTop * cube * 0.7, flicker: 0.4 },
+    particles: { type: 'spore', color: capHi, y: maxTop * cube, spread: 0.3, rate: 0.8, count: 6 },
+    anim: 'sway',
+  };
+}
+
+// BONFIRE — unlit wood teepee in a stone ring (engine lights it).
+export function propBonfire(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 29);
+  const v = new Vox();
+  const cube = 0.05;
+  const STONE = 0x5a5560, STONE_D = 0x413d47, STONE_HI = 0x6f6a78;
+  const WOOD = 0x6b4a2e, WOOD_D = 0x4a3320, WOOD_HI = 0x855f3a, ASH = 0x3a3630;
+  // stone ring
+  for (let a = 0; a < 12; a++) {
+    const ang = (a / 12) * Math.PI * 2;
+    const rr = 9;
+    const bx = Math.round(Math.cos(ang) * rr), bz = Math.round(Math.sin(ang) * rr);
+    const c = a % 3 === 0 ? STONE_HI : (a % 3 === 1 ? STONE_D : STONE);
+    v.ellipsoid(bx, 1, bz, 2.4, 2, 2.4, c);
+  }
+  // ash bed
+  for (let x = -6; x <= 6; x++) for (let z = -6; z <= 6; z++) if (x * x + z * z <= 34) v.add(x, 0, z, ASH);
+  // teepee logs
+  for (let i = 0; i < 6; i++) {
+    const ang = (i / 6) * Math.PI * 2;
+    const bx = Math.cos(ang) * 5, bz = Math.sin(ang) * 5;
+    const len = 12;
+    for (let k = 0; k <= len; k++) {
+      const t = k / len;
+      const x = Math.round(bx * (1 - t));
+      const z = Math.round(bz * (1 - t));
+      const y = 1 + Math.round(t * 11);
+      const c = k % 4 === 0 ? WOOD_HI : (k % 4 === 2 ? WOOD_D : WOOD);
+      v.add(x, y, z, c);
+      if (k < len - 2) v.add(x, y, z + 1, WOOD_D);
+    }
+  }
+  return { name: 'bonfire', voxels: v.list(), cube, blocks: true, bonfire: true };
+}
+
+// COBWEB corner (NEW, flat-ish) — subtle, no glow
+export function propWebPile(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 31);
+  const v = new Vox();
+  const cube = 0.05;
+  const WEB = 0xdad6ce, WEB_D = 0xa7a49c;
+  for (let i = 0; i < 10; i++) {
+    const ang = (i / 10) * Math.PI;
+    for (let k = 0; k < 12; k++) {
+      const x = Math.round(Math.cos(ang) * k);
+      const y = Math.round(k * 0.9);
+      if (R() < 0.7) v.add(x, y, Math.round(Math.sin(ang) * k * 0.2), (i + k) & 1 ? WEB : WEB_D);
+    }
+  }
+  return { name: 'webpile', voxels: v.list(), cube };
+}
+
+// RUBBLE — small rock scatter (NEW, non-blocking ground detail)
+export function propRubble(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 37);
+  const v = new Vox();
+  const cube = 0.05;
+  for (let i = 0; i < 9; i++) {
+    const cx = Math.round((R() - 0.5) * 14), cz = Math.round((R() - 0.5) * 14);
+    const s = 1 + Math.floor(R() * 2);
+    v.box(cx, 0, cz, cx + s, s, cz + s, speckle([ROCK, ROCK_D, ROCK_HI], cx, i, cz));
+  }
+  return { name: 'rubble', voxels: v.list(), cube };
+}
+
+export const PROP_BUILDERS = {
+  stalagmite: propStalagmite,
+  stalactite: propStalactite,
+  crystal: propCrystal,
+  crystal_blue: propCrystalBlue,
+  crystal_green: propCrystalGreen,
+  boulder: propBoulder,
+  bones: propBones,
+  torch: propTorch,
+  brazier: propBrazier,
+  mushroom: propMushroom,
+  bonfire: propBonfire,
+  webpile: propWebPile,
+  rubble: propRubble,
+};
+
+// ══════════════════════════════════════════════════════════════
+//  DESTRUCTIBLE PROP BUILDERS (smashable — crates, barrels, …)
+//  Returned { voxels, cube, palette } — palette drives debris FX.
+// ══════════════════════════════════════════════════════════════
+const WOOD = 0x8d6238, WOOD_D = 0x5f3e22, WOOD_M = 0x7a5230, WOOD_HI = 0xa87c48;
+const IRON2 = 0x4a4d55, IRON_D = 0x33353c, IRON_HI2 = 0x767a86, NAIL = 0x2b2926;
+const CLAY = 0xb06a3a, CLAY_D = 0x854c26, CLAY_HI = 0xcb8757, CLAY_PAINT = 0x2f6f8f;
+const GOLD2 = 0xf5c542, GOLD_D = 0xc79a25;
+const CLOTH = 0xb8a06a, CLOTH_D = 0x8f7a4c, ROPE = 0x6b5836;
+
+// CRATE — plank box with iron corner brackets & nails
+export function destrCrate(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 101);
+  const v = new Vox();
+  const cube = 0.06;
+  const N = 11;          // 0..11
+  const plank = (x, y, z) => {
+    // vertical plank grooves every 3 cols on x/z faces
+    const groove = (Math.abs(z) % 3 === 0) || (Math.abs(x) % 3 === 0);
+    const n = ((x * 7 + y * 13 + z * 5) & 3);
+    return groove ? WOOD_D : (n === 0 ? WOOD_HI : (n === 1 ? WOOD_M : WOOD));
+  };
+  for (let x = 0; x <= N; x++) for (let y = 0; y <= N; y++) for (let z = 0; z <= N; z++) {
+    const bx = x === 0 || x === N, by = y === 0 || y === N, bz = z === 0 || z === N;
+    const edges = (bx ? 1 : 0) + (by ? 1 : 0) + (bz ? 1 : 0);
+    if (edges === 0) continue;
+    const px = x - N / 2, pz = z - N / 2;
+    let c = plank(px, y, pz);
+    if (edges >= 2) c = WOOD_D;                    // corner posts
+    v.add(px, y, pz, c);
+  }
+  // iron corner brackets
+  for (const cx of [0, N]) for (const cz of [0, N]) for (const cy of [1, N - 1]) {
+    for (const [dx, dz] of [[0, 0], [Math.sign(N / 2 - cx) || 1, 0], [0, Math.sign(N / 2 - cz) || 1]]) {
+      v.add(cx - N / 2 + dx, cy, cz - N / 2 + dz, IRON2);
+    }
+  }
+  // nails on faces
+  for (let i = 0; i < 8; i++) v.add(Math.round((R() - 0.5) * N), Math.round(R() * N), N - N / 2, NAIL);
+  return { name: 'crate', voxels: v.list(), cube, palette: [WOOD, WOOD_D, WOOD_M, IRON2] };
+}
+
+// BARREL — curved staves, iron hoops, lid
+export function destrBarrel(seed = 0.5) {
+  const v = new Vox();
+  const cube = 0.06;
+  const H = 13;
+  for (let y = 0; y <= H; y++) {
+    const t = y / H;
+    const r = 3.2 + Math.sin(t * Math.PI) * 1.7;     // belly bulge
+    const hoop = y === 1 || y === H - 1 || y === Math.round(H / 2);
+    const n = Math.ceil(r);
+    for (let x = -n; x <= n; x++) for (let z = -n; z <= n; z++) {
+      const d = Math.hypot(x, z);
+      if (d <= r && d > r - 1.25) {
+        let c;
+        if (hoop) c = ((x + z) & 1) ? IRON2 : IRON_HI2;
+        else {
+          const stave = (Math.round(Math.atan2(z, x) / (Math.PI * 2) * 16) & 1);
+          c = stave ? WOOD_M : WOOD;
+        }
+        v.add(x, y, z, c);
+      }
+    }
+  }
+  // top lid
+  const lr = 3.0;
+  for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) if (Math.hypot(x, z) <= lr) v.add(x, H, z, ((x + z) & 1) ? WOOD_D : WOOD_M);
+  v.add(0, H, 0, IRON2);
+  return { name: 'barrel', voxels: v.list(), cube, palette: [WOOD_M, WOOD_D, IRON2] };
+}
+
+// VASE — clay urn with painted band
+export function destrVase(seed = 0.5) {
+  const v = new Vox();
+  const cube = 0.06;
+  const profile = [2.0, 2.6, 3.2, 3.6, 3.4, 2.6, 1.6, 1.4, 1.8, 2.0]; // base→belly→neck→lip
+  for (let y = 0; y < profile.length; y++) {
+    const r = profile[y];
+    const n = Math.ceil(r);
+    const band = y === 4 || y === 5;
+    for (let x = -n; x <= n; x++) for (let z = -n; z <= n; z++) {
+      const d = Math.hypot(x, z);
+      if (d <= r && (y === 0 || d > r - 1.2)) {
+        let c = ((x + z + y) & 1) ? CLAY : CLAY_HI;
+        if (band) c = ((x + z) & 1) ? CLAY_PAINT : shade(CLAY_PAINT, 1.25);
+        if (y === profile.length - 1) c = CLAY_D;   // lip
+        v.add(x, y, z, c);
+      }
+    }
+  }
+  return { name: 'vase', voxels: v.list(), cube, palette: [CLAY, CLAY_D, CLAY_PAINT] };
+}
+
+// CHEST — wooden body, curved lid, iron bands, gold lock
+export function destrChest(seed = 0.5) {
+  const v = new Vox();
+  const cube = 0.06;
+  const W = 12, D = 8, HB = 6;   // body dims
+  // body shell
+  for (let x = 0; x <= W; x++) for (let y = 0; y <= HB; y++) for (let z = 0; z <= D; z++) {
+    const b = x === 0 || x === W || y === 0 || z === 0 || z === D;
+    if (!b) continue;
+    const px = x - W / 2, pz = z - D / 2;
+    let c = ((x + z) & 1) ? WOOD : WOOD_M;
+    if (x <= 1 || x >= W - 1) c = WOOD_D;
+    v.add(px, y, pz, c);
+  }
+  // curved lid (half cylinder along x)
+  for (let x = 0; x <= W; x++) for (let a = 0; a <= 8; a++) {
+    const ang = (a / 8) * Math.PI;
+    const yy = HB + Math.round(Math.sin(ang) * 4);
+    const zz = Math.round(-Math.cos(ang) * (D / 2));
+    const px = x - W / 2;
+    let c = ((x + a) & 1) ? WOOD : WOOD_M;
+    if (x <= 1 || x >= W - 1) c = WOOD_D;
+    v.add(px, yy, zz, c);
+  }
+  // iron bands across the lid + body
+  for (const bx of [-W / 2 + 2, W / 2 - 2]) {
+    for (let y = 0; y <= HB; y++) v.add(bx, y, D / 2, IRON2);
+    for (let a = 0; a <= 8; a++) { const ang = (a / 8) * Math.PI; v.add(bx, HB + Math.round(Math.sin(ang) * 4), Math.round(-Math.cos(ang) * (D / 2)), IRON_HI2); }
+  }
+  // gold lock
+  v.box(-1, HB - 1, D / 2, 1, HB + 1, D / 2, GOLD2);
+  v.add(0, HB, D / 2, GOLD_D);
+  return { name: 'chest', voxels: v.list(), cube, palette: [WOOD_D, WOOD_M, GOLD2, IRON2] };
+}
+
+// SACK — tied cloth bag (NEW)
+export function destrSack(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 103);
+  const v = new Vox();
+  const cube = 0.06;
+  const H = 11;
+  for (let y = 0; y <= H; y++) {
+    const t = y / H;
+    // fat bottom, pinched neck near top
+    let r = 3.4 * (1 - Math.pow(Math.max(0, t - 0.15) / 0.85, 1.6));
+    if (t > 0.72) r = 1.3;                          // neck
+    r = Math.max(0.8, r);
+    const n = Math.ceil(r);
+    for (let x = -n; x <= n; x++) for (let z = -n; z <= n; z++) {
+      const d = Math.hypot(x, z);
+      if (d <= r) {
+        const fold = (Math.round(Math.atan2(z, x) / (Math.PI * 2) * 10) & 1);
+        v.add(x, y, z, fold ? CLOTH : CLOTH_D);
+      }
+    }
+  }
+  // rope tie at the neck
+  for (let a = 0; a < 12; a++) { const ang = a / 12 * Math.PI * 2; v.add(Math.round(Math.cos(ang) * 1.6), Math.round(H * 0.75), Math.round(Math.sin(ang) * 1.6), ROPE); }
+  // frilled open top
+  for (let a = 0; a < 8; a++) { const ang = a / 8 * Math.PI * 2; v.add(Math.round(Math.cos(ang) * 1.4), H, Math.round(Math.sin(ang) * 1.4), CLOTH_D); }
+  return { name: 'sack', voxels: v.list(), cube, palette: [CLOTH, CLOTH_D, ROPE] };
+}
+
+// URN — bone-ash urn with skull motif (NEW)
+export function destrUrn(seed = 0.5) {
+  const v = new Vox();
+  const cube = 0.055;
+  const profile = [2.2, 2.8, 3.2, 3.0, 2.4, 2.0, 2.4, 2.6];
+  for (let y = 0; y < profile.length; y++) {
+    const r = profile[y]; const n = Math.ceil(r);
+    for (let x = -n; x <= n; x++) for (let z = -n; z <= n; z++) {
+      const d = Math.hypot(x, z);
+      if (d <= r && (y === 0 || d > r - 1.2)) v.add(x, y, z, ((x + z) & 1) ? CLAY_D : shade(CLAY_D, 1.2));
+    }
+  }
+  // skull motif on the belly (front z+)
+  const fz = 3;
+  v.box(-1, 2, fz, 1, 3, fz, 0xe6e0d0);
+  v.add(-1, 3, fz + 1, 0x2a2620); v.add(1, 3, fz + 1, 0x2a2620);   // eye sockets
+  v.add(0, 1, fz, 0xe6e0d0);
+  return { name: 'urn', voxels: v.list(), cube, palette: [CLAY_D, 0xe6e0d0, 0x2a2620] };
+}
+
+export const DESTRUCTIBLE_BUILDERS = {
+  crate: destrCrate,
+  barrel: destrBarrel,
+  vase: destrVase,
+  chest: destrChest,
+  sack: destrSack,
+  urn: destrUrn,
+};
+
+// ══════════════════════════════════════════════════════════════
+//  MONSTERS — orc / goblin / hobgoblin. Authored ONCE here as
+//  per-part voxel lists + world-space pivots, so both the animated
+//  in-game rig (characters.ts) and the .vox exporter share it.
+//  Part names & pivots match the chibi rig contract used by
+//  updateRig()/the engine (do not rename).
+// ══════════════════════════════════════════════════════════════
+export function orcModel(scheme, weapon) {
+  const C = 0.05;
+  const martial = weapon === 'sword' || weapon === 'mace' || weapon === 'club';
+  const boss = (scheme.bulk ?? 1) > 1;
+  const skin = scheme.skin;
+  const skinD = shade(skin, 0.82), skinD2 = shade(skin, 0.66), skinHI = shade(skin, 1.14);
+  const cloth = scheme.cloth, clothD = shade(cloth, 0.78);
+  const accent = scheme.accent, accentD = shade(accent, 0.72), accentHI = shade(accent, 1.2);
+  const hair = scheme.hair, hairHI = shade(hair, 1.5);
+  const TUSKC = 0xf2ede0, TUSK_D = 0xd6ccb4, BROWC = 0x201810, NAILC = 0x241c14;
+  const WAR = boss ? 0xb23636 : 0xcf3f2f;
+  const eyeCol = boss ? 0xff4a2a : 0xffcf3a;
+  const build = (fn) => { const v = new Vox(); fn(v); return v.list(); };
+
+  const leg = build((v) => {
+    v.col(0, 0, 0, 3, 2.0, 1.9, skin);            // thigh
+    v.col(0, 0, -5, 0, 1.5, 1.5, skin);           // shin
+    v.ellipsoid(0, -1, 1, 1.7, 1.2, 1.5, skinHI); // knee
+    v.box(-2, -4, -2, 2, -4, 2, accent);          // ankle wrap
+    v.box(-2, -6, 0, 2, -5, 3, skinD);            // foot
+    v.add(1, -6, 4, NAILC); v.add(-1, -6, 4, NAILC); v.add(0, -6, 4, NAILC);
+    v.ellipsoid(0, 2, 0, 2.1, 1.4, 1.9, skinD2);
+  });
+  const arm = build((v) => {
+    v.ellipsoid(0, 2, 0, 2.0, 1.9, 1.8, skin);
+    v.col(0, 0, -5, 2, 1.5, 1.5, skin);
+    v.ellipsoid(0, -1, 0.5, 1.5, 1.1, 1.4, skinHI);
+    v.box(-2, -5, -2, 2, -5, 2, accent);
+    v.ellipsoid(0, 3, -1, 1.8, 1.4, 1.4, skinD2);
+  });
+  const hand = build((v) => {
+    v.ellipsoid(0, 0, 0, 1.7, 1.5, 1.7, skin);
+    v.add(0, 1, 2, skinD); v.add(1, 0, 2, skinHI); v.add(-1, 0, 2, skinHI);
+    v.add(0, 1, 3, NAILC); v.add(1, 1, 3, NAILC); v.add(-1, 1, 3, NAILC);
+    v.add(-2, 0, 0, skin);
+  });
+  const torso = build((v) => {
+    v.ellipsoid(0, 3, 0.4, 4.6, 3.4, 3.0, skin);  // chest
+    v.ellipsoid(0, -1, 0.2, 4.2, 3.2, 2.9, skin); // belly
+    v.ellipsoid(0, 5, -2.4, 3.4, 2.6, 2.2, skinD);// back hump
+    v.box(-1, 5, 1, 1, 6, 2, skin);               // neck
+    v.box(-3, 2, 3, -1, 3, 3, skinHI); v.box(1, 2, 3, 3, 3, 3, skinHI);
+    v.add(0, 1, 3, skinD2); v.add(0, -1, 3, skinD2);
+    v.col(0, 0, -5, -3, 4.4, 3.2, cloth);         // loincloth
+    v.box(-2, -5, 3, 2, -2, 3, clothD);
+    v.box(-4, -4, -3, 4, -3, -3, clothD);
+    v.box(-4, -3, -3, 4, -3, 3, accentD);         // belt
+    v.add(0, -3, 4, accentHI);
+    for (let i = -3; i <= 3; i++) v.add(i, 1 + i, 3, accent);
+    if (boss) for (let i = -3; i <= 3; i++) v.add(-i, 1 + i, 3, accent);
+    v.add(-2, 3, 4, WAR); v.add(2, 3, 4, WAR); v.add(0, 4, 4, WAR);
+  });
+  const head = build((v) => {
+    v.ellipsoid(0, 0, 0, 4.0, 4.0, 3.8, skin);
+    v.box(-3, -3, 1, 3, -1, 3, skinD);
+    v.box(-3, 2, 3, 3, 2, 4, BROWC);
+    v.box(-4, 1, 1, -4, 2, 2, skinD2); v.box(4, 1, 1, 4, 2, 2, skinD2);
+    for (const s of [-1, 1]) { v.add(s * 4, 1, -1, skinD); v.add(s * 5, 2, -1, skinD); v.add(s * 6, 3, -2, skinHI); }
+    v.add(0, 0, 4, skinD); v.add(0, -1, 4, skinD2);
+    v.box(-2, -2, 4, 2, -2, 4, BROWC);
+    v.add(-2, -1, 4, TUSKC); v.add(-2, 0, 4, TUSKC); v.add(-3, 1, 4, TUSK_D);
+    v.add(2, -1, 4, TUSKC); v.add(2, 0, 4, TUSKC); v.add(3, 1, 4, TUSK_D);
+    v.add(-2, 1, 4, skinD2); v.add(2, 1, 4, skinD2);
+    v.add(-1, 1, 4, WAR); v.add(1, 1, 4, WAR);
+    if (boss) {
+      for (const s of [-1, 1]) { v.add(s * 3, 4, -1, TUSK_D); v.add(s * 4, 5, -1, TUSK_D); v.add(s * 4, 6, 0, TUSKC); v.add(s * 3, 7, 1, TUSKC); }
+      v.box(-3, 4, 4, 3, 4, 4, WAR);
+    }
+  });
+
+  const parts = {
+    legL: { pivot: [-0.14, 0.25, 0], voxels: leg }, legR: { pivot: [0.14, 0.25, 0], voxels: leg },
+    torso: { pivot: [0, 0.78, 0], voxels: torso },
+    armL: { pivot: [-0.36, 0.8, 0], voxels: arm }, armR: { pivot: [0.36, 0.8, 0], voxels: arm },
+    handL: { pivot: [-0.36, 0.52, 0.02], voxels: hand }, handR: { pivot: [0.36, 0.52, 0.02], voxels: hand },
+    head: { pivot: [0, 1.28, 0], voxels: head },
+  };
+  if (scheme.hood) {
+    parts.hood = { pivot: [0, 1.44, -0.02], voxels: build((v) => { v.ellipsoid(0, 1, -1, 4.4, 3.4, 4.0, cloth); v.box(-4, -2, 2, 4, 0, 3, clothD); }) };
+    parts.hoodTip = { pivot: [0, 1.58, -0.06], voxels: build((v) => { v.box(-1, 0, -1, 1, 1, 0, cloth); v.add(0, 2, -2, clothD); }) };
+  } else {
+    parts.hair = { pivot: [0, 1.5, 0], voxels: build((v) => {
+      for (let z = -3; z <= 3; z++) { const h = Math.round(2 - Math.abs(z) * 0.4); v.box(0, 0, z, 0, h, z, hair); v.add(0, h, z, hairHI); }
+      v.addM(1, 0, 0, hair);
+      if (boss) v.box(-1, 0, -3, 1, 1, -3, hair);
+    }) };
+  }
+  if (martial) {
+    const padC = boss ? TUSK_D : accent, padHI = boss ? TUSKC : accentHI;
+    const pad = build((v) => {
+      v.ellipsoid(0, 0, 0, 2.4, 1.6, 2.2, padC);
+      v.box(-1, 1, -1, 1, 1, 1, padHI);
+      if (boss) { v.add(0, 2, 0, TUSKC); v.add(-2, 1, 2, TUSK_D); v.add(2, 1, 2, TUSK_D); }
+    });
+    parts.padL = { pivot: [-0.36, 1.02, 0], voxels: pad };
+    parts.padR = { pivot: [0.36, 1.02, 0], voxels: pad };
+  }
+
+  return { cube: C, parts, eyes: { color: eyeCol, positions: [[-0.1, 1.3, 0.2], [0.1, 1.3, 0.2]] }, weapon };
+}
+
+// weapon rasterised as voxels (for the static .vox export only; the game
+// builds an animated Group via characters.ts buildWeapon). Coords match
+// buildWeapon; pivot is the world position where it sits in the hand.
+export function weaponVoxels(kind, accent) {
+  const v = new Vox();
+  const grip = 0x4a3421, METAL = 0xb8bfc9, METAL_DARK = 0x7a828e, DARK = 0x1a1a22;
+  const WOOD = 0x6b4a2e;
+  switch (kind) {
+    case 'sword': v.box(0, 0, 0, 0, 1, 0, grip); v.box(-1, 2, 0, 1, 2, 0, METAL_DARK); v.box(0, 3, 0, 0, 8, 0, METAL); break;
+    case 'dagger': v.add(0, 0, 0, grip); v.box(0, 1, 0, 0, 4, 0, METAL); break;
+    case 'club': v.box(0, 0, 0, 0, 3, 0, grip); v.box(-1, 4, -1, 1, 5, 1, accent); break;
+    case 'mace': v.box(0, 0, 0, 0, 3, 0, grip); v.box(-1, 4, -1, 1, 5, 1, METAL); v.add(2, 4, 0, METAL); v.add(-2, 4, 0, METAL); v.add(0, 4, 2, METAL); v.add(0, 4, -2, METAL); break;
+    case 'staff': v.box(0, 0, 0, 0, 9, 0, WOOD); v.box(-1, 9, 0, 1, 9, 0, shade(WOOD, 0.85)); v.add(0, 10, 0, 0xa78bfa); v.add(0, 11, 0, 0xa78bfa); break;
+    case 'bow': v.box(0, 0, 0, 0, 4, 0, WOOD); v.add(-1, -1, 0, WOOD); v.add(-1, 5, 0, WOOD); v.box(-1, 0, 0, -1, 4, 0, DARK); break;
+    case 'torch': v.box(0, 0, 0, 0, 4, 0, WOOD); v.box(-1, 4, -1, 1, 5, 1, 0x3a2a18); v.add(0, 6, 0, 0xffb545); v.add(0, 7, 0, 0xff7a1f); break;
+  }
+  const pivot = kind === 'torch' ? [0.42, 0.72, 0.1] : [0.42, 0.5, 0.1];
+  return { voxels: v.list(), pivot };
+}

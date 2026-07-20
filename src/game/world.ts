@@ -2,8 +2,13 @@
 // per material (top faces + exposed side skirts only). Props are placed
 // from a LevelDef (if provided) � otherwise fall back to surface defaults.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getTextures } from './textures';
+import { createProp, type BuiltProp } from './props';
 import type { LevelDef } from '../levels/levelTypes';
+
+// decorative props that also block their tile (preserve legacy behaviour)
+const BLOCKING_PROPS = new Set(['torch', 'bonfire', 'brazier']);
 
 export const WORLD_SIZE = 46;
 export const TILE = 1;
@@ -36,6 +41,7 @@ export class VoxelWorld {
   torches: Torch[] = [];
   water!: THREE.Mesh;
   private time = 0;
+  private propUpdates: NonNullable<BuiltProp['update']>[] = [];
 
   /** Arena (combat clearing) rectangle in tile coords. */
   readonly arena = { x0: 28, z0: 6, x1: 42, z1: 20 };
@@ -47,6 +53,7 @@ export class VoxelWorld {
     this.generate();
     this.buildMeshes();
     this.buildProps();
+    this.buildCaveDetail();
   }
 
   tileToWorld(x: number, z: number, out = new THREE.Vector3()): THREE.Vector3 {
@@ -199,196 +206,111 @@ export class VoxelWorld {
   private buildProps() {
     const S = WORLD_SIZE;
     const L = this.level;
-    if (!L) return; // no level = default surface props (not needed for cave)
+    if (!L) return;
 
-    // place props from level definition
     for (const p of L.props) {
       const wx = (p.x - S / 2 + 0.5) * TILE;
       const wz = (p.z - S / 2 + 0.5) * TILE;
-      const h = this.heights[p.x][p.z] + 0.5;
-      const seed = p.seed ?? 0.5;
-      switch (p.kind) {
-        case 'stalagmite': {
-          const mat = new THREE.MeshLambertMaterial({ map: getTextures().map.stone });
-          const geo = new THREE.BoxGeometry(1, 1, 1);
-          const m4 = new THREE.Matrix4();
-          const q = new THREE.Quaternion();
-          const sc = new THREE.Vector3();
-          const e = new THREE.Euler();
-          const g = new THREE.Group();
-          g.position.set(wx, h, wz);
-          const th = 2 + Math.floor(seed * 3);
-          for (let i = 0; i < th; i++) {
-            const w = 1.3 - (i / th) * 0.9;
-            e.set(seed * 0.1, seed * 0.2, seed * 0.05);
-            m4.compose(new THREE.Vector3((seed - 0.5) * 0.15, 0.5 + i, (seed - 0.5) * 0.15), q.setFromEuler(e), sc.set(w, 1, w));
-            const im = new THREE.InstancedMesh(geo, mat, 1);
-            im.setMatrixAt(0, m4);
-            im.castShadow = true;
-            g.add(im);
+      const groundTopY = this.heights[p.x][p.z] + 0.5;
+      const built = createProp(p.kind, wx, groundTopY, wz, p.seed ?? 0.5);
+      if (!built) continue;
+      this.group.add(built.group);
+      if (built.update) this.propUpdates.push(built.update);
+      if (built.blocks || BLOCKING_PROPS.has(p.kind)) this.blocked[p.x][p.z] = true;
+    }
+  }
+
+  /**
+   * Fine surface detail for the cave, all merged into two meshes
+   * (one draw call each) so it's essentially free: scattered pebbles
+   * & moss on the floor, and glowing crystal veins in exposed walls.
+   */
+  private buildCaveDetail() {
+    const S = WORLD_SIZE;
+    const L = this.level;
+    if (!L) return;
+    const arena = L.arena;
+    const col = new THREE.Color();
+    const floorGeos: THREE.BufferGeometry[] = [];
+    const veinGeos: THREE.BufferGeometry[] = [];
+
+    const cube = (list: THREE.BufferGeometry[], size: number, x: number, y: number, z: number, hex: number, jit = 0.12) => {
+      const g = new THREE.BoxGeometry(size, size, size);
+      g.translate(x, y, z);
+      col.setHex(hex).multiplyScalar(1 - jit / 2 + Math.random() * jit);
+      const n = g.attributes.position.count;
+      const arr = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { arr[i * 3] = col.r; arr[i * 3 + 1] = col.g; arr[i * 3 + 2] = col.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+      list.push(g);
+    };
+
+    const PEBBLE = [0x5a5560, 0x6f6a78, 0x413d47, 0x4c4a52];
+    const MOSSC = [0x3d5a24, 0x4d6a2e, 0x37501f];
+    const VEIN = [0x49b6ff, 0x8a5cf0, 0x49ffa0, 0x3aa0e8];
+
+    for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
+      const wx = (x - S / 2 + 0.5) * TILE, wz = (z - S / 2 + 0.5) * TILE;
+      const wall = this.topMat[x][z] === 'cave_wall';
+      if (!wall && this.heights[x][z] >= 0 && !this.blocked[x][z]) {
+        // floor detail
+        const surf = this.heights[x][z] + 0.5;
+        const r = hash(x, z, this.seed + 131);
+        if (r < 0.14) {
+          const nP = 1 + Math.floor(hash(x, z, this.seed + 5) * 3);
+          for (let i = 0; i < nP; i++) {
+            const ox = (hash(x + i, z, this.seed + i * 7) - 0.5) * 0.7;
+            const oz = (hash(x, z + i, this.seed + i * 11) - 0.5) * 0.7;
+            const sz = 0.06 + hash(x + i, z + i, this.seed) * 0.06;
+            cube(floorGeos, sz, wx + ox, surf + sz / 2, wz + oz, PEBBLE[(x + z + i) % PEBBLE.length]);
           }
-          this.group.add(g);
-          break;
-        }
-        case 'stalactite': {
-          const mat = new THREE.MeshLambertMaterial({ map: getTextures().map.stone });
-          const geo = new THREE.BoxGeometry(1, 1, 1);
-          const m4 = new THREE.Matrix4();
-          const q = new THREE.Quaternion();
-          const sc = new THREE.Vector3();
-          const e = new THREE.Euler();
-          const g = new THREE.Group();
-          g.position.set(wx, h + 6, wz); // hang from ceiling
-          const th = 2 + Math.floor(seed * 2);
-          for (let i = 0; i < th; i++) {
-            const w = 0.8 - (i / th) * 0.5;
-            e.set(seed * 0.08, seed * 0.15, seed * 0.03);
-            m4.compose(new THREE.Vector3((seed - 0.5) * 0.1, -0.5 - i, (seed - 0.5) * 0.1), q.setFromEuler(e), sc.set(w, 1, w));
-            const im = new THREE.InstancedMesh(geo, mat, 1);
-            im.setMatrixAt(0, m4);
-            im.castShadow = true;
-            g.add(im);
+        } else if (r > 0.9) {
+          // moss patch near walls
+          const nM = 2 + Math.floor(hash(x, z, this.seed + 9) * 3);
+          for (let i = 0; i < nM; i++) {
+            const ox = (hash(x + i, z, this.seed + 3) - 0.5) * 0.8;
+            const oz = (hash(x, z + i, this.seed + 4) - 0.5) * 0.8;
+            cube(floorGeos, 0.09, wx + ox, surf + 0.02, wz + oz, MOSSC[(x + i) % MOSSC.length]);
           }
-          this.group.add(g);
-          break;
         }
-        case 'crystal': {
-          const mat = new THREE.MeshLambertMaterial({ color: 0x7c5cbf, emissive: 0x2a0e4a, emissiveIntensity: 0.6, transparent: true, opacity: 0.9 });
-          const geo = new THREE.BoxGeometry(1, 1, 1);
-          const m4 = new THREE.Matrix4();
-          const q = new THREE.Quaternion();
-          const sc = new THREE.Vector3();
-          const e = new THREE.Euler();
-          const g = new THREE.Group();
-          g.position.set(wx, h, wz);
-          const th = 2 + Math.floor(seed * 2);
-          for (let i = 0; i < th; i++) {
-            const w = 0.6 - (i / th) * 0.35;
-            e.set(seed * 0.15, seed * 0.3, seed * 0.08);
-            m4.compose(new THREE.Vector3((seed - 0.5) * 0.1, 0.5 + i, (seed - 0.5) * 0.1), q.setFromEuler(e), sc.set(w, 1, w));
-            const im = new THREE.InstancedMesh(geo, mat, 1);
-            im.setMatrixAt(0, m4);
-            im.castShadow = true;
-            g.add(im);
+      } else if (wall) {
+        // glowing vein on faces exposed to a walkable neighbour
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const nx = x + dx, nz = z + dz;
+          if (!this.inBounds(nx, nz)) continue;
+          if (this.topMat[nx][nz] === 'cave_wall' || this.heights[nx][nz] < 0) continue;
+          if (nx < arena.x0 || nx > arena.x1 || nz < arena.z0 || nz > arena.z1) continue;
+          const r = hash(x * 3 + dx, z * 3 + dz, this.seed + 211);
+          if (r < 0.14) {
+            const hue = VEIN[(x + z) % VEIN.length];
+            const fx = wx + dx * 0.5, fz = wz + dz * 0.5;
+            const n = 2 + Math.floor(r * 20) % 3;
+            let vy = 0.5 + hash(x, z, this.seed + 17) * 1.4;
+            for (let i = 0; i < n; i++) {
+              const jx = dx !== 0 ? 0 : (hash(x + i, z, this.seed) - 0.5) * 0.5;
+              const jz = dz !== 0 ? 0 : (hash(x, z + i, this.seed) - 0.5) * 0.5;
+              cube(veinGeos, 0.08, fx + jx, vy, fz + jz, hue, 0.05);
+              vy += 0.18 + hash(x + i, z + i, this.seed) * 0.14;
+            }
           }
-          const light = new THREE.PointLight(0x8a5cf0, 6, 7, 1.8);
-          light.position.set(0, 1.2, 0);
-          g.add(light);
-          this.group.add(g);
-          this.torches.push({ pos: new THREE.Vector3(wx, h + 1.5, wz), light, base: 6 });
-          break;
-        }
-        case 'boulder': {
-          const mat = new THREE.MeshLambertMaterial({ map: getTextures().map.stone });
-          const geo = new THREE.BoxGeometry(1, 1, 1);
-          const m4 = new THREE.Matrix4();
-          const q = new THREE.Quaternion();
-          const sc = new THREE.Vector3();
-          const e = new THREE.Euler(seed * 0.3, seed * 2.5, seed * 0.3);
-          m4.compose(new THREE.Vector3(wx, h + 0.18, wz), q.setFromEuler(e), sc.set(0.85, 0.55, 0.8));
-          const im = new THREE.InstancedMesh(geo, mat, 1);
-          im.setMatrixAt(0, m4);
-          im.castShadow = true;
-          this.group.add(im);
-          break;
-        }
-        case 'bones': {
-          const mat = new THREE.MeshLambertMaterial({ color: 0xd8d2c0 });
-          const geo = new THREE.BoxGeometry(1, 1, 1);
-          const m4 = new THREE.Matrix4();
-          const q = new THREE.Quaternion();
-          const sc = new THREE.Vector3();
-          const e = new THREE.Euler();
-          const g = new THREE.Group();
-          g.position.set(wx, h, wz);
-          for (let i = 0; i < 8; i++) {
-            const bx = (seed - 0.5) * 0.5 + i * 0.08 - 0.3;
-            const bz = (seed - 0.5) * 0.5 + (i % 3) * 0.12 - 0.2;
-            e.set(seed * 2.5 + i * 0.4, seed * 3 + i * 0.3, seed * 0.3);
-            m4.compose(new THREE.Vector3(bx, 0.06, bz), q.setFromEuler(e), sc.set(0.25, 0.12, 0.12));
-            const im = new THREE.InstancedMesh(geo, mat, 1);
-            im.setMatrixAt(0, m4);
-            im.castShadow = true;
-            g.add(im);
-          }
-          e.set(seed * 0.2, seed * 0.4, 0);
-          m4.compose(new THREE.Vector3(0, 0.14, 0), q.setFromEuler(e), sc.set(0.32, 0.32, 0.32));
-          const im = new THREE.InstancedMesh(geo, mat, 1);
-          im.setMatrixAt(0, m4);
-          im.castShadow = true;
-          g.add(im);
-          this.group.add(g);
-          break;
-        }
-        case 'torch': {
-          const poleMat = new THREE.MeshLambertMaterial({ map: getTextures().map.wood, color: 0x886644 });
-          const geo = new THREE.BoxGeometry(1, 1, 1);
-          const m4 = new THREE.Matrix4();
-          const g = new THREE.Group();
-          g.position.set(wx, h, wz);
-          m4.makeScale(0.18, 1.5, 0.18);
-          m4.setPosition(0, 0.75, 0);
-          const pole = new THREE.InstancedMesh(geo, poleMat, 1);
-          pole.setMatrixAt(0, m4);
-          pole.castShadow = true;
-          g.add(pole);
-          const flameMat = new THREE.MeshLambertMaterial({ color: 0xffb545, emissive: 0xff7a1f, emissiveIntensity: 0.8 });
-          m4.makeScale(0.14, 0.2, 0.14);
-          m4.setPosition(0.02, 1.6, 0.02);
-          const flame = new THREE.InstancedMesh(geo, flameMat, 1);
-          flame.setMatrixAt(0, m4);
-          g.add(flame);
-          const light = new THREE.PointLight(0xff9540, 14, 10, 1.7);
-          light.position.set(0.02, 1.5, 0.02);
-          g.add(light);
-          this.group.add(g);
-          this.torches.push({ pos: new THREE.Vector3(wx, h + 1.5, wz), light, base: 14 });
-this.blocked[p.x][p.z] = true;
-          break;
-        }
-        case 'bonfire': {
-          const stoneMat = new THREE.MeshLambertMaterial({ map: getTextures().map.stone, color: 0x5a5560 });
-          const woodMat = new THREE.MeshLambertMaterial({ map: getTextures().map.wood });
-          const geo = new THREE.BoxGeometry(1, 1, 1);
-          const m4 = new THREE.Matrix4();
-          const q = new THREE.Quaternion();
-          const sc = new THREE.Vector3();
-          const e = new THREE.Euler();
-          const g = new THREE.Group();
-          g.position.set(wx, h, wz);
-          g.userData.isBonfire = true;
-          g.userData.lit = false;
-          this.group.add(g);
-          // stone ring
-          for (let i = 0; i < 8; i++) {
-            const angle = (i / 8) * Math.PI * 2;
-            const sx = Math.cos(angle) * 0.55;
-            const sz = Math.sin(angle) * 0.55;
-            e.set(0, angle, 0);
-            m4.compose(new THREE.Vector3(sx, 0.12, sz), q.setFromEuler(e), sc.set(0.3, 0.25, 0.18));
-            const im = new THREE.InstancedMesh(geo, stoneMat, 1);
-            im.setMatrixAt(0, m4);
-            im.castShadow = true;
-            g.add(im);
-          }
-          // wood pile (scattered chunks, not a pole)
-          for (let i = 0; i < 5; i++) {
-            const ax = (seed * 3 + i * 1.7) % 1 - 0.5;
-            const az = (seed * 5 + i * 2.3) % 1 - 0.5;
-            const ry = (seed * 7 + i) * Math.PI;
-            const sx = 0.25 + Math.abs(Math.sin(i * 1.3)) * 0.2;
-            const sz = 0.25 + Math.abs(Math.cos(i * 1.7)) * 0.2;
-            e.set(0.1, ry, 0.05);
-            m4.compose(new THREE.Vector3(ax * 0.25, 0.28, az * 0.25), q.setFromEuler(e), sc.set(sx, 0.10, sz));
-            const im = new THREE.InstancedMesh(geo, woodMat, 1);
-            im.setMatrixAt(0, m4);
-            im.castShadow = true;
-            g.add(im);
-          }
-          this.blocked[p.x][p.z] = true;
-          break;
+          break; // one face per wall tile
         }
       }
+    }
+
+    if (floorGeos.length) {
+      const merged = mergeGeometries(floorGeos, false)!;
+      floorGeos.forEach((g) => g.dispose());
+      const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true }));
+      m.receiveShadow = true;
+      this.group.add(m);
+    }
+    if (veinGeos.length) {
+      const merged = mergeGeometries(veinGeos, false)!;
+      veinGeos.forEach((g) => g.dispose());
+      // MeshBasicMaterial ignores lighting → the veins glow in the dark
+      const m = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ vertexColors: true }));
+      this.group.add(m);
     }
   }
 
@@ -399,5 +321,6 @@ this.blocked[p.x][p.z] = true;
     for (const t of this.torches) {
       t.light.intensity = t.base + Math.sin(this.time * 11 + t.pos.x) * 2.2 + Math.sin(this.time * 23) * 1.2;
     }
+    for (const u of this.propUpdates) u(this.time, dt);
   }
 }

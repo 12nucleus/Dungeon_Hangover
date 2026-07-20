@@ -3,7 +3,7 @@
 // and the monster roster for one dungeon level.
 import type { GridPos, Unit } from '../game/types';
 
-export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'boulder' | 'bones' | 'torch' | 'bonfire';
+export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'crystal_blue' | 'crystal_green' | 'boulder' | 'bones' | 'torch' | 'brazier' | 'mushroom' | 'bonfire' | 'webpile' | 'rubble';
 
 export interface PropPlacement {
   kind: PropKind;

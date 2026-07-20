@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { orcModel } from './voxelModels.mjs';
 import type { CharacterScheme, WeaponKind } from './types';
 
 export interface Rig {
@@ -61,6 +62,23 @@ class Vox {
   }
   fill(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: number, jitter?: number) {
     for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) this.add(x, y, z, color, jitter);
+  }
+  // solid elliptic column along Y (rounded limbs)
+  col(cx: number, cz: number, y0: number, y1: number, rx: number, rz: number, color: number, jitter?: number) {
+    for (let y = y0; y <= y1; y++)
+      for (let x = Math.ceil(cx - rx); x <= Math.floor(cx + rx); x++)
+        for (let z = Math.ceil(cz - rz); z <= Math.floor(cz + rz); z++) {
+          const dx = (x - cx) / rx, dz = (z - cz) / rz;
+          if (dx * dx + dz * dz <= 1.08) this.add(x, y, z, color, jitter);
+        }
+  }
+  ellip(cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, color: number, jitter?: number) {
+    for (let x = Math.ceil(cx - rx); x <= Math.floor(cx + rx); x++)
+      for (let y = Math.ceil(cy - ry); y <= Math.floor(cy + ry); y++)
+        for (let z = Math.ceil(cz - rz); z <= Math.floor(cz + rz); z++) {
+          const dx = (x - cx) / rx, dy = (y - cy) / ry, dz = (z - cz) / rz;
+          if (dx * dx + dy * dy + dz * dz <= 1.05) this.add(x, y, z, color, jitter);
+        }
   }
   mesh(): THREE.Mesh {
     const merged = mergeGeometries(this.geos, false)!;
@@ -502,8 +520,60 @@ function buildChibiRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   return { group, parts, anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 } };
 }
 
+// ════════════════════════════════════════════════════════════════
+//  DETAILED ORC / GOBLIN — same pivot layout & part names as the
+//  chibi rig (so updateRig + engine proxy/selection are unchanged),
+//  but ~10× the voxels: rounded muscle, heavy brow, tusks, pointy
+//  ears, loincloth, leather straps, glowing eyes. Boss (bulk>1)
+//  gains horns + war-paint + bone pauldrons.
+// ════════════════════════════════════════════════════════════════
+function buildOrcRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
+  const model = orcModel(scheme, weapon);
+  const C = model.cube;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+
+  const meshFrom = (voxels: { x: number; y: number; z: number; c: number }[]): THREE.Mesh => {
+    const v = new Vox(C);
+    for (const p of voxels) v.add(p.x, p.y, p.z, p.c);
+    return v.mesh();
+  };
+
+  // animated body parts (names/pivots match the chibi rig contract)
+  for (const [name, part] of Object.entries(model.parts)) {
+    const m = meshFrom(part.voxels);
+    m.position.set(part.pivot[0], part.pivot[1], part.pivot[2]);
+    parts[name] = m;
+    group.add(m);
+  }
+
+  // glowing emissive eyes
+  const eyeMat = new THREE.MeshLambertMaterial({ color: model.eyes.color, emissive: model.eyes.color, emissiveIntensity: 0.9 });
+  const eyeNames = ['eyeL', 'eyeR'] as const;
+  model.eyes.positions.forEach((p, i) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.05, 0.05), eyeMat);
+    m.position.set(p[0], p[1], p[2]);
+    m.castShadow = false;
+    parts[eyeNames[i]] = m;
+    group.add(m);
+  });
+
+  // held weapon (animated Group — kept in characters.ts for torch flame/orb)
+  const wg = buildWeapon(weapon, scheme.accent, 0.07);
+  if (weapon === 'torch') { wg.position.set(0.42, 0.72, 0.1); wg.rotation.x = -0.12; }
+  else { wg.position.set(0.42, 0.5, 0.1); wg.rotation.x = weapon === 'bow' ? 0 : -0.5; }
+  group.add(wg);
+  parts.weapon = wg as unknown as THREE.Mesh;
+  (wg as unknown as THREE.Object3D).userData.kind = weapon;
+
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return { group, parts, anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 } };
+}
+
 export function buildCharacter(scheme: CharacterScheme, weapon: WeaponKind): Rig {
-  return scheme.style === 'normal' ? buildPlayerRig(scheme, weapon) : buildChibiRig(scheme, weapon);
+  if (scheme.style === 'normal') return buildPlayerRig(scheme, weapon);
+  if (scheme.orc) return buildOrcRig(scheme, weapon);
+  return buildChibiRig(scheme, weapon);
 }
 
 /** Swap (or remove) the weapon held in the rig's hand. Pass null to unequip. */

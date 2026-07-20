@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "vox:player": "node scripts/gen_vox.mjs",
+    "vox:props": "node scripts/gen_props_vox.mjs",
+    "vox:monsters": "node scripts/gen_monsters_vox.mjs",
+    "vox": "node scripts/gen_vox.mjs && node scripts/gen_props_vox.mjs && node scripts/gen_monsters_vox.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

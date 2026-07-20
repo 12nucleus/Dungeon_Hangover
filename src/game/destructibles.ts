@@ -1,124 +1,50 @@
 // ─────────────────────────────────────────────────────────────
-// Destructible dungeon props — crates, barrels, vases & chests
-// built from tiny voxel cubes (one InstancedMesh per prop) so they
-// match the "everything is tiny cubes" art direction and can be
-// smashed: AoE blasts and direct attacks shatter them into solid
-// voxel debris, free their tile (world.blocked) and drop loot.
-// Data-driven: add a def in DESTRUCTIBLE_DEFS + a spot in SPOTS.
+// Destructible dungeon props — crates, barrels, vases, chests,
+// sacks & urns. Geometry comes from the shared voxel-model library
+// (voxelModels.mjs) so it matches the player's resolution and can
+// be exported to .vox. Smashing them shatters into voxel debris,
+// frees the tile and drops loot.
 // ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
 import type { VoxelWorld } from './world';
 import type { GridPos } from './types';
 import { rollLootTable, type Item, type LootSource } from './items';
-
-const CELL = 0.11; // mini-cube edge (world units) — 6 cells ≈ 0.66 tall
+import { DESTRUCTIBLE_BUILDERS } from './voxelModels.mjs';
 
 export interface DestructibleDef {
   id: LootSource;      // also the loot-table source key
   name: string;        // display name, e.g. 'Crate'
   icon: string;        // emoji for logs / hover
   hp: number;
-  palette: number[];   // debris burst colors
-  build: (v: Vox) => void;
+  model: string;       // key in DESTRUCTIBLE_BUILDERS
+  palette: number[];   // debris burst colors (from the model)
 }
 
-// ── tiny voxel assembler ─────────────────────────────────────
-interface Cell { x: number; y: number; z: number; c: number; }
-
-export class Vox {
-  cells: Cell[] = [];
-  private col = new THREE.Color();
-
-  /** add one mini-cube at grid coord (y up), with ±jitter lightness */
-  add(x: number, y: number, z: number, color: number, jitter = 0.12) {
-    const j = 1 - jitter / 2 + Math.random() * jitter;
-    this.col.setHex(color).multiplyScalar(j);
-    this.cells.push({ x, y, z, c: this.col.getHex() });
-  }
-
-  /** filled circle (disc) of radius r at row y */
-  disc(y: number, r: number, color: number, jitter?: number) {
-    const n = Math.ceil(r);
-    for (let x = -n; x <= n; x++) for (let z = -n; z <= n; z++) {
-      if (Math.hypot(x, z) <= r) this.add(x, y, z, color, jitter);
-    }
-  }
-
-  /** hollow ring of radius r at row y */
-  ring(y: number, r: number, color: number, jitter?: number) {
-    const n = Math.ceil(r);
-    for (let x = -n; x <= n; x++) for (let z = -n; z <= n; z++) {
-      const d = Math.hypot(x, z);
-      if (d <= r && d > r - 1.25) this.add(x, y, z, color, jitter);
-    }
-  }
-
-  /** n×n×n hollow box; cells on 2+ boundary faces get frameColor */
-  shell(n: number, color: number, frameColor: number) {
-    const h = (n - 1) / 2;
-    for (let x = 0; x < n; x++) for (let y = 0; y < n; y++) for (let z = 0; z < n; z++) {
-      const bx = x === 0 || x === n - 1, by = y === 0 || y === n - 1, bz = z === 0 || z === n - 1;
-      if (!bx && !by && !bz) continue;
-      this.add(x - h, y, z - h, (bx ? 1 : 0) + (by ? 1 : 0) + (bz ? 1 : 0) >= 2 ? frameColor : color);
-    }
-  }
+function paletteOf(model: string): number[] {
+  const b = DESTRUCTIBLE_BUILDERS[model];
+  return b ? b(0.5).palette : [0x8d6238];
 }
-
-// palette hexes mirror textures.ts (wood / clay / metal / gold)
-const WOOD = 0x8d6238, WOOD_DARK = 0x5f3e22, WOOD_MID = 0x7a5230;
-const CLAY = 0xa9603a, CLAY_DARK = 0x7e4426;
-const IRON = 0x4a4d55, GOLD = 0xf5c542;
 
 // ── prop definitions ─────────────────────────────────────────
 export const DESTRUCTIBLE_DEFS: Record<string, DestructibleDef> = {
-  crate: {
-    id: 'crate', name: 'Crate', icon: '📦', hp: 8,
-    palette: [WOOD, WOOD_DARK, WOOD_MID],
-    build: (v) => v.shell(6, WOOD, WOOD_DARK),
-  },
-  barrel: {
-    id: 'barrel', name: 'Barrel', icon: '🛢️', hp: 10,
-    palette: [WOOD_MID, WOOD_DARK, IRON],
-    build: (v) => {
-      for (let y = 0; y < 7; y++) {
-        const r = 2.1 + Math.sin((y / 6) * Math.PI) * 0.7; // bulge
-        const band = y === 1 || y === 5;
-        v.ring(y, r, band ? IRON : WOOD_MID);
-      }
-      v.disc(6, 1.5, WOOD_DARK); // lid
-    },
-  },
-  vase: {
-    id: 'vase', name: 'Vase', icon: '🏺', hp: 4,
-    palette: [CLAY, CLAY_DARK],
-    build: (v) => {
-      const profile = [1.2, 2.0, 2.5, 2.5, 1.9, 1.1, 1.3]; // belly → neck → lip
-      profile.forEach((r, y) => v.ring(y, r, y >= 5 ? CLAY_DARK : CLAY));
-      v.disc(0, 1.2, CLAY_DARK); // base
-    },
-  },
-  chest_small: {
-    id: 'chest', name: 'Small Chest', icon: '🧰', hp: 12,
-    palette: [WOOD_DARK, WOOD_MID, GOLD],
-    build: (v) => {
-      v.shell(5, WOOD_MID, WOOD_DARK);
-      for (let x = -2; x <= 2; x++) v.add(x, 5, 0, GOLD, 0.05); // lid clasp row
-      v.add(0, 2, -2, GOLD, 0.05); // lock
-    },
-  },
+  crate: { id: 'crate', name: 'Crate', icon: '📦', hp: 8, model: 'crate', palette: paletteOf('crate') },
+  barrel: { id: 'barrel', name: 'Barrel', icon: '🛢️', hp: 10, model: 'barrel', palette: paletteOf('barrel') },
+  vase: { id: 'vase', name: 'Vase', icon: '🏺', hp: 4, model: 'vase', palette: paletteOf('vase') },
+  chest_small: { id: 'chest', name: 'Small Chest', icon: '🧰', hp: 12, model: 'chest', palette: paletteOf('chest') },
+  sack: { id: 'crate', name: 'Sack', icon: '💰', hp: 5, model: 'sack', palette: paletteOf('sack') },
+  urn: { id: 'vase', name: 'Ash Urn', icon: '⚱️', hp: 4, model: 'urn', palette: paletteOf('urn') },
 };
 
 // ── placement (hand-authored) ────────────────────────────────
-// Inside the ruins arena: crate clusters near the pillars, barrels
-// along the broken north wall, vases in corners — plus a few props
-// on the path from the party start up to the arena.
 const SPOTS: [string, number, number][] = [
   ['crate', 30, 8], ['crate', 31, 8], ['crate', 30, 10],          // west pillar cluster
   ['crate', 40, 16], ['crate', 41, 16],                           // east pillar cluster
   ['barrel', 33, 7], ['barrel', 37, 7], ['barrel', 39, 7],        // along the north wall
   ['vase', 29, 8], ['vase', 41, 17], ['vase', 29, 16],            // corners
   ['chest_small', 35, 8],                                         // deeper in the ruins
+  ['sack', 32, 9], ['urn', 40, 15],                               // extra flavour
   ['crate', 33, 30], ['barrel', 30, 25], ['vase', 36, 22],        // path from party start
+  ['sack', 28, 33], ['urn', 22, 26],
 ];
 
 export interface Destructible {
@@ -131,10 +57,9 @@ export interface Destructible {
   alive: boolean;
 }
 
-const sharedGeo = new THREE.BoxGeometry(CELL * 0.96, CELL * 0.96, CELL * 0.96);
 const sharedMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-const pickGeo = new THREE.BoxGeometry(0.85, 0.95, 0.85);
 const pickMat = new THREE.MeshBasicMaterial({ visible: false });
+const _col = new THREE.Color();
 
 export class DestructibleManager {
   readonly group = new THREE.Group();
@@ -176,24 +101,29 @@ export class DestructibleManager {
     }
     if (!spot) return;
 
-    const vox = new Vox();
-    def.build(vox);
-    const im = new THREE.InstancedMesh(sharedGeo, sharedMat, vox.cells.length);
+    const model = DESTRUCTIBLE_BUILDERS[def.model](0.35 + (this.seq % 5) * 0.13);
+    const CELL = model.cube;
+    const geo = new THREE.BoxGeometry(CELL * 0.96, CELL * 0.96, CELL * 0.96);
+    const im = new THREE.InstancedMesh(geo, sharedMat, model.voxels.length);
     const m4 = new THREE.Matrix4();
-    const col = new THREE.Color();
-    vox.cells.forEach((c, i) => {
+    let maxY = 0;
+    model.voxels.forEach((c, i) => {
       m4.makeTranslation(c.x * CELL, c.y * CELL + CELL / 2, c.z * CELL);
       im.setMatrixAt(i, m4);
-      im.setColorAt(i, col.setHex(c.c));
+      im.setColorAt(i, _col.setHex(c.c));
+      if (c.y > maxY) maxY = c.y;
     });
     im.castShadow = true;
+    im.receiveShadow = true;
     const g = new THREE.Group();
     g.add(im);
     this.worldPos({ pos: spot } as Destructible, g.position);
     this.group.add(g);
 
+    const topH = (maxY + 1) * CELL;
+    const pickGeo = new THREE.BoxGeometry(0.85, Math.max(0.6, topH), 0.85);
     const pick = new THREE.Mesh(pickGeo, pickMat);
-    pick.position.copy(g.position).y += 0.45;
+    pick.position.copy(g.position).y += topH / 2;
     const prop: Destructible = { id: `prop_${this.seq++}`, def, pos: spot, hp: def.hp, group: g, pick, alive: true };
     pick.userData.propId = prop.id;
     this.group.add(pick);
