@@ -767,6 +767,111 @@ export function orcModel(scheme, weapon) {
   return { cube: C, parts, eyes: { color: eyeCol, positions: [[-0.1, 1.3, 0.2], [0.1, 1.3, 0.2]] }, weapon };
 }
 
+// ══════════════════════════════════════════════════════════════
+//  BEASTS & UNDEAD — rat / bat / skeleton. Authored to match the
+//  animated rigs in characters.ts (buildRatRig/buildBatRig/
+//  buildSkeletonRig) so the .vox export mirrors what renders in-game.
+//  Part names & pivots follow the same contract updateRig() expects.
+// ══════════════════════════════════════════════════════════════
+export function ratModel(scheme) {
+  const C = 0.075;
+  const fur = scheme.skin, furD = shade(fur, 0.78), belly = scheme.cloth, ear = scheme.accent, eye = scheme.hair;
+  const NOSE = 0x2a2020;
+  const build = (fn) => { const v = new Vox(); fn(v); return v.list(); };
+
+  const torso = build((v) => {
+    v.ellipsoid(0, 0, 0, 2.4, 1.9, 3.6, fur);
+    v.ellipsoid(0, -1, 1, 1.8, 1.2, 2.6, belly);
+    v.box(-1, 1, -3, 1, 2, -2, furD);
+    let tz = -4, ty = 0;
+    for (let i = 0; i < 8; i++) { v.add(0, Math.round(ty), tz, i < 3 ? furD : ear); tz -= 1; if (i > 2) ty += 0.7; }
+  });
+  const head = build((v) => {
+    v.ellipsoid(0, 0, 0, 1.8, 1.6, 1.8, fur);
+    v.box(-1, -1, 1, 1, 0, 2, furD);
+    v.add(0, -1, 3, NOSE);
+    for (const s of [-1, 1]) { v.add(s * 2, 2, -1, ear); v.add(s * 2, 3, -1, shade(ear, 1.2)); v.add(s * 2, 2, 0, ear); }
+    v.add(-1, 1, 2, eye); v.add(1, 1, 2, eye);
+  });
+  const leg = build((v) => { v.add(0, 0, 0, furD); v.box(0, -1, 0, 0, -1, 1, fur); v.add(0, -2, 1, NOSE); });
+  const arm = build((v) => { v.box(0, -1, 0, 0, 0, 0, fur); v.add(0, -2, 1, NOSE); });
+  const hand = build((v) => { v.add(0, 0, 0, furD); });
+
+  const parts = {
+    legL: { pivot: [-0.11, 0.1, -0.14], voxels: leg }, legR: { pivot: [0.11, 0.1, -0.14], voxels: leg },
+    torso: { pivot: [0, 0.16, 0], voxels: torso },
+    armL: { pivot: [-0.1, 0.12, 0.2], voxels: arm }, armR: { pivot: [0.1, 0.12, 0.2], voxels: arm },
+    handL: { pivot: [-0.1, 0.05, 0.24], voxels: hand }, handR: { pivot: [0.1, 0.05, 0.24], voxels: hand },
+    head: { pivot: [0, 0.2, 0.34], voxels: head },
+  };
+  return { cube: C, parts };
+}
+
+export function batModel(scheme) {
+  const C = 0.08;
+  const skin = scheme.skin, skinHI = shade(skin, 1.2), wing = scheme.cloth, edge = scheme.accent, eye = scheme.hair;
+  const build = (fn) => { const v = new Vox(); fn(v); return v.list(); };
+
+  const torso = build((v) => { v.ellipsoid(0, 0, 0, 1.4, 2.0, 1.4, skin); v.box(-1, -2, 0, 1, -2, 0, shade(skin, 0.8)); });
+  const head = build((v) => {
+    v.ellipsoid(0, 0, 0, 1.5, 1.4, 1.5, skin);
+    for (const s of [-1, 1]) { v.box(s * 1, 2, -1, s * 1, 3, -1, skin); v.add(s * 1, 4, -1, skinHI); }
+    v.add(-1, 0, 2, eye); v.add(1, 0, 2, eye);
+    v.add(-1, -1, 2, 0xffffff); v.add(1, -1, 2, 0xffffff);
+  });
+  const wingOf = (s) => build((v) => {
+    for (let gx = 0; gx <= 4; gx++) {
+      const span = 2 - Math.floor(gx * 0.35);
+      for (let gz = -span; gz <= span; gz++) v.add(s * gx, Math.round(-gx * 0.25), gz, wing);
+      v.add(s * gx, Math.round(-gx * 0.25) - span - 1, 0, edge);
+    }
+    for (let gz = -2; gz <= 2; gz++) v.add(s * 4, -1, gz, edge);
+  });
+  const hand = build((v) => { v.add(0, 0, 0, edge); });
+  const leg = build((v) => { v.box(0, -1, 0, 0, 0, 0, shade(skin, 0.7)); });
+
+  const parts = {
+    torso: { pivot: [0, 0.9, 0], voxels: torso },
+    head: { pivot: [0, 1.12, 0.04], voxels: head },
+    armL: { pivot: [-0.12, 0.95, 0], voxels: wingOf(-1) }, armR: { pivot: [0.12, 0.95, 0], voxels: wingOf(1) },
+    handL: { pivot: [-0.5, 0.95, 0], voxels: hand }, handR: { pivot: [0.5, 0.95, 0], voxels: hand },
+    legL: { pivot: [-0.05, 0.78, -0.05], voxels: leg }, legR: { pivot: [0.05, 0.78, -0.05], voxels: leg },
+  };
+  return { cube: C, parts };
+}
+
+export function skeletonModel(scheme, weapon) {
+  const C = 0.1;
+  const bone = scheme.skin, boneD = shade(bone, 0.78), cloth = scheme.cloth, eye = scheme.hair;
+  const SOCK = 0x101014;
+  const build = (fn) => { const v = new Vox(); fn(v); return v.list(); };
+
+  const leg = build((v) => { v.box(0, -2, 0, 0, 2, 0, bone); v.add(0, 1, 0, boneD); v.add(0, -2, 1, boneD); });
+  const torso = build((v) => {
+    v.box(-2, 3, -1, 2, 3, 1, bone);
+    v.box(0, -2, 0, 0, 3, 0, boneD);
+    for (let r = 0; r < 3; r++) { v.box(-2, r, 0, 2, r, 1, bone); v.add(0, r, 1, boneD); }
+    v.box(-2, -2, -1, 2, -2, 1, boneD);
+    v.box(-2, 3, 1, 2, 4, 2, cloth);
+  });
+  const arm = build((v) => { v.box(0, -2, 0, 0, 2, 0, bone); v.add(0, 0, 0, boneD); });
+  const hand = build((v) => { v.add(0, 0, 0, bone); v.add(0, 0, 1, boneD); v.add(0, -1, 1, bone); });
+  const head = build((v) => {
+    v.box(-2, -1, -2, 2, 2, 2, bone);
+    v.box(-1, -2, 0, 1, -2, 2, boneD);
+    v.add(-1, 0, 3, SOCK); v.add(1, 0, 3, SOCK); v.add(0, -1, 3, SOCK);
+  });
+
+  const parts = {
+    legL: { pivot: [-0.12, 0.25, 0], voxels: leg }, legR: { pivot: [0.12, 0.25, 0], voxels: leg },
+    torso: { pivot: [0, 0.78, 0], voxels: torso },
+    armL: { pivot: [-0.32, 0.8, 0], voxels: arm }, armR: { pivot: [0.32, 0.8, 0], voxels: arm },
+    handL: { pivot: [-0.32, 0.52, 0.02], voxels: hand }, handR: { pivot: [0.32, 0.52, 0.02], voxels: hand },
+    head: { pivot: [0, 1.28, 0], voxels: head },
+  };
+  return { cube: C, parts, eyes: { color: eye, positions: [[-0.1, 1.32, 0.24], [0.1, 1.32, 0.24]] }, weapon };
+}
+
 // weapon rasterised as voxels (for the static .vox export only; the game
 // builds an animated Group via characters.ts buildWeapon). Coords match
 // buildWeapon; pivot is the world position where it sits in the hand.

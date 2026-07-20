@@ -30,6 +30,8 @@ export class Combat {
   }
   byId(id: string) { return this.units.find((u) => u.id === id) ?? null; }
   living(team: 'party' | 'enemy') { return this.units.filter((u) => u.alive && u.team === team); }
+  /** enemies that are actually part of the CURRENT fight (aggroed, i.e. not dormant) */
+  activeEnemies() { return this.units.filter((u) => u.alive && u.team === 'enemy' && !u.dormant); }
 
   // ── pathfinding (BFS, 4-dir, budget-limited) ──────────────
   private occupied(x: number, z: number, except?: string): boolean {
@@ -107,12 +109,12 @@ export class Combat {
     this.phase = 'combat';
     this.round = 1;
     for (const u of this.units) {
-      if (!u.alive) continue;
+      if (!u.alive || u.dormant) continue;
       const r = rollD20(abilityMod(u.abilities.dex));
       u.initiative = r.total + r.roll / 100; // tiebreak by raw roll
       ev.push({ type: 'log', text: `${u.name} rolls initiative ${r.roll}${fmtMod(abilityMod(u.abilities.dex))} = ${r.total}`, kind: 'roll' });
     }
-    this.turnOrder = this.units.filter((u) => u.alive).sort((a, b) => b.initiative - a.initiative).map((u) => u.id);
+    this.turnOrder = this.units.filter((u) => u.alive && !u.dormant).sort((a, b) => b.initiative - a.initiative).map((u) => u.id);
     this.activeIdx = 0;
     ev.push({ type: 'log', text: '— ⚔ COMBAT BEGINS —', kind: 'system' });
     ev.push({ type: 'phase', phase: 'combat' });
@@ -177,15 +179,16 @@ export class Combat {
 
   private checkEnd(): CombatEvent[] {
     const ev: CombatEvent[] = [];
-    const party = this.living('party').length, foes = this.living('enemy').length;
+    const party = this.living('party').length, foes = this.activeEnemies().length;
     if (party === 0 || foes === 0) {
       this.inCombat = false;
       if (foes === 0) {
-        this.phase = 'victory';
-        ev.push({ type: 'log', text: '— 🏆 VICTORY! The warband is broken. —', kind: 'system' });
-        const spoils = rollLootTable('chest');
-        ev.push({ type: 'loot', items: spoils.items, gold: spoils.gold });
-        ev.push({ type: 'phase', phase: 'victory' });
+        // Encounter cleared. The dungeon is a series of encounters, so we hand
+        // control back to exploration; final victory is driven by the engine
+        // (looting the golden chest). Per-kill loot has already dropped.
+        this.phase = 'explore';
+        ev.push({ type: 'log', text: '— ✓ Area secured. —', kind: 'system' });
+        ev.push({ type: 'phase', phase: 'explore' });
       } else {
         this.phase = 'defeat';
         ev.push({ type: 'log', text: '— 💀 DEFEAT. The realm falls silent... —', kind: 'system' });
@@ -371,7 +374,11 @@ export class Combat {
       ev.push({ type: 'log', text: `☠ ${t.name} is slain!`, kind: 'death' });
       if (t.team === 'enemy') {
         ev.push(...this.awardXP(t));
-        const drop = rollLootTable(t.name === 'Boss Skar' ? 'boss' : 'goblin');
+        const src = t.bossGroup ? 'boss'
+          : t.scheme.monster === 'skeleton' ? 'undead'
+          : (t.scheme.monster === 'rat' || t.scheme.monster === 'bat') ? 'beast'
+          : 'goblin';
+        const drop = rollLootTable(src);
         if (drop.items.length || drop.gold) ev.push({ type: 'loot', items: drop.items, gold: drop.gold });
       }
       ev.push(...this.checkEnd());

@@ -25,6 +25,7 @@ export interface CharacterScheme {
   bulk?: number;        // group scale (goblins ~0.85, bosses ~1.15)
   orc?: boolean;        // green-skin features: pointed ears, tusks, brow
   style?: 'normal' | 'chibi';  // normal proportions or chibi stubby
+  monster?: 'rat' | 'bat' | 'skeleton';  // beast/undead rigs (characters.ts)
 }
 
 export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club' | 'torch';
@@ -98,6 +99,12 @@ export interface Unit {
   scheme: CharacterScheme;
   weapon: WeaponKind;
   xpValue: number;        // used by the loot/XP hooks
+  // ── dungeon encounter fields (optional) ──
+  dormant?: boolean;      // not yet aggroed — excluded from combat until its group activates
+  groupId?: string;       // enemies sharing a groupId aggro together
+  bossGroup?: boolean;    // only activated by the boss cutscene, never by proximity
+  dropKey?: 'iron' | 'golden';  // guaranteed key drop on death
+  flying?: boolean;       // hovers above the floor (bats)
 }
 
 export type LogKind = 'info' | 'hit' | 'miss' | 'crit' | 'heal' | 'death' | 'system' | 'roll';

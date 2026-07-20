@@ -12,6 +12,26 @@ export interface PropPlacement {
   seed?: number;
 }
 
+export interface Rect { x0: number; z0: number; x1: number; z1: number; }
+
+/** Runtime-generated maze walkability grid (WORLD_SIZE × WORLD_SIZE). */
+export interface LevelLayout {
+  walk: boolean[][];
+}
+
+/** Named interactive structures the engine wires up (doors, chests, cutscene). */
+export interface LevelStructures {
+  partySpawn: GridPos;
+  checkpoint?: GridPos;     // starter-room bonfire — light it to set the respawn point
+  bossDoor: GridPos;        // locked door tile (blocked until the iron key opens it)
+  bossBath: GridPos;        // boss starts here, sitting in its bath
+  bossRoom: Rect;           // entering this rect triggers the boss cutscene
+  goldenChest: GridPos;     // locked chest — opened by the golden key the boss drops
+  secretLever: GridPos;     // pull (when adjacent) to collapse the rubble wall
+  secretRubble: GridPos[];  // tiles blocked by rubble until the lever is pulled
+  secretChest: GridPos;     // free bonus chest inside the secret room
+}
+
 export interface LevelDef {
   name: string;
   icon: string;
@@ -37,4 +57,9 @@ export interface LevelDef {
   waterY: number;
   /** the full roster for this level */
   roster: Unit[];
+  /** optional maze walkability + interactive structures (dungeon levels) */
+  layout?: LevelLayout;
+  structures?: LevelStructures;
+  /** fresh roster factory (preferred over `roster` so the level can restart) */
+  makeRoster?: () => Unit[];
 }

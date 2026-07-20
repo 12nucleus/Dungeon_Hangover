@@ -3,7 +3,7 @@
 // To add content: append a SkillDef / Unit here, zero engine
 // changes needed. See EXPANSION_GUIDE.md § Content Authoring.
 // ─────────────────────────────────────────────────────────────
-import type { SkillDef, Unit } from './types';
+import type { GridPos, SkillDef, Unit } from './types';
 import { makeItem } from './items';
 
 export const SKILLS: Record<string, SkillDef> = {
@@ -166,6 +166,46 @@ export const SKILLS: Record<string, SkillDef> = {
     attackAbility: 'str', damageDice: '2d4+3', damageType: 'bludgeoning',
     fxColor: 0xff9a3d, fx: 'bash',
   },
+  // ── beasts & undead (dungeon) ─────────────────────────────
+  bite: {
+    id: 'bite', name: 'Bite', icon: '🐀', kind: 'melee',
+    desc: '1d4+1 piercing.', range: 1, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'dex', damageDice: '1d4+1', damageType: 'piercing',
+    fxColor: 0xc0504a, fx: 'blood',
+  },
+  rabid_bite: {
+    id: 'rabid_bite', name: 'Rabid Bite', icon: '🦟', kind: 'melee',
+    desc: 'A frothing, infectious bite. 1d6+2 piercing.', range: 1, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'dex', damageDice: '1d6+2', damageType: 'piercing',
+    fxColor: 0xa33b2f, fx: 'blood',
+  },
+  bat_bite: {
+    id: 'bat_bite', name: 'Fang Nip', icon: '🦇', kind: 'melee',
+    desc: '1d4 piercing.', range: 1, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'dex', damageDice: '1d4', damageType: 'piercing',
+    fxColor: 0x9a7bd0, fx: 'blood',
+  },
+  bat_screech: {
+    id: 'bat_screech', name: 'Screech', icon: '📢', kind: 'ranged',
+    desc: 'A piercing sonic shriek. 1d6 force. CON save DC 12 for half.',
+    range: 5, aoeRadius: 0, cost: 'action', cooldown: 2,
+    attackAbility: 'dex', damageDice: '1d6', damageType: 'force',
+    saveAbility: 'con', saveDC: 12,
+    fxColor: 0xb69cff, fx: 'arcane',
+  },
+  bone_strike: {
+    id: 'bone_strike', name: 'Bone Strike', icon: '🦴', kind: 'melee',
+    desc: 'A rattling swing of rusted steel. 1d8+2 slashing.', range: 1, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'str', damageDice: '1d8+2', damageType: 'slashing',
+    fxColor: 0xd8d2be, fx: 'slash',
+  },
+  boss_smash: {
+    id: 'boss_smash', name: 'Warlord Smash', icon: '💢', kind: 'aoe',
+    desc: 'A ground-shaking sweep hitting all adjacent foes. 2d6+3 bludgeoning. (CD 2)',
+    range: 0, aoeRadius: 1, cost: 'action', cooldown: 2,
+    attackAbility: 'str', damageDice: '2d6+3', damageType: 'bludgeoning', selfCentered: true,
+    fxColor: 0xff7a1f, fx: 'bash',
+  },
 };
 
 export const CONDITIONS: Record<string, { name: string; desc: string }> = {
@@ -245,4 +285,105 @@ export function createRoster(): Unit[] {
       equipment: { weapon: makeItem('club2') },
     }),
   ];
+}
+
+// ─────────────────────────────────────────────────────────────
+// DUNGEON ROSTER — beasts, undead & the bathing warlord boss.
+// Spawn tiles are supplied by the maze generator (levels/dungeon.ts)
+// so this stays free of hard-coded coordinates and no import cycle
+// forms (dungeon.ts → skills.ts only).
+// ─────────────────────────────────────────────────────────────
+export interface DungeonSpawns {
+  party: GridPos;
+  rats: GridPos[];        // ROOM A — cave rats
+  bats: GridPos[];        // ROOM B — cave bats (flying)
+  skeletons: GridPos[];   // ROOM C — skeleton patrol
+  hub: GridPos[];         // ROOM D — mixed; last tile's skeleton carries the iron key
+  rabid: GridPos[];       // ROOM E — rabid rats
+  secret?: GridPos;       // secret room guardian (optional)
+  boss: GridPos;          // the warlord, in his bath
+  bossGuards: GridPos[];  // undead honor-guard, wakes with the boss
+}
+
+const ratScheme = { skin: 0x6b4a2f, cloth: 0x9a7a55, accent: 0xc79a9a, hair: 0x140f0f, hood: false, monster: 'rat' as const };
+const rabidScheme = { skin: 0x7a3b2f, cloth: 0x9a5a4a, accent: 0xd88a76, hair: 0xff2a18, hood: false, monster: 'rat' as const, bulk: 1.1 };
+const batScheme = { skin: 0x3a2f3a, cloth: 0x2a2230, accent: 0x5a4a60, hair: 0xffd23a, hood: false, monster: 'bat' as const };
+const skelScheme = { skin: 0xd8d2be, cloth: 0x3a2f28, accent: 0x9a9a9a, hair: 0x8fe3ff, hood: false, monster: 'skeleton' as const };
+
+export function createDungeonRoster(sp: DungeonSpawns): Unit[] {
+  uid = 0;
+  const units: Unit[] = [];
+
+  // ── the lone hero — a warrior with a torch for light and a real blade ──
+  units.push(mkUnit({
+    name: 'Kael', title: 'Human Fighter', team: 'party', klass: 'fighter', pos: { ...sp.party },
+    maxHp: 46, hp: 46, ac: 16, level: 4,
+    abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 11, cha: 12 },
+    knownSkills: ['slash', 'cleave', 'shield_bash', 'power_strike'],
+    scheme: { skin: 0xd9a066, cloth: 0xdfe4ea, accent: 0x6b7280, hair: 0x4a2f1a, hood: false, style: 'normal' },
+    weapon: 'sword', xpValue: 0,
+    equipment: { weapon: makeItem('sword2'), armor: makeItem('chain') },
+  }));
+
+  const rat = (pos: GridPos, group: string) => mkUnit({
+    name: `Cave Rat`, title: 'Giant Rat', team: 'enemy', klass: 'goblin', pos: { ...pos },
+    maxHp: 8, hp: 8, ac: 12, level: 1,
+    abilities: { str: 8, dex: 14, con: 9, int: 2, wis: 10, cha: 5 },
+    knownSkills: ['bite'], moveRange: 7, xpValue: 15,
+    scheme: { ...ratScheme }, weapon: 'dagger', dormant: true, groupId: group,
+  });
+  const rabid = (pos: GridPos, group: string) => mkUnit({
+    name: 'Rabid Rat', title: 'Diseased Vermin', team: 'enemy', klass: 'goblin', pos: { ...pos },
+    maxHp: 13, hp: 13, ac: 13, level: 2,
+    abilities: { str: 12, dex: 15, con: 12, int: 2, wis: 8, cha: 4 },
+    knownSkills: ['rabid_bite'], moveRange: 7, xpValue: 30,
+    scheme: { ...rabidScheme }, weapon: 'dagger', dormant: true, groupId: group,
+  });
+  const bat = (pos: GridPos, group: string) => mkUnit({
+    name: 'Cave Bat', title: 'Shrieking Bat', team: 'enemy', klass: 'goblin', pos: { ...pos },
+    maxHp: 7, hp: 7, ac: 14, level: 1,
+    abilities: { str: 6, dex: 16, con: 8, int: 3, wis: 12, cha: 6 },
+    knownSkills: ['bat_bite', 'bat_screech'], moveRange: 8, xpValue: 18,
+    scheme: { ...batScheme }, weapon: 'dagger', dormant: true, groupId: group, flying: true,
+  });
+  const skeleton = (pos: GridPos, group: string, weapon: 'sword' | 'mace', dropKey?: 'iron' | 'golden', boss = false) => mkUnit({
+    name: 'Skeleton', title: dropKey === 'iron' ? 'Keybearer Skeleton' : 'Risen Skeleton', team: 'enemy', klass: 'goblin', pos: { ...pos },
+    maxHp: 16, hp: 16, ac: 14, level: 2,
+    abilities: { str: 14, dex: 10, con: 12, int: 4, wis: 8, cha: 5 },
+    knownSkills: ['bone_strike'], moveRange: 5, xpValue: 45,
+    scheme: { ...skelScheme }, weapon, dormant: true, groupId: group,
+    equipment: { weapon: makeItem(weapon === 'mace' ? 'mace1' : 'sword1') },
+    ...(dropKey ? { dropKey } : {}), ...(boss ? { bossGroup: true } : {}),
+  });
+
+  // ROOM A — three cave rats
+  sp.rats.forEach((p) => units.push(rat(p, 'rats_a')));
+  // ROOM B — three bats
+  sp.bats.forEach((p) => units.push(bat(p, 'bats_b')));
+  // ROOM C — skeleton patrol
+  sp.skeletons.forEach((p, i) => units.push(skeleton(p, 'skels_c', i % 2 ? 'mace' : 'sword')));
+  // ROOM D — hub: skeletons + a rat; the LAST tile's skeleton carries the iron key
+  sp.hub.forEach((p, i) => {
+    const last = i === sp.hub.length - 1;
+    units.push(last ? skeleton(p, 'hub_d', 'sword', 'iron') : (i === 0 ? rat(p, 'hub_d') : skeleton(p, 'hub_d', 'mace')));
+  });
+  // ROOM E — rabid rats
+  sp.rabid.forEach((p) => units.push(rabid(p, 'rabid_e')));
+  // secret room guardian
+  if (sp.secret) units.push(skeleton(sp.secret, 'secret_room', 'mace'));
+
+  // ── THE BOSS — a brutal orc warlord, caught bathing ──
+  units.push(mkUnit({
+    name: 'Warlord Gorruk', title: 'The Bathing Tyrant', team: 'enemy', klass: 'goblin', pos: { ...sp.boss },
+    maxHp: 66, hp: 66, ac: 16, level: 6,
+    abilities: { str: 18, dex: 12, con: 16, int: 9, wis: 10, cha: 12 },
+    knownSkills: ['boss_club', 'boss_smash'], moveRange: 5, xpValue: 350,
+    scheme: { skin: 0x5f7a3a, cloth: 0x3a2a2a, accent: 0x2a1f1a, hair: 0x101010, hood: false, orc: true, bulk: 1.35 },
+    weapon: 'club', dormant: true, bossGroup: true, dropKey: 'golden',
+    equipment: { weapon: makeItem('club3') },
+  }));
+  // boss honor-guard (undead), wakes with the cutscene
+  sp.bossGuards.forEach((p, i) => units.push(skeleton(p, 'boss_group', i % 2 ? 'mace' : 'sword', undefined, true)));
+
+  return units;
 }

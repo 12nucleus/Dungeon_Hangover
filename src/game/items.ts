@@ -103,6 +103,11 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   // consumables
   potion: B({ kind: 'consumable', name: 'Potion of Healing', icon: '🧪', tier: 1, healDice: '2d4+2', value: 20, desc: 'Restores 2d4+2 HP. Bonus action.' }),
   potion_greater: B({ kind: 'consumable', name: 'Greater Potion of Healing', icon: '⚗️', tier: 2, healDice: '4d4+4', value: 60, desc: 'Restores 4d4+4 HP. Bonus action.' }),
+  // ── quest keys (trinkets, no combat effect) ──
+  iron_key: B({ kind: 'trinket', name: 'Iron Key', icon: '🗝️', tier: 1, value: 0, desc: 'A heavy, cold key. It fits a great iron door.' }),
+  golden_key: B({ kind: 'trinket', name: 'Golden Key', icon: '🔑', tier: 3, value: 0, desc: 'Ornate and warm to the touch. It hums with promise.' }),
+  // ── the boss reward (special epic loot) ──
+  warlord_blade: B({ kind: 'weapon', name: "Warlord's Cleaver", icon: '⚔️', tier: 3, weaponKind: 'sword', damageDice: '2d8+4', damageType: 'slashing', value: 320, desc: 'A brutal greatblade taken from a bathing tyrant. Still faintly soapy.' }),
 };
 
 let iid = 0;
@@ -156,7 +161,7 @@ export function generateLoot(opts?: { minTier?: Tier; maxTier?: Tier; rarityBoos
 }
 
 // ── per-source loot tables ───────────────────────────────────
-export type LootSource = 'crate' | 'barrel' | 'vase' | 'chest' | 'boss' | 'goblin';
+export type LootSource = 'crate' | 'barrel' | 'vase' | 'chest' | 'boss' | 'goblin' | 'goldenkey' | 'secret' | 'beast' | 'undead';
 
 export function rollLootTable(source: LootSource): { items: Item[]; gold: number } {
   const items: Item[] = [];
@@ -188,6 +193,27 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
       items.push(generateLoot({ minTier: 2, maxTier: 3, rarityBoost: 2 }));
       if (Math.random() < 0.6) items.push(generateLoot({ minTier: 1, maxTier: 2, rarityBoost: 0.8 }));
       gold = g(40, 80);
+      break;
+    case 'beast':
+      if (Math.random() < 0.2) items.push(generateLoot({ minTier: 1, maxTier: 1, kind: 'consumable' }));
+      if (Math.random() < 0.35) gold = g(1, 5);
+      break;
+    case 'undead':
+      if (Math.random() < 0.3) items.push(generateLoot({ minTier: 1, maxTier: 2 }));
+      if (Math.random() < 0.5) gold = g(4, 12);
+      break;
+    case 'secret':
+      // hidden stash: a guaranteed good item + gold
+      items.push(generateLoot({ minTier: 2, maxTier: 3, rarityBoost: 1.6 }));
+      if (Math.random() < 0.7) items.push(generateLoot({ minTier: 1, maxTier: 2, kind: 'consumable' }));
+      gold = g(30, 60);
+      break;
+    case 'goldenkey':
+      // the golden-chest jackpot: the signature epic reward + spoils
+      items.push(makeItem('warlord_blade', 'flaming', 'epic'));
+      items.push(generateLoot({ minTier: 2, maxTier: 3, rarityBoost: 2.5 }));
+      items.push(makeItem('potion_greater'));
+      gold = g(120, 200);
       break;
   }
   return { items, gold };

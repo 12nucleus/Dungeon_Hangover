@@ -80,6 +80,29 @@ export class VoxelWorld {
     const L = this.level;
     const arena = L ? L.arena : this.arena;
 
+    // ── Maze/dungeon layout mode ──────────────────────────────
+    // A LevelDef may ship a pre-baked walkability grid. When present we
+    // ignore the arena/river/heightmap logic entirely: every walkable
+    // tile becomes a flat stone floor and everything else a solid wall.
+    const layout = L?.layout;
+    if (layout) {
+      for (let x = 0; x < S; x++) {
+        for (let z = 0; z < S; z++) {
+          const walk = !!(layout.walk[x] && layout.walk[x][z]);
+          if (walk) {
+            this.heights[x][z] = 1;
+            this.blocked[x][z] = false;
+            this.topMat[x][z] = 'stone';   // → groundMats[2] (cave_stone) floor
+          } else {
+            this.heights[x][z] = MAX_H;
+            this.blocked[x][z] = true;
+            this.topMat[x][z] = 'cave_wall';
+          }
+        }
+      }
+      return;
+    }
+
     for (let x = 0; x < S; x++) {
       for (let z = 0; z < S; z++) {
         // outside arena = cave wall
@@ -279,7 +302,7 @@ export class VoxelWorld {
           const nx = x + dx, nz = z + dz;
           if (!this.inBounds(nx, nz)) continue;
           if (this.topMat[nx][nz] === 'cave_wall' || this.heights[nx][nz] < 0) continue;
-          if (nx < arena.x0 || nx > arena.x1 || nz < arena.z0 || nz > arena.z1) continue;
+          if (!L.layout && (nx < arena.x0 || nx > arena.x1 || nz < arena.z0 || nz > arena.z1)) continue;
           const r = hash(x * 3 + dx, z * 3 + dz, this.seed + 211);
           if (r < 0.14) {
             const hue = VEIN[(x + z) % VEIN.length];

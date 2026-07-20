@@ -10,14 +10,16 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { VoxelWorld, WORLD_SIZE } from './world';
-import { caveLevel } from '../levels/cave';
+import { dungeonLevel } from '../levels/dungeon';
+import { buildIronDoor, buildGoldenChest, buildLever, buildRubble, buildStoneBath, buildWeaponRack } from './dungeonProps';
 import { ParticleSystem, FX } from './particles';
 import { buildCharacter, updateRig, setWeapon, type Rig } from './characters';
 import { Combat } from './combat';
 import { SKILLS, CONDITIONS, createRoster } from './skills';
 import { AudioManager } from './audio';
 import { DestructibleManager, type Destructible } from './destructibles';
-import { rollLootTable, type Item } from './items';
+import { makeItem, rollLootTable, type Item } from './items';
+import type { LevelStructures } from '../levels/levelTypes';
 import { effMaxHp } from './stats';
 import { canUnlock, treeFor } from './skilltree';
 import { TrapManager } from './traps';
@@ -36,6 +38,8 @@ class IsoCamera {
   dist = 15;
   desiredDist = 15;
   pitch = 0.96; // ~55°
+  desiredPitch = 0.96;
+  lerp = 7;     // easing speed — lowered during cinematics for slow, smooth moves
   shake = 0;
 
   constructor(aspect: number) {
@@ -56,10 +60,11 @@ class IsoCamera {
     this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -m, m);
   }
   update(dt: number) {
-    const k = Math.min(1, dt * 7);
+    const k = Math.min(1, dt * this.lerp);
     this.target.lerp(this.desiredTarget, k);
     this.yaw += (this.desiredYaw - this.yaw) * k;
     this.dist += (this.desiredDist - this.dist) * k;
+    this.pitch += (this.desiredPitch - this.pitch) * k;
     const p = this.cam.position;
     p.set(
       this.target.x + Math.sin(this.yaw) * Math.cos(this.pitch) * this.dist,
@@ -160,6 +165,28 @@ export class GameEngine {
   private lastT = 0;
   private chest: THREE.Group | null = null;
 
+  // ── dungeon interactables & quest state ──
+  private structures: LevelStructures | null = null;
+  private heroLight: THREE.PointLight | null = null;
+  private heroTorchFlame: THREE.Mesh | null = null;
+  private torchT = 0;
+  private ironDoor: THREE.Group | null = null;
+  private goldenChest: THREE.Group | null = null;
+  private secretChestMesh: THREE.Group | null = null;
+  private leverMesh: THREE.Group | null = null;
+  private weaponRack: THREE.Group | null = null;
+  private rackClub: THREE.Object3D | null = null;
+  private rubbleMeshes: { mesh: THREE.Group; tile: GridPos }[] = [];
+  private propAnims: ((dt: number) => boolean)[] = [];   // returns true when finished
+  private ironDoorOpen = false;
+  private secretOpen = false;
+  private goldenChestOpen = false;
+  private secretChestOpen = false;
+  private bossCutscenePlayed = false;
+  private hasIronKey = false;
+  private hasGoldenKey = false;
+  private gameWon = false;
+
   private container: HTMLDivElement;
   private overlay: HTMLDivElement;
   private onSnapshot: (s: UISnapshot) => void;
@@ -183,7 +210,7 @@ export class GameEngine {
     this.container.appendChild(this.renderer.domElement);
 
     this.iso = new IsoCamera(w / h);
-    const L = caveLevel;
+    const L = dungeonLevel;
     this.scene.fog = new THREE.FogExp2(L.fogColor, L.fogDensity);
     this.scene.background = new THREE.Color(L.fogColor);
 
@@ -207,7 +234,7 @@ export class GameEngine {
     this.scene.add(fill);
 
     // world — underground cave level
-    this.world = new VoxelWorld(caveLevel, 1337);
+    this.world = new VoxelWorld(dungeonLevel, 1337);
     this.scene.add(this.world.group);
     // find bonfire prop
     for (const child of this.world.group.children) {
@@ -291,6 +318,7 @@ export class GameEngine {
     // combat + units
     this.combat = new Combat(this.world);
     this.spawnUnits();
+    this.setupDungeon(dungeonLevel);
     this.iso.focus(this.unitWorld(this.combat.units[0].pos));
 
     // composer (bloom makes fireballs & torchlight pop)
@@ -315,9 +343,500 @@ export class GameEngine {
   }
 
   private spawnUnits() {
-    this.combat.units = createRoster();
+    this.combat.units = dungeonLevel.makeRoster ? dungeonLevel.makeRoster() : createRoster();
     for (const u of this.combat.units) this.addUnit(u);
   }
+
+  // ══ dungeon set-up & interactables ════════════════════════
+  private setupDungeon(L: typeof dungeonLevel) {
+    const st = L.structures;
+    if (!st) return;
+    this.structures = st;
+
+    const place = (g: THREE.Group, tile: GridPos, yOff = 0) => {
+      const wp = this.unitWorld(tile);
+      g.position.set(wp.x, wp.y + yOff, wp.z);
+      this.scene.add(g);
+    };
+
+    // iron door — seals the boss room until the iron key is looted
+    const axis: 'x' | 'z' = (this.world.isWalkable(st.bossDoor.x - 1, st.bossDoor.z) || this.world.isWalkable(st.bossDoor.x + 1, st.bossDoor.z)) ? 'z' : 'x';
+    this.ironDoor = buildIronDoor(axis);
+    place(this.ironDoor, st.bossDoor);
+    this.world.blocked[st.bossDoor.x][st.bossDoor.z] = true;
+
+    // the warlord's bath (decor) — the boss spawns sitting in it
+    place(buildStoneBath(), st.bossBath);
+
+    // weapon rack holding Gorruk's greatclub, just east of the bath — he wades
+    // over and seizes it during the cutscene. Face it toward the bath.
+    this.weaponRack = buildWeaponRack();
+    this.weaponRack.rotation.y = -Math.PI / 2;
+    place(this.weaponRack, { x: st.bossBath.x + 2, z: st.bossBath.z });
+    this.rackClub = (this.weaponRack.userData.club as THREE.Object3D) ?? null;
+
+    // start the boss lounging & unarmed: seat him low and stow his club on the
+    // rack, so the cutscene can play the rise → wade → grab beats truthfully.
+    const bossU = this.combat.units.find((u) => u.bossGroup && u.dropKey === 'golden');
+    const bv = bossU ? this.visuals.get(bossU.id) : null;
+    if (bossU && bv) {
+      setWeapon(bv.rig, null, bossU.scheme.accent);
+      bv.rig.anim.crouch = 1.15;                       // sunk down in the tub
+      bv.yaw = bv.targetYaw = -Math.PI / 2;            // face west (the entrance)
+      bv.rig.group.rotation.y = bv.yaw;
+    }
+
+    // golden chest (boss reward) + secret-room stash chest
+    this.goldenChest = buildGoldenChest();
+    place(this.goldenChest, st.goldenChest, 0.02);
+    this.secretChestMesh = buildGoldenChest();
+    place(this.secretChestMesh, st.secretChest, 0.02);
+
+    // lever + rubble sealing the secret room
+    this.leverMesh = buildLever();
+    place(this.leverMesh, st.secretLever);
+    for (const t of st.secretRubble) {
+      const r = buildRubble(0.3 + t.x * 0.07 + t.z * 0.03);
+      place(r, t);
+      this.world.blocked[t.x][t.z] = true;
+      this.rubbleMeshes.push({ mesh: r, tile: t });
+    }
+
+    // give the lone warrior a lit hand-torch — the light he actually carries
+    const hero = this.combat.living('party')[0];
+    const hv = hero ? this.visuals.get(hero.id) : null;
+    if (hv) this.attachHeroTorch(hv.rig);
+  }
+
+  /** Mount a burning torch in the hero's off-hand; its point light is the
+   *  warm glow that lets the lone warrior see through the dark warren. */
+  private attachHeroTorch(rig: Rig) {
+    const hand = rig.parts.handL ?? rig.parts.armL;
+    if (!hand) return;
+    const torch = new THREE.Group();
+    const stick = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.045, 0.5, 6),
+      new THREE.MeshLambertMaterial({ color: 0x5a3a1e }),
+    );
+    stick.position.y = 0.22; torch.add(stick);
+    const wrap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.06, 0.13, 6),
+      new THREE.MeshLambertMaterial({ color: 0x2a1a0e }),
+    );
+    wrap.position.y = 0.48; torch.add(wrap);
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.1, 0.34, 7),
+      new THREE.MeshBasicMaterial({ color: 0xffb545 }),
+    );
+    flame.position.y = 0.68; flame.name = 'hero_flame'; torch.add(flame);
+    const core = new THREE.Mesh(
+      new THREE.ConeGeometry(0.055, 0.2, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffe9a8 }),
+    );
+    core.position.y = 0.7; torch.add(core);
+    const light = new THREE.PointLight(0xffb060, 13, 15, 1.5);
+    light.position.set(0, 0.66, 0);
+    torch.add(light);
+    torch.position.set(0, 0.02, 0.06);
+    hand.add(torch);
+    this.heroTorchFlame = flame;
+    this.heroLight = light;
+  }
+
+  private static inRect(p: GridPos, r: { x0: number; z0: number; x1: number; z1: number }) {
+    return p.x >= r.x0 && p.x <= r.x1 && p.z >= r.z0 && p.z <= r.z1;
+  }
+
+  /** queue a per-frame tween of a numeric property; runs in updateDungeon */
+  private animateTo(get: () => number, set: (v: number) => void, target: number, dur: number) {
+    let t = 0; const start = get();
+    this.propAnims.push((dt) => {
+      t = Math.min(dur, t + dt);
+      const k = dur > 0 ? t / dur : 1;
+      set(start + (target - start) * k);
+      return t >= dur;
+    });
+  }
+
+  private updateDungeon(dt: number) {
+    if (!this.structures) return;
+    const st = this.structures;
+    // run active prop tweens
+    if (this.propAnims.length) this.propAnims = this.propAnims.filter((fn) => !fn(dt));
+
+    // hero torch flicker — the point light lives on the hero's hand torch
+    if (this.heroLight) {
+      this.torchT += dt;
+      this.heroLight.intensity = 12.5 + Math.sin(this.torchT * 13) * 1.6 + Math.sin(this.torchT * 27) * 0.8;
+      if (this.heroTorchFlame) {
+        const s = 1 + Math.sin(this.torchT * 22) * 0.14 + Math.sin(this.torchT * 41) * 0.07;
+        this.heroTorchFlame.scale.set(1, s, 1);
+      }
+    }
+
+    // interactables — only while freely exploring
+    if (this.phase !== 'explore' || this.combat.inCombat || this.busy || this.gameWon) return;
+    const party = this.combat.living('party');
+    const adj = (t: GridPos) => party.some((p) => Combat.dist(p.pos, t) <= 1);
+
+    if (this.leverMesh && !this.secretOpen && adj(st.secretLever)) this.pullLever();
+    if (this.ironDoor && !this.ironDoorOpen && adj(st.bossDoor)) {
+      if (this.hasIronKey) this.openIronDoor();
+      else this.setHoverInfoOnce('A great iron door, locked tight. Somewhere a warden holds its key.');
+    }
+    if (this.goldenChest && !this.goldenChestOpen && adj(st.goldenChest)) {
+      if (this.hasGoldenKey) this.openGoldenChest();
+      else this.setHoverInfoOnce('An ornate golden chest. Only a golden key will open it.');
+    }
+    if (this.secretChestMesh && !this.secretChestOpen && adj(st.secretChest)) this.openSecretChest();
+  }
+
+  private openIronDoor() {
+    if (!this.structures || !this.ironDoor) return;
+    this.ironDoorOpen = true;
+    const st = this.structures;
+    this.world.blocked[st.bossDoor.x][st.bossDoor.z] = false;
+    this.audio.unlock(); this.audio.door();
+    const d = this.ironDoor;
+    const y0 = d.position.y;
+    this.animateTo(() => d.position.y, (v) => { d.position.y = v; }, y0 + (d.userData.openY as number), 1.5);
+    this.pushLog('🔓 The iron key turns. The great door grinds down into the floor.', 'system');
+    this.bigMessage = 'The Iron Door Opens...';
+    this.emitSnapshot();
+    setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2200);
+    setTimeout(() => { if (this.ironDoor) { this.scene.remove(this.ironDoor); this.ironDoor = null; } }, 1800);
+  }
+
+  private pullLever() {
+    if (!this.structures || !this.leverMesh) return;
+    this.secretOpen = true;
+    const l = this.leverMesh;
+    const handle = l.userData.handle as THREE.Group;
+    this.animateTo(() => handle.rotation.x, (v) => { handle.rotation.x = v; }, l.userData.pulledAngle as number, 0.4);
+    this.audio.lever();
+    for (const r of this.rubbleMeshes) {
+      this.world.blocked[r.tile.x][r.tile.z] = false;
+      const g = r.mesh;
+      FX.impactDust(this.particles, g.position.clone().setY(g.position.y + 0.1), [0x6f6a78, 0x413d47]);
+      this.animateTo(() => g.scale.y, (v) => { g.scale.set(Math.max(0.01, v), Math.max(0.01, v), Math.max(0.01, v)); }, 0.01, 0.6);
+    }
+    this.audio.play('sword_hit', 0.4, 0.4);
+    setTimeout(() => { for (const r of this.rubbleMeshes) this.scene.remove(r.mesh); this.rubbleMeshes = []; }, 900);
+    this.pushLog('🪨 With a grinding crash, the rubble collapses — a hidden passage lies open!', 'system');
+    this.bigMessage = 'Secret Passage Revealed!';
+    this.emitSnapshot();
+    setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2200);
+  }
+
+  private openSecretChest() {
+    if (!this.secretChestMesh) return;
+    this.secretChestOpen = true;
+    const lid = this.secretChestMesh.userData.lid as THREE.Group;
+    this.animateTo(() => lid.rotation.x, (v) => { lid.rotation.x = v; }, this.secretChestMesh.userData.openAngle as number, 0.6);
+    this.audio.chestOpen();
+    const { items, gold } = rollLootTable('secret');
+    FX.levelup(this.particles, this.secretChestMesh.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
+    this.grantLoot(items, gold);
+    this.pushLog(`🗝️ The hidden stash holds: ${[...items.map((i) => `${i.icon} ${i.name}`), `🪙 ${gold} gold`].join(', ')}.`, 'system');
+    this.emitSnapshot();
+  }
+
+  private openGoldenChest() {
+    if (!this.goldenChest) return;
+    this.goldenChestOpen = true;
+    const lid = this.goldenChest.userData.lid as THREE.Group;
+    this.animateTo(() => lid.rotation.x, (v) => { lid.rotation.x = v; }, this.goldenChest.userData.openAngle as number, 0.7);
+    this.audio.chestOpen(); this.audio.bossSting();
+    const { items, gold } = rollLootTable('goldenkey');
+    FX.levelup(this.particles, this.goldenChest.position.clone().add(new THREE.Vector3(0, 0.6, 0)));
+    this.grantLoot(items, gold);
+    this.pushLog(`👑 The golden chest bursts open: ${[...items.map((i) => `${i.icon} ${i.name}`), `🪙 ${gold} gold`].join(', ')}!`, 'system');
+    this.winGame();
+  }
+
+  private winGame() {
+    this.gameWon = true;
+    this.phase = 'victory';
+    this.audio.setDrums(false);
+    this.audio.setMusicDucked(false);
+    this.audio.play('victory', 0.95);
+    this.bigMessage = 'VICTORY — The Warlord\'s hoard is yours!';
+    this.emitSnapshot();
+  }
+
+  private grantKey(kind: 'iron' | 'golden') {
+    const id = kind === 'iron' ? 'iron_key' : 'golden_key';
+    const it = makeItem(id);
+    this.inventory.push(it);
+    if (kind === 'iron') this.hasIronKey = true; else this.hasGoldenKey = true;
+    this.audio.unlock();
+    this.pushLog(`🗝️ You pry the ${it.name} from the fallen.`, 'system');
+    this.bigMessage = `${it.icon} ${it.name} obtained!`;
+    this.emitSnapshot();
+    setTimeout(() => { if (this.bigMessage?.includes(it.name)) { this.bigMessage = null; this.emitSnapshot(); } }, 2400);
+  }
+
+  // ══ dungeon aggro & boss cutscene ═════════════════════════
+  private checkDungeonAggro() {
+    if (!this.structures || this.phase !== 'explore' || this.combat.inCombat || this.busy || this.gameWon) return;
+    const st = this.structures;
+    const party = this.combat.living('party');
+    if (!party.length) return;
+
+    // entering the boss room the first time → the bathing tyrant cutscene
+    if (!this.bossCutscenePlayed && party.some((p) => GameEngine.inRect(p.pos, st.bossRoom))) {
+      this.bossCutscenePlayed = true;
+      void this.playBossCutscene();
+      return;
+    }
+
+    // group proximity aggro (never wakes the boss group by proximity)
+    for (const f of this.combat.units) {
+      if (!f.alive || f.team !== 'enemy' || !f.dormant || f.bossGroup) continue;
+      const range = (f.flying ? 5 : 4) - (this.sneaking ? 2 : 0);
+      for (const p of party) {
+        if (Combat.dist(p.pos, f.pos) <= range || (!this.sneaking && this.inEnemyCone(p.pos, f))) {
+          this.aggroGroup(f.groupId);
+          return;
+        }
+      }
+    }
+  }
+
+  private aggroGroup(groupId: string | undefined) {
+    const grp = this.combat.units.filter((u) => u.alive && u.team === 'enemy' && u.dormant && u.groupId === groupId);
+    if (!grp.length) return;
+    for (const u of grp) u.dormant = false;
+    const kind = grp[0].scheme.monster;
+    if (kind === 'rat') this.audio.squeak();
+    else if (kind === 'bat') this.audio.screech();
+    else if (kind === 'skeleton') this.audio.boneRattle();
+    else this.audio.roar();
+    this.pushLog(`⚔ ${grp.length} ${grp[0].title}${grp.length > 1 ? 's' : ''} lurch from the dark!`, 'system');
+    this.enqueue(this.combat.start());
+  }
+
+  /** TEMP DEBUG (press B): open the iron door, teleport the party just inside
+   *  the boss room and fire the bathing-tyrant cutscene on demand. Remove me. */
+  private debugWarpToBoss() {
+    if (!this.structures || this.phase === 'menu' || this.gameWon) return;
+    const st = this.structures;
+
+    // bail out of any in-progress combat / targeting so the cutscene can run
+    this.combat.inCombat = false;
+    this.targeting = null;
+    this.clearHighlights();
+    this.busy = false;
+    this.phase = 'explore';
+    this.bossCutscenePlayed = true;   // prevent the update loop double-firing it
+
+    // open the iron door (if still sealed) so the party isn't stuck afterwards
+    if (this.ironDoor && !this.ironDoorOpen) this.openIronDoor();
+    else this.world.blocked[st.bossDoor.x][st.bossDoor.z] = false;
+
+    // teleport every living party member just inside the boss room
+    const spots: GridPos[] = [{ x: 31, z: 37 }, { x: 31, z: 39 }, { x: 32, z: 38 }, { x: 33, z: 39 }];
+    this.combat.living('party').forEach((u, i) => {
+      const t = spots[i % spots.length];
+      u.pos = { ...t };
+      const v = this.visuals.get(u.id);
+      if (v) {
+        const wp = this.unitWorld(t);
+        v.rig.group.position.copy(wp);
+        v.rig.anim.mode = 'idle';
+        v.proxy.position.copy(wp).y += (v.proxy.userData.yOff as number) ?? 0.9;
+      }
+    });
+
+    this.pushLog('🐞 [debug] Warped into the boss room — playing cutscene…', 'system');
+    this.selectedId = this.combat.living('party')[0]?.id ?? this.selectedId;
+    this.emitSnapshot();
+    void this.playBossCutscene();
+  }
+
+  /** Ease the boss's facing toward a world point (the smooth-facing lerp in the
+   *  frame loop does the actual turning; we just set the target yaw). */
+  private faceToward(v: UnitVisual, target: THREE.Vector3, snap = false) {
+    const d = target.clone().sub(v.rig.group.position); d.y = 0;
+    if (d.lengthSq() < 1e-4) return;
+    v.targetYaw = Math.atan2(d.x, d.z);
+    if (snap) { v.yaw = v.targetYaw; v.rig.group.rotation.y = v.yaw; }
+  }
+
+  /** Wade the boss (or any rig) across the floor to a tile over `dur` seconds,
+   *  playing the walk cycle. Resolves when he arrives. Drives x/z only — the
+   *  frame loop leaves an enemy's Y alone in explore, so it stays grounded. */
+  private walkRigTo(v: UnitVisual, tile: GridPos, dur: number): Promise<void> {
+    return new Promise((resolve) => {
+      const from = v.rig.group.position.clone();
+      const to = this.unitWorld(tile);
+      this.faceToward(v, to);
+      v.rig.anim.mode = 'walk';
+      let t = 0;
+      this.propAnims.push((dt) => {
+        t = Math.min(dur, t + dt);
+        const k = dur > 0 ? t / dur : 1;
+        v.rig.group.position.x = from.x + (to.x - from.x) * k;
+        v.rig.group.position.z = from.z + (to.z - from.z) * k;
+        if (t >= dur) { v.rig.group.position.copy(to); v.rig.anim.mode = 'idle'; resolve(); return true; }
+        return false;
+      });
+    });
+  }
+
+  /** kick a bunch of water droplets up out of the bath for the "erupt" beat */
+  private splashBurst(p: THREE.Vector3, count = 26) {
+    this.particles.burst({
+      pos: p.clone(), count, color: [0x9ecbe0, 0x6fa8c4, 0xd6ecf5, 0x2f5a4a],
+      speed: [2.2, 6.5], life: [0.4, 0.9], size: [0.5, 1.4], gravity: 12, up: 3.2, drag: 0.3, endScale: 0.2,
+    });
+  }
+
+  /** gentle little plink of bathwater while the tyrant soaks */
+  private waterPlink(p: THREE.Vector3) {
+    this.particles.burst({
+      pos: p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.9, 0, (Math.random() - 0.5) * 0.8)),
+      count: 5, color: [0x9ecbe0, 0x6fa8c4, 0xd6ecf5], speed: [0.5, 1.8], life: [0.3, 0.7],
+      size: [0.3, 0.7], gravity: 9, up: 1.3, drag: 0.4, endScale: 0.3,
+    });
+  }
+
+  private async playBossCutscene() {
+    if (!this.structures) return;
+    const st = this.structures;
+    this.busy = true;
+
+    const boss = this.combat.units.find((u) => u.bossGroup && u.dropKey === 'golden');
+    const v = boss ? this.visuals.get(boss.id) : null;
+    const bathWp = this.unitWorld(st.bossBath);
+    const bathTop = bathWp.clone().add(new THREE.Vector3(0, 0.55, 0));
+    const headWp = bathWp.clone().add(new THREE.Vector3(0, 1.25, 0));           // his upper body / face
+    const westWp = this.unitWorld({ x: st.bossBath.x - 3, z: st.bossBath.z });   // toward the party
+    const rackApproach: GridPos = { x: st.bossBath.x + 1, z: st.bossBath.z };
+    const rackWp = this.unitWorld({ x: st.bossBath.x + 2, z: st.bossBath.z });
+
+    // remember the player's camera so we can hand it back after the show
+    const savedDist = this.iso.desiredDist, savedYaw = this.iso.desiredYaw, savedPitch = this.iso.desiredPitch;
+    this.iso.lerp = 2.1;   // slow, filmic easing for every camera move below
+
+    // reset the boss to his seated, unarmed opening pose (also makes replays work)
+    if (v && boss) {
+      boss.pos = { ...st.bossBath };
+      v.rig.group.position.copy(bathWp);
+      v.rig.anim.mode = 'idle';
+      v.rig.anim.crouch = 1.2;
+      v.rig.anim.lunge = 0; v.rig.anim.flinch = 0;
+      setWeapon(v.rig, null, boss.scheme.accent);
+      if (this.rackClub) this.rackClub.visible = true;
+      this.faceToward(v, westWp, true);
+    }
+
+    // ── BEAT 1: slow cinematic push-in onto the oblivious, bathing tyrant ──
+    this.iso.focus(headWp);
+    this.iso.desiredDist = 6.5; this.iso.desiredPitch = 0.6; this.iso.desiredYaw = -Math.PI * 0.28;
+    this.bigMessage = 'The Warlord\'s Warren — the innermost chamber…';
+    this.emitSnapshot();
+    this.audio.splash();
+    await delay(2600);
+    this.bigMessage = null; this.emitSnapshot();
+
+    // ── BEAT 2: he soaks and sings a jaunty little bath-time tune ──
+    this.audio.sing();
+    this.bigMessage = '♪ Rub-a-dub-dub, a warlord in his tub… ♪';
+    this.emitSnapshot();
+    for (let i = 0; i < 6; i++) { if (v) v.rig.anim.lunge = 0.35; this.waterPlink(bathTop); await delay(470); }   // gentle scrubbing
+    this.audio.sing(0.8);
+    this.bigMessage = '♪ …scrubbin\' off the blood of the fools I clubbed~ ♪';
+    this.emitSnapshot();
+    for (let i = 0; i < 6; i++) { if (v) v.rig.anim.lunge = 0.35; this.waterPlink(bathTop); await delay(470); }
+    this.bigMessage = null; this.emitSnapshot();
+
+    // ── BEAT 3: he senses intruders — the singing dies, everything stills ──
+    this.iso.desiredDist = 5.0; this.iso.desiredPitch = 0.54; this.iso.focus(headWp);
+    await delay(1500);                       // taut, silent close-up
+    if (v) { v.rig.anim.flinch = 0.6; }
+    this.iso.shake = Math.max(this.iso.shake, 0.12);
+    await delay(900);
+
+    // ── BEAT 4: he BELLOWS — two-part outrage ──
+    if (v) this.faceToward(v, westWp);
+    this.audio.roar();
+    if (v) v.rig.anim.flinch = 1;
+    this.iso.shake = Math.max(this.iso.shake, 0.34);
+    this.bigMessage = '"WHO DARES DISTURB MY ROYAL BATH?!"';
+    this.emitSnapshot();
+    await delay(2400);
+    this.audio.roar(0.85);
+    this.iso.shake = Math.max(this.iso.shake, 0.28);
+    this.bigMessage = '"MY ONE HOUR OF PEACE — RUINED!!"';
+    this.emitSnapshot();
+    await delay(2000);
+    this.bigMessage = null; this.emitSnapshot();
+
+    // ── BEAT 5: he ERUPTS from the water — rises to full height ──
+    this.iso.desiredDist = 9.0; this.iso.desiredPitch = 0.82; this.iso.focus(bathTop);
+    if (v) {
+      this.animateTo(() => v.rig.anim.crouch, (val) => { v.rig.anim.crouch = val; }, 0, 0.9);
+      const baseY = v.rig.group.userData.baseY as number;
+      this.animateTo(() => v.rig.group.position.y, (val) => { v.rig.group.position.y = val; }, baseY + 0.8, 0.45);
+      setTimeout(() => { if (v) this.animateTo(() => v.rig.group.position.y, (val) => { v.rig.group.position.y = val; }, baseY, 0.5); }, 460);
+    }
+    this.audio.splash();
+    this.splashBurst(bathTop, 34);
+    this.iso.shake = Math.max(this.iso.shake, 0.32);
+    await delay(1300);
+
+    // ── BEAT 6: he wades to the rack for his greatclub ──
+    if (v) {
+      this.iso.focus(rackWp.clone().add(new THREE.Vector3(0, 0.9, 0)));
+      await this.walkRigTo(v, rackApproach, 1.4);
+      this.faceToward(v, rackWp, true);
+      await delay(450);
+    }
+
+    // ── BEAT 7: he SEIZES the club off the rack ──
+    if (v && boss) {
+      this.iso.desiredDist = 7.0; this.iso.desiredPitch = 0.62;
+      v.rig.anim.lunge = 1;                       // reach out
+      await delay(360);
+      if (this.rackClub) this.rackClub.visible = false;   // pluck it from the cradle
+      setWeapon(v.rig, 'club', boss.scheme.accent);        // now armed
+      this.audio.play('sword_hit', 0.6, 0.6);
+      this.audio.bossSting();
+      this.iso.shake = Math.max(this.iso.shake, 0.3);
+      FX.impactDust(this.particles, rackWp.clone().setY((v.rig.group.userData.baseY as number) + 0.9), [0x5a3a1e, 0x2a1f1a]);
+      await delay(900);
+    }
+
+    // ── BEAT 8: he rounds on the party, hefts the club, and roars ──
+    if (v) {
+      this.iso.focus(bathTop); this.iso.desiredDist = 8.0; this.iso.desiredPitch = 0.7;
+      await this.walkRigTo(v, st.bossBath, 1.1);   // stride back out front
+      this.faceToward(v, westWp, true);
+      v.rig.anim.lunge = 1;
+    }
+    this.audio.roar();
+    this.audio.bossSting();
+    this.iso.shake = Math.max(this.iso.shake, 0.45);
+    if (boss) boss.pos = { ...st.bossBath };         // combat grid position
+    this.bigMessage = '"NONE LEAVE MY WARREN ALIVE!"';
+    this.emitSnapshot();
+    await delay(2200);
+    this.bigMessage = null;
+
+    // hand the camera back to the player, smoothly, then speed easing up again
+    this.iso.desiredDist = savedDist; this.iso.desiredYaw = savedYaw; this.iso.desiredPitch = savedPitch;
+    if (v) this.iso.focus(v.rig.group.position.clone());
+    await delay(700);
+    this.iso.lerp = 7;
+
+    // ── wake his honour-guard & begin the battle ──
+    for (const u of this.combat.units) if (u.bossGroup) u.dormant = false;
+    this.pushLog('👑 Warlord Gorruk heaves his greatclub from the rack — the fight begins!', 'system');
+    this.busy = false;
+    this.enqueue(this.combat.start());
+  }
+
 
   // ══ unit visuals ══════════════════════════════════════════
   private addUnit(u: Unit) {
@@ -328,12 +847,20 @@ export class GameEngine {
     rig.group.rotation.y = u.team === 'party' ? Math.PI : 0;
     this.scene.add(rig.group);
 
+    // Size the (invisible) click hitbox to the rig's real bounds so that tiny
+    // creatures (rats, bats, skeletons) are as clickable as tall humanoids.
+    const bb = new THREE.Box3().setFromObject(rig.group);
+    const rigH = Math.max(0.7, isFinite(bb.max.y - bb.min.y) ? bb.max.y - bb.min.y : 1.8);
+    const rigR = Math.max(0.45, Math.min(0.9,
+      isFinite(bb.max.x - bb.min.x) ? Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 + 0.15 : 0.5));
+    const yOff = (isFinite(bb.min.y) ? bb.min.y - wp.y : 0) + rigH / 2; // centre of the body above the tile
     const proxy = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.5, 0.5, 1.8, 8),
+      new THREE.CylinderGeometry(rigR, rigR, rigH, 8),
       new THREE.MeshBasicMaterial({ visible: false }),
     );
-    proxy.position.copy(wp).y += 0.9;
     proxy.userData.unitId = u.id;
+    proxy.userData.yOff = yOff;
+    proxy.position.copy(wp).y += yOff;
     this.scene.add(proxy);
     this.unitProxies.push(proxy);
 
@@ -425,6 +952,7 @@ export class GameEngine {
     if (k === 'k' && this.phase !== 'menu') { this.toggleSkillTree(); return; }
     if (k === 'c' && this.phase === 'explore' && !this.combat.inCombat) { this.toggleSneak(); return; }
     if (k === 't') { this.toggleTorch(); return; }
+    if (k === 'b') { this.debugWarpToBoss(); return; }   // TODO(debug): remove — jumps to boss cutscene
     if (k === 'escape') {
       if (this.showInventory) { this.showInventory = false; this.emitSnapshot(); }
       else if (this.showSkillTree) { this.showSkillTree = false; this.emitSnapshot(); }
@@ -534,8 +1062,9 @@ export class GameEngine {
     const leader = this.byId(this.selectedId ?? '') ?? this.combat.living('party')[0];
     if (!leader || !tile) return;
 
-    // bonfire interaction
-    if (this.bonfireGroup && !this.bonfireLit && tile.x === 10 && tile.z === 10) {
+    // bonfire interaction (starter-room checkpoint)
+    const cp = this.structures?.checkpoint;
+    if (this.bonfireGroup && !this.bonfireLit && cp && tile.x === cp.x && tile.z === cp.z) {
       if (Combat.dist(leader.pos, tile) <= 1.5) {
         this.lightBonfire();
         return;
@@ -661,7 +1190,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     void this.audio.init();
     this.phase = 'explore';
     this.selectedId = this.combat.living('party')[0]?.id ?? null;
-    this.pushLog('The party approaches the ruined shrine... (click to move, Q/E rotate, wheel zoom)', 'system');
+    this.pushLog('You descend into the Warlord\'s Warren, torch in hand... (click to move, Q/E rotate, wheel zoom)', 'system');
     this.emitSnapshot();
   }
 
@@ -723,7 +1252,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     if (!this.bonfireGroup || this.bonfireLit) return;
     this.bonfireLit = true;
     this.bonfireGroup.userData.lit = true;
-    this.bonfirePos = { x: 10, z: 10 };
+    this.bonfirePos = this.structures?.checkpoint ? { ...this.structures.checkpoint } : { x: 10, z: 10 };
     // flame cubes
     const flameMat = new THREE.MeshLambertMaterial({ color: 0xffb545, emissive: 0xff7a1f, emissiveIntensity: 0.9 });
     const geo = new THREE.BoxGeometry(1, 1, 1);
@@ -1034,6 +1563,8 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
           this.dropWeapon(v);
         }
         this.audio.play('sword_hit', 0.4, 0.6);
+        const slain = this.byId(ev.unitId);
+        if (slain?.dropKey) this.grantKey(slain.dropKey);
         await delay(500);
         break;
       }
@@ -1100,7 +1631,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       if (Math.random() < 0.5) FX.dust(this.particles, p.clone());
     }
     v.rig.anim.mode = 'idle';
-    v.proxy.position.copy(v.rig.group.position).y += v.rig.pivots ? 2.2 : 0.9;
+    v.proxy.position.copy(v.rig.group.position).y += (v.proxy.userData.yOff as number) ?? 0.9;
     // check combat trap trigger at destination
     const u = this.byId(unitId);
     if (u) {
@@ -1327,6 +1858,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
 
   // ══ combat trigger (explore proximity + vision cones) ═══
   private checkCombatTrigger() {
+    if (this.structures) { this.checkDungeonAggro(); return; }
     if (this.phase !== 'explore' || this.combat.inCombat) return;
     const party = this.combat.living('party');
     const foes = this.combat.living('enemy');
@@ -1418,6 +1950,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     this.iso.update(dt);
     this.world.update(dt);
     this.updateDroppedWeapons(dt);
+    if (this.structures) this.updateDungeon(dt);
 
     // torch flames
     for (const t of this.world.torches) FX.flame(this.particles, t.pos.clone());
@@ -1489,7 +2022,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
         FX.impactDust(this.particles, v.rig.group.position.clone().setY((v.rig.group.userData.baseY as number) + 0.08), [u.scheme.skin, u.scheme.cloth]);
         this.audio.play('sword_hit', 0.25, 0.5);
       }
-      v.proxy.position.copy(v.rig.group.position).y += v.rig.pivots ? 2.2 : 0.9;
+      v.proxy.position.copy(v.rig.group.position).y += (v.proxy.userData.yOff as number) ?? 0.9;
       // explore-mode walkers (non-combat movement)
       if (v.walker && v.rig.anim.mode === 'walk') {
         const wk = v.walker;
@@ -1534,7 +2067,11 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
         }
       }
       for (const f of foes) {
+        // in the dungeon, only reveal cones for foes near the party (avoids
+        // lighting up every lurking monster in the maze at once)
+        const nearParty = !this.structures || this.combat.living('party').some((p) => Combat.dist(p.pos, f.pos) <= 11);
         let cd = this.enemyCones.find((c) => c.unitId === f.id);
+        if (!nearParty) { if (cd) cd.mesh.visible = false; continue; }
         if (!cd) {
           const mesh = new THREE.Mesh(this.coneGeo, new THREE.MeshBasicMaterial({
             color: 0xef4444, transparent: true, opacity: 0.15, depthWrite: false, side: THREE.DoubleSide,
@@ -1697,6 +2234,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     for (const d of this.droppedWeapons) { this.scene.remove(d.obj); d.obj.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); }); }
     this.droppedWeapons = [];
     if (this.playerCone) { this.scene.remove(this.playerCone); }
+    if (this.heroLight) { this.scene.remove(this.heroLight); this.heroLight = null; }
     if (this.playerConeGeo) this.playerConeGeo.dispose();
     if (this.coneGeo) this.coneGeo.dispose();
     this.trapManager?.dispose();

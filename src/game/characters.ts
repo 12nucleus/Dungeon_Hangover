@@ -95,6 +95,7 @@ class Vox {
         }
   }
   mesh(): THREE.Mesh {
+    if (!this.geos.length) return new THREE.Mesh(new THREE.BufferGeometry(), bodyMat); // guard: empty part
     const merged = mergeGeometries(this.geos, false)!;
     this.geos.forEach((g) => g.dispose());
     const m = new THREE.Mesh(merged, bodyMat);
@@ -535,8 +536,138 @@ function buildChibiRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  DETAILED ORC / GOBLIN — same pivot layout & part names as the
-//  chibi rig (so updateRig + engine proxy/selection are unchanged),
+//  BEAST & UNDEAD RIGS — rats, bats, skeletons. Non-humanoid rigs
+//  MUST return a `pivots` block so updateRig() places their parts at
+//  the right heights (it defaults to humanoid Ys otherwise). All rigs
+//  still expose legL/legR/torso/armL/armR/handL/handR/head so the
+//  shared animation + ragdoll death keep working.
+// ════════════════════════════════════════════════════════════════
+type Build = (v: Vox) => void;
+
+function buildRatRig(scheme: CharacterScheme): Rig {
+  const C = 0.075;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+  const fur = scheme.skin, furD = shade(fur, 0.78), belly = scheme.cloth, ear = scheme.accent, eye = scheme.hair;
+  const part = (name: string, x: number, y: number, z: number, build: Build) => {
+    const v = new Vox(C); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+  };
+
+  part('torso', 0, 0.16, 0, (v) => {
+    v.ellip(0, 0, 0, 2.4, 1.9, 3.6, fur);            // body
+    v.ellip(0, -1, 1, 1.8, 1.2, 2.6, belly);         // pale underbelly
+    v.fill(-1, 1, -3, 1, 2, -2, furD);               // haunch hump
+    let tz = -4, ty = 0;                             // long curling tail
+    for (let i = 0; i < 8; i++) { v.add(0, Math.round(ty), tz, i < 3 ? furD : ear); tz -= 1; if (i > 2) ty += 0.7; }
+  });
+  part('head', 0, 0.2, 0.34, (v) => {
+    v.ellip(0, 0, 0, 1.8, 1.6, 1.8, fur);
+    v.fill(-1, -1, 1, 1, 0, 2, furD);                // snout
+    v.add(0, -1, 3, 0x2a2020);                       // nose
+    for (const s of [-1, 1]) { v.add(s * 2, 2, -1, ear); v.add(s * 2, 3, -1, shade(ear, 1.2)); v.add(s * 2, 2, 0, ear); } // round ears
+    v.add(-1, 1, 2, eye); v.add(1, 1, 2, eye);       // beady eyes
+  });
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.11, 0.1, -0.14, (v) => {
+    v.add(0, 0, 0, furD); v.fill(0, -1, 0, 0, -1, 1, fur); v.add(0, -2, 1, 0x2a2020);
+  });
+  for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.1, 0.12, 0.2, (v) => {
+    v.fill(0, -1, 0, 0, 0, 0, fur); v.add(0, -2, 1, 0x2a2020);
+  });
+  for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.1, 0.05, 0.24, (v) => { v.add(0, 0, 0, furD); });
+
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: Math.random() * 3, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: 0.1, torso: 0.16, head: 0.2, eye: 0.22, hair: 0.2, arm: 0.12, hand: 0.05, weapon: 0.2 },
+  };
+}
+
+function buildBatRig(scheme: CharacterScheme): Rig {
+  const C = 0.08;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+  const skin = scheme.skin, skinHI = shade(skin, 1.2), wing = scheme.cloth, edge = scheme.accent, eye = scheme.hair;
+  const part = (name: string, x: number, y: number, z: number, build: Build) => {
+    const v = new Vox(C); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+  };
+
+  part('torso', 0, 0.9, 0, (v) => {
+    v.ellip(0, 0, 0, 1.4, 2.0, 1.4, skin);
+    v.fill(-1, -2, 0, 1, -2, 0, shade(skin, 0.8));   // furry chest
+  });
+  part('head', 0, 1.12, 0.04, (v) => {
+    v.ellip(0, 0, 0, 1.5, 1.4, 1.5, skin);
+    for (const s of [-1, 1]) { v.fill(s * 1, 2, -1, s * 1, 3, -1, skin); v.add(s * 1, 4, -1, skinHI); } // tall ears
+    v.add(-1, 0, 2, eye); v.add(1, 0, 2, eye);       // eyes
+    v.add(-1, -1, 2, 0xffffff); v.add(1, -1, 2, 0xffffff); // fangs
+  });
+  // membranous wings mapped to the arms (updateRig flaps them via userData.flap)
+  for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.12, 0.95, 0, (v) => {
+    for (let gx = 0; gx <= 4; gx++) {
+      const span = 2 - Math.floor(gx * 0.35);
+      for (let gz = -span; gz <= span; gz++) v.add(s * gx, Math.round(-gx * 0.25), gz, wing);
+      v.add(s * gx, Math.round(-gx * 0.25) - span - 1, 0, edge);  // trailing claw
+    }
+    for (let gz = -2; gz <= 2; gz++) v.add(s * 4, -1, gz, edge);   // wing-tip bone
+  });
+  for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.5, 0.95, 0, (v) => { v.add(0, 0, 0, edge); });
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.05, 0.78, -0.05, (v) => { v.fill(0, -1, 0, 0, 0, 0, shade(skin, 0.7)); });
+
+  group.userData.flap = true;
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: Math.random() * 3, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: 0.78, torso: 0.9, head: 1.12, eye: 1.12, hair: 1.12, arm: 0.95, hand: 0.95, weapon: 0.95 },
+  };
+}
+
+function buildSkeletonRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
+  const C = 0.1;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+  const bone = scheme.skin, boneD = shade(bone, 0.78), cloth = scheme.cloth, eye = scheme.hair;
+  const part = (name: string, x: number, y: number, z: number, build: Build) => {
+    const v = new Vox(C); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+  };
+
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.12, 0.25, 0, (v) => {
+    v.fill(0, -2, 0, 0, 2, 0, bone); v.add(0, 1, 0, boneD); v.add(0, -2, 1, boneD);   // femur + knee + foot
+  });
+  part('torso', 0, 0.78, 0, (v) => {
+    v.fill(-2, 3, -1, 2, 3, 1, bone);                // clavicle / shoulders
+    v.fill(0, -2, 0, 0, 3, 0, boneD);                // spine
+    for (let r = 0; r < 3; r++) { v.fill(-2, r, 0, 2, r, 1, bone); v.add(0, r, 1, boneD); } // ribs
+    v.fill(-2, -2, -1, 2, -2, 1, boneD);             // pelvis
+    v.fill(-2, 3, 1, 2, 4, 2, cloth);                // tattered cloak scrap
+  });
+  for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.32, 0.8, 0, (v) => {
+    v.fill(0, -2, 0, 0, 2, 0, bone); v.add(0, 0, 0, boneD);
+  });
+  for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.32, 0.52, 0.02, (v) => {
+    v.add(0, 0, 0, bone); v.add(0, 0, 1, boneD); v.add(0, -1, 1, bone);
+  });
+  part('head', 0, 1.28, 0, (v) => {
+    v.fill(-2, -1, -2, 2, 2, 2, bone);               // cranium
+    v.fill(-1, -2, 0, 1, -2, 2, boneD);              // jaw
+    v.add(-1, 0, 3, 0x101014); v.add(1, 0, 3, 0x101014); // eye sockets
+    v.add(0, -1, 3, 0x101014);                       // nasal cavity
+  });
+  const eyeMat = new THREE.MeshLambertMaterial({ color: eye, emissive: eye, emissiveIntensity: 0.9 });
+  for (const [name, x] of [['eyeL', -0.1], ['eyeR', 0.1]] as const) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.05), eyeMat);
+    m.position.set(x, 1.32, 0.24); m.castShadow = false; parts[name] = m; group.add(m);
+  }
+  const wg = buildWeapon(weapon, scheme.accent, C);
+  wg.position.set(0.36, 0.5, 0.08); wg.rotation.x = weapon === 'bow' ? 0 : -0.5;
+  group.add(wg); parts.weapon = wg as unknown as THREE.Mesh; (wg as unknown as THREE.Object3D).userData.kind = weapon;
+
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return { group, parts, anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 } };
+}
+
+
 //  but ~10× the voxels: rounded muscle, heavy brow, tusks, pointy
 //  ears, loincloth, leather straps, glowing eyes. Boss (bulk>1)
 //  gains horns + war-paint + bone pauldrons.
@@ -585,6 +716,9 @@ function buildOrcRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
 }
 
 export function buildCharacter(scheme: CharacterScheme, weapon: WeaponKind): Rig {
+  if (scheme.monster === 'rat') return buildRatRig(scheme);
+  if (scheme.monster === 'bat') return buildBatRig(scheme);
+  if (scheme.monster === 'skeleton') return buildSkeletonRig(scheme, weapon);
   if (scheme.style === 'normal') return buildPlayerRig(scheme, weapon);
   if (scheme.orc) return buildOrcRig(scheme, weapon);
   return buildChibiRig(scheme, weapon);
@@ -736,6 +870,14 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   p.armR.rotation.x = w * 0.6 + idle * 0.05 + cr * 0.25 + (a.lunge > 0 ? -Math.sin(a.lunge * Math.PI) * 2.2 : 0);
   p.handL.rotation.x = p.armL.rotation.x;
   p.handR.rotation.x = p.armR.rotation.x;
+
+  // membranous wings (bats): flap on Z about the shoulder pivot instead of swinging on X
+  if (rig.group.userData.flap) {
+    const f = Math.sin(a.t * 13) * 0.7 + 0.15;
+    p.armL.rotation.x = 0; p.armR.rotation.x = 0;
+    p.armL.rotation.z = f; p.armR.rotation.z = -f;
+    p.handL.rotation.z = f; p.handR.rotation.z = -f;
+  }
 
   const weapon = rig.group.children.find((c) => c.type === 'Group') as THREE.Object3D | undefined;
   if (weapon) {
