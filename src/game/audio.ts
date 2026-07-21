@@ -56,7 +56,7 @@ export class AudioManager {
     };
     await Promise.all([...SFX_FILES.map(load), load('music_ambient'), load('tavern_music')]);
     this.playMusic('music_ambient');
-    if (this.tavernPending) { this.tavernPending = false; this.playTavernMusic(); }
+    if (this.tavernPending) { this.tavernPending = false; this.playTavernMusic(this._pendingOpts ?? {}); this._pendingOpts = undefined; }
   }
 
   play(name: SfxName, volume = 1, rate = 1) {
@@ -85,23 +85,60 @@ export class AudioManager {
     this.musicSource = src;
   }
 
-  /** tavern theme — loops on its own gain so it can fade independently */
-  playTavernMusic() {
+  /** tavern theme — loops on its own gain so it can fade independently.
+   *  `muffled` routes through a low-pass filter so the track sounds like
+   *  it's bleeding through the tavern walls from the inside (used for the
+   *  exterior title card). `volume` is the final target gain. */
+  private tavernFilter: BiquadFilterNode | null = null;
+  private _pendingOpts: { muffled?: boolean; volume?: number } | undefined;
+  playTavernMusic(opts: { muffled?: boolean; volume?: number } = {}) {
     if (!this.ctx || this.muted) return;
     const buf = this.buffers.get('tavern_music');
-    if (!buf) { this.tavernPending = true; return; }
+    if (!buf) { this.tavernPending = true; this._pendingOpts = opts; return; }
     this.tavernSource?.stop();
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
-    src.connect(this.tavernGain);
+    // (re)build the filter chain so toggling muffled/clean is consistent
+    if (this.tavernFilter) { try { this.tavernFilter.disconnect(); } catch { /* */ } }
+    let tail: AudioNode = this.tavernGain;
+    if (opts.muffled) {
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.setValueAtTime(440, this.ctx.currentTime);   // dull through-the-wall
+      f.Q.value = 0.7;
+      f.connect(this.tavernGain);
+      this.tavernFilter = f;
+      tail = f;
+    } else {
+      this.tavernFilter = null;
+    }
+    src.connect(tail);
     src.start();
     this.tavernSource = src;
     const now = this.ctx.currentTime;
     const g = this.tavernGain.gain;
+    const target = opts.volume ?? 0.22;
     g.cancelScheduledValues(now);
-    g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(0.22, now + 2.0);   // well below the narration VO
+    g.setValueAtTime(Math.max(0.0001, g.value), now);
+    g.linearRampToValueAtTime(target, now + 2.0);   // well below the narration VO
+  }
+  /** smoothly switch the running tavern track muffled→full or vice versa */
+  setTavernMuffled(muffled: boolean) {
+    if (!this.ctx || !this.tavernSource) return;
+    const now = this.ctx.currentTime;
+    if (muffled && !this.tavernFilter) {
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.setValueAtTime(440, now); f.Q.value = 0.7;
+      try { this.tavernSource.disconnect(); } catch { /* */ }
+      this.tavernSource.connect(f); f.connect(this.tavernGain);
+      this.tavernFilter = f;
+    } else if (!muffled && this.tavernFilter) {
+      try { this.tavernSource.disconnect(); } catch { /* */ }
+      this.tavernSource.connect(this.tavernGain);
+      try { this.tavernFilter.disconnect(); } catch { /* */ }
+      this.tavernFilter = null;
+    }
   }
 
   /** fade the tavern theme out (kept quieter than the voiceover throughout) */
