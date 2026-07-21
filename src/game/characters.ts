@@ -26,7 +26,7 @@ export interface Rig {
   group: THREE.Group;
   parts: Record<string, THREE.Object3D>;
   anim: {
-    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'crack';
+    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'crack' | 'getup';
     t: number;
     lunge: number;
     flinch: number;
@@ -63,16 +63,29 @@ function shade(hex: number, f: number): number {
 class Vox {
   private geos: THREE.BufferGeometry[] = [];
   private C: number;
-  constructor(cubeEdge: number) { this.C = cubeEdge; }
+  private SUB: number;
+  private EDGE: number;
+  constructor(cubeEdge: number, sub = 1) {
+    this.C = cubeEdge;
+    this.SUB = Math.max(1, sub | 0);
+    this.EDGE = cubeEdge / this.SUB;
+  }
   add(gx: number, gy: number, gz: number, color: number, jitter = 0.1) {
-    const g = new THREE.BoxGeometry(this.C, this.C, this.C);
-    g.translate(gx * this.C, gy * this.C, gz * this.C);
-    tmpCol.setHex(color).multiplyScalar(1 - jitter / 2 + Math.random() * jitter);
-    const n = g.attributes.position.count;
-    const arr = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { arr[i * 3] = tmpCol.r; arr[i * 3 + 1] = tmpCol.g; arr[i * 3 + 2] = tmpCol.b; }
-    g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
-    this.geos.push(g);
+    const place = (cx: number, cy: number, cz: number) => {
+      const g = new THREE.BoxGeometry(this.EDGE, this.EDGE, this.EDGE);
+      g.translate(cx * this.C, cy * this.C, cz * this.C);
+      tmpCol.setHex(color).multiplyScalar(1 - jitter / 2 + Math.random() * jitter);
+      const n = g.attributes.position.count;
+      const arr = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { arr[i * 3] = tmpCol.r; arr[i * 3 + 1] = tmpCol.g; arr[i * 3 + 2] = tmpCol.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+      this.geos.push(g);
+    };
+    if (this.SUB <= 1) { place(gx, gy, gz); return; }
+    const s = this.SUB;
+    for (let i = 0; i < s; i++) for (let j = 0; j < s; j++) for (let k = 0; k < s; k++) {
+      place(gx + (i + 0.5) / s - 0.5, gy + (j + 0.5) / s - 0.5, gz + (k + 0.5) / s - 0.5);
+    }
   }
   fill(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: number, jitter?: number) {
     for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) this.add(x, y, z, color, jitter);
@@ -114,11 +127,11 @@ class Vox {
 interface Limb {
   upper: THREE.Group; lower: THREE.Group; hand?: THREE.Mesh;
 }
-function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, splitY: number, C: number, handBucket?: Map<string, number>, handCy?: number): Limb {
+function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, splitY: number, C: number, handBucket?: Map<string, number>, handCy?: number, SUB: number = 1): Limb {
   const JIT = 0.035;
   const upper = new THREE.Group();
   const lower = new THREE.Group();
-  const voU = new Vox(C), voL = new Vox(C);
+  const voU = new Vox(C, SUB), voL = new Vox(C, SUB);
   for (const [k, c] of bucket) {
     const [gx, gy, gz] = k.split(',').map(Number);
     if (gy >= splitY) voU.add(gx - cx, gy - cyUpper, gz, c, JIT);
@@ -128,12 +141,13 @@ function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, spl
   upper.position.set(0, cyUpper * C, 0);
   const um = voU.mesh(); um.position.set(cx * C, 0, 0); upper.add(um);
   // lower-group origin sits at the knee/elbow (relative to upper); mesh hangs below it.
-  lower.position.set(0, (cyUpper - splitY) * C, 0);
+  // The joint is BELOW the hip/shoulder pivot, so this offset is negative.
+  lower.position.set(0, (splitY - cyUpper) * C, 0);
   const lm = voL.mesh(); lm.position.set(cx * C, 0, 0); lower.add(lm);
   upper.add(lower);
   let hand: THREE.Mesh | undefined;
   if (handBucket && handCy !== undefined) {
-    const vh = new Vox(C);
+    const vh = new Vox(C, SUB);
     for (const [k, c] of handBucket) {
       const [gx, gy, gz] = k.split(',').map(Number);
       vh.add(gx - cx, gy - handCy!, gz, c, JIT);
@@ -145,9 +159,9 @@ function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, spl
   return { upper, lower, hand };
 }
 
-function buildWeapon(kind: WeaponKind, accent: number, C: number): THREE.Group {
+function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 1): THREE.Group {
   const g = new THREE.Group();
-  const v = new Vox(C);
+  const v = new Vox(C, SUB);
   const grip = 0x4a3421;
   switch (kind) {
     case 'sword':
@@ -170,8 +184,8 @@ function buildWeapon(kind: WeaponKind, accent: number, C: number): THREE.Group {
       v.add(0, 4, 2, METAL); v.add(0, 4, -2, METAL);
       break;
     case 'staff':
-      v.fill(0, 0, 0, 0, 9, 0, 0x6b4a2e);
-      v.fill(-1, 9, 0, 1, 9, 0, 0x5f3e22);
+      v.fill(0, -5, 0, 0, 27, 0, 0x6b4a2e);
+      v.fill(-1, 27, 0, 1, 27, 0, 0x5f3e22);
       break;
     case 'bow':
       v.fill(0, 0, 0, 0, 4, 0, 0x6b4a2e);
@@ -184,12 +198,12 @@ function buildWeapon(kind: WeaponKind, accent: number, C: number): THREE.Group {
       break;
   }
   g.add(v.mesh());
-  if (kind === 'staff') {
-    const orb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), orbMat);
-    orb.position.set(0, 10.6 * C, 0);
-    orb.castShadow = true;
-    g.add(orb);
-  }
+    if (kind === 'staff') {
+      const orb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), orbMat);
+      orb.position.set(0, 28 * C, 0);
+      orb.castShadow = true;
+      g.add(orb);
+    }
   if (kind === 'torch') {
     const flameMat = new THREE.MeshLambertMaterial({ color: 0xffb545, emissive: 0xff7a1f, emissiveIntensity: 0.8 });
     const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.12), flameMat);
@@ -209,9 +223,10 @@ function buildWeapon(kind: WeaponKind, accent: number, C: number): THREE.Group {
 //   37..56 shirt   56..72 head    49..77 hair (curtain→crown)
 //   arms 34..55 (forearm+sleeve)  hands 28..34
 // ════════════════════════════════════════════════════════════════
-function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
+function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
   const C = C_DETAIL;
   const WC = C_NORMAL;   // weapon scale (keeps torch-flame light offset valid)
+  const SUB = 1;
   const group = new THREE.Group();
   const parts: Record<string, THREE.Object3D> = {};
   const martial = weapon === 'sword' || weapon === 'mace' || weapon === 'club';
@@ -450,7 +465,7 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   // limbs (thigh+shin, upper+forearm) so they can bend at knee / elbow.
   for (const name of ['torso', 'head', 'hair'] as const) {
     const info = partInfo[name];
-    const vo = new Vox(C);
+    const vo = new Vox(C, SUB);
     for (const [k, c] of buckets[name]) {
       const [gx, gy, gz] = k.split(',').map(Number);
       vo.add(gx - info.cx, gy - info.cy, gz, c, 0.035);
@@ -472,7 +487,7 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   // ═══ SHOULDER PADS (martial only) — ride on the upper arm ═══
   if (martial) {
     for (const [name, sx] of [['padL', -ARM_X], ['padR', ARM_X]] as const) {
-      const vo = new Vox(C);
+      const vo = new Vox(C, SUB);
       vo.fill(-3, -2, -3, 3, 2, 3, METAL_DARK);
       vo.fill(-4, 0, -2, 4, 2, 2, METAL, 0.03);
       vo.fill(-1, 3, 0, 1, 3, 0, METAL, 0.02);
@@ -484,13 +499,15 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
 
   // ═══ WEAPON — parented to the right hand so it follows the arm ═══
   const WEAPON_Y = 34;
-  const wg = buildWeapon(weapon, scheme.accent, WC);
-  wg.position.set(0.03, (WEAPON_Y - HAND_G) * C, 5 * C);
-  wg.rotation.x = weapon === 'bow' || weapon === 'torch' ? -0.12 : 1.35;
-  const handR = parts.handR as THREE.Mesh | undefined;
-  if (handR) handR.add(wg); else group.add(wg);
-  parts.weapon = wg as unknown as THREE.Mesh;
-  (wg as any).userData.kind = weapon;
+  if (weapon) {
+    const wg = buildWeapon(weapon, scheme.accent, WC);
+    wg.position.set(0.03, (WEAPON_Y - HAND_G) * C, 5 * C);
+    wg.rotation.x = weapon === 'bow' || weapon === 'torch' ? -0.12 : 1.35;
+    const handR = parts.handR as THREE.Mesh | undefined;
+    if (handR) handR.add(wg); else group.add(wg);
+    parts.weapon = wg as unknown as THREE.Mesh;
+    (wg as any).userData.kind = weapon;
+  }
 
   group.scale.setScalar(scheme.bulk ?? 1);
 
@@ -506,8 +523,9 @@ function buildPlayerRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
 }
 
 // ────── CHIBI RIG (unchanged) ──────
-function buildChibiRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
+function buildChibiRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
   const C = C_CHIBI;
+  const SUB = 4;
   const group = new THREE.Group();
   const parts: Record<string, THREE.Mesh> = {};
   const orc = scheme.orc === true;
@@ -515,7 +533,7 @@ function buildChibiRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   const skin = scheme.skin, cloth = scheme.cloth, accent = scheme.accent, hair = scheme.hair;
 
   for (const [name, x] of [['legL', -0.12], ['legR', 0.12]] as const) {
-    const v = new Vox(C);
+    const v = new Vox(C, SUB);
     v.fill(0, -1, -1, 0, 2, 0, orc ? skin : accent);
     v.fill(0, -2, -1, 0, -2, 0, BOOT);
     const m = v.mesh();
@@ -523,7 +541,7 @@ function buildChibiRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
     parts[name] = m; group.add(m);
   }
   {
-    const v = new Vox(C);
+    const v = new Vox(C, SUB);
     v.fill(-2, -1, -1, 2, 2, 1, cloth);
     v.fill(-2, -2, -1, 2, -2, 1, accent);
     if (weapon === 'staff') { v.fill(-2, -3, -1, 2, -3, 1, cloth); v.fill(-3, -4, -2, 2, -4, 1, cloth); }
@@ -532,19 +550,19 @@ function buildChibiRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
     parts.torso = torso; group.add(torso);
   }
   for (const [name, x] of [['armL', -0.35], ['armR', 0.35]] as const) {
-    const v = new Vox(C);
+    const v = new Vox(C, SUB);
     v.fill(0, -1, -1, 0, 2, 0, orc ? skin : cloth);
     v.fill(0, -2, -1, 0, -2, 0, orc ? accent : cloth);
     const m = v.mesh(); m.position.set(x, 0.8, 0);
     parts[name] = m; group.add(m);
   }
   for (const [name, x] of [['handL', -0.35], ['handR', 0.35]] as const) {
-    const v = new Vox(C); v.add(0, 0, 0, skin);
+    const v = new Vox(C, SUB); v.add(0, 0, 0, skin);
     const m = v.mesh(); m.position.set(x, 0.52, 0);
     parts[name] = m; group.add(m);
   }
   {
-    const v = new Vox(C);
+    const v = new Vox(C, SUB);
     v.fill(-2, -2, -2, 1, 1, 1, skin);
     if (orc) { v.fill(-2, 1, 2, 1, 1, 2, BROW, 0.04); v.add(-1, -2, 2, TUSK, 0.03); v.add(0, -2, 2, TUSK, 0.03); v.fill(-4, 0, 0, -3, 0, 0, skin); v.fill(2, 0, 0, 3, 0, 0, skin); }
     else if (weapon === 'mace') { v.fill(-2, -3, 0, 1, -3, 2, hair); v.fill(-2, -2, 2, 1, -2, 2, hair); }
@@ -552,19 +570,19 @@ function buildChibiRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
     parts.head = head; group.add(head);
   }
   for (const [name, x] of [['eyeL', -0.09], ['eyeR', 0.09]] as const) {
-    const v = new Vox(C); v.add(0, 0, 0, orc ? 0x3d1414 : DARK, 0);
+    const v = new Vox(C, SUB); v.add(0, 0, 0, orc ? 0x3d1414 : DARK, 0);
     const m = v.mesh(); m.position.set(x, 1.3, 0.16);
     parts[name] = m; group.add(m);
   }
   if (scheme.hood) {
-    const hv = new Vox(C); hv.fill(-2, -1, -2, 1, 0, 1, cloth);
+    const hv = new Vox(C, SUB); hv.fill(-2, -1, -2, 1, 0, 1, cloth);
     const hood = hv.mesh(); hood.position.set(0, 1.44, -0.02);
     parts.hood = hood; group.add(hood);
-    const tv = new Vox(C); tv.fill(-1, 0, -1, 0, 0, 0, cloth); tv.add(0, 1, -1, cloth);
+    const tv = new Vox(C, SUB); tv.fill(-1, 0, -1, 0, 0, 0, cloth); tv.add(0, 1, -1, cloth);
     const hoodTip = tv.mesh(); hoodTip.position.set(0, 1.58, -0.06);
     parts.hoodTip = hoodTip; group.add(hoodTip);
   } else {
-    const v = new Vox(C);
+    const v = new Vox(C, SUB);
     if (weapon === 'sword') v.fill(-2, -1, -2, 1, 0, 1, hair);
     else { v.fill(-2, 0, -2, 1, 0, 1, hair); v.fill(-2, -1, -2, 1, -1, -2, hair); }
     const m = v.mesh(); m.position.set(0, 1.5, 0);
@@ -572,17 +590,19 @@ function buildChibiRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   }
   if (martial) {
     for (const [name, x] of [['padL', -0.35], ['padR', 0.35]] as const) {
-      const v = new Vox(C); v.fill(-1, 0, -1, 1, 0, 1, METAL_DARK);
+      const v = new Vox(C, SUB); v.fill(-1, 0, -1, 1, 0, 1, METAL_DARK);
       const m = v.mesh(); m.position.set(x, 1.02, 0);
       parts[name] = m; group.add(m);
     }
   }
-  const wg = buildWeapon(weapon, accent, C);
-  if (weapon === 'torch') { wg.position.set(0.38, 0.72, 0.08); wg.rotation.x = -0.12; }
-  else { wg.position.set(0.38, 0.5, 0.08); wg.rotation.x = weapon === 'bow' ? 0 : 1.35; }
-  group.add(wg);
-  parts.weapon = wg as unknown as THREE.Mesh;
-  (wg as any).userData.kind = weapon;
+  if (weapon) {
+    const wg = buildWeapon(weapon, accent, C, SUB);
+    if (weapon === 'torch') { wg.position.set(0.38, 0.72, 0.08); wg.rotation.x = -0.12; }
+    else { wg.position.set(0.38, 0.5, 0.08); wg.rotation.x = weapon === 'bow' ? 0 : 1.35; }
+    group.add(wg);
+    parts.weapon = wg as unknown as THREE.Mesh;
+    (wg as any).userData.kind = weapon;
+  }
   group.scale.setScalar(scheme.bulk ?? 1);
   return { group, parts, anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 } };
 }
@@ -598,11 +618,12 @@ type Build = (v: Vox) => void;
 
 function buildRatRig(scheme: CharacterScheme): Rig {
   const C = 0.075;
+  const SUB = 3;
   const group = new THREE.Group();
   const parts: Record<string, THREE.Mesh> = {};
   const fur = scheme.skin, furD = shade(fur, 0.78), belly = scheme.cloth, ear = scheme.accent, eye = scheme.hair;
   const part = (name: string, x: number, y: number, z: number, build: Build) => {
-    const v = new Vox(C); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+    const v = new Vox(C, SUB); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
   };
 
   part('torso', 0, 0.16, 0, (v) => {
@@ -619,7 +640,7 @@ function buildRatRig(scheme: CharacterScheme): Rig {
     for (const s of [-1, 1]) { v.add(s * 2, 2, -1, ear); v.add(s * 2, 3, -1, shade(ear, 1.2)); v.add(s * 2, 2, 0, ear); } // round ears
     v.add(-1, 1, 2, eye); v.add(1, 1, 2, eye);       // beady eyes
   });
-  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.11, 0.1, -0.14, (v) => {
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.11, 0.19, -0.14, (v) => {
     v.add(0, 0, 0, furD); v.fill(0, -1, 0, 0, -1, 1, fur); v.add(0, -2, 1, 0x2a2020);
   });
   for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.1, 0.12, 0.2, (v) => {
@@ -637,11 +658,12 @@ function buildRatRig(scheme: CharacterScheme): Rig {
 
 function buildBatRig(scheme: CharacterScheme): Rig {
   const C = 0.08;
+  const SUB = 3;
   const group = new THREE.Group();
   const parts: Record<string, THREE.Mesh> = {};
   const skin = scheme.skin, skinHI = shade(skin, 1.2), wing = scheme.cloth, edge = scheme.accent, eye = scheme.hair;
   const part = (name: string, x: number, y: number, z: number, build: Build) => {
-    const v = new Vox(C); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+    const v = new Vox(C, SUB); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
   };
 
   part('torso', 0, 0.9, 0, (v) => {
@@ -675,13 +697,14 @@ function buildBatRig(scheme: CharacterScheme): Rig {
   };
 }
 
-function buildSkeletonRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
+function buildSkeletonRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
   const C = 0.1;
+  const SUB = 4;
   const group = new THREE.Group();
   const parts: Record<string, THREE.Mesh> = {};
   const bone = scheme.skin, boneD = shade(bone, 0.78), cloth = scheme.cloth, eye = scheme.hair;
   const part = (name: string, x: number, y: number, z: number, build: Build) => {
-    const v = new Vox(C); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+    const v = new Vox(C, SUB); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
   };
 
   for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.12, 0.25, 0, (v) => {
@@ -692,6 +715,7 @@ function buildSkeletonRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
     v.fill(0, -2, 0, 0, 3, 0, boneD);                // spine
     for (let r = 0; r < 3; r++) { v.fill(-2, r, 0, 2, r, 1, bone); v.add(0, r, 1, boneD); } // ribs
     v.fill(-2, -2, -1, 2, -2, 1, boneD);             // pelvis
+    v.fill(-1, 3, -1, 1, 4, 1, boneD);               // neck column (so head sits clear of torso)
     v.fill(-2, 3, 1, 2, 4, 2, cloth);                // tattered cloak scrap
   });
   for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.32, 0.8, 0, (v) => {
@@ -700,23 +724,30 @@ function buildSkeletonRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.32, 0.52, 0.02, (v) => {
     v.add(0, 0, 0, bone); v.add(0, 0, 1, boneD); v.add(0, -1, 1, bone);
   });
-  part('head', 0, 1.28, 0, (v) => {
-    v.fill(-2, -1, -2, 2, 2, 2, bone);               // cranium
-    v.fill(-1, -2, 0, 1, -2, 2, boneD);              // jaw
+  // head sits on top of the neck (center ~5.8) so it no longer intersects the torso
+  part('head', 0, 5.8, 0, (v) => {
+    v.fill(-2, -1, -2, 2, 1, 2, bone);               // cranium
+    v.fill(-1, -1, 0, 1, -1, 2, boneD);              // jaw
     v.add(-1, 0, 3, 0x101014); v.add(1, 0, 3, 0x101014); // eye sockets
     v.add(0, -1, 3, 0x101014);                       // nasal cavity
   });
   const eyeMat = new THREE.MeshLambertMaterial({ color: eye, emissive: eye, emissiveIntensity: 0.9 });
   for (const [name, x] of [['eyeL', -0.1], ['eyeR', 0.1]] as const) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.05), eyeMat);
-    m.position.set(x, 1.32, 0.24); m.castShadow = false; parts[name] = m; group.add(m);
+    m.position.set(x, 5.84, 0.24); m.castShadow = false; parts[name] = m; group.add(m);
   }
-  const wg = buildWeapon(weapon, scheme.accent, C);
-  wg.position.set(0.36, 0.5, 0.08); wg.rotation.x = weapon === 'bow' ? 0 : 1.35;
-  group.add(wg); parts.weapon = wg as unknown as THREE.Mesh; (wg as unknown as THREE.Object3D).userData.kind = weapon;
+  if (weapon) {
+    const wg = buildWeapon(weapon, scheme.accent, C, SUB);
+    wg.position.set(0.36, 0.5, 0.08); wg.rotation.x = weapon === 'bow' ? 0 : 1.35;
+    group.add(wg); parts.weapon = wg as unknown as THREE.Mesh; (wg as unknown as THREE.Object3D).userData.kind = weapon;
+  }
 
   group.scale.setScalar(scheme.bulk ?? 1);
-  return { group, parts, anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 } };
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: 0.25, torso: 0.78, head: 5.8, eye: 5.84, hair: 5.8, arm: 0.8, hand: 0.52, weapon: 0.5 },
+  };
 }
 
 
@@ -724,14 +755,15 @@ function buildSkeletonRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
 //  ears, loincloth, leather straps, glowing eyes. Boss (bulk>1)
 //  gains horns + war-paint + bone pauldrons.
 // ════════════════════════════════════════════════════════════════
-function buildOrcRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
-  const model = orcModel(scheme, weapon);
+function buildOrcRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
+  const model = orcModel(scheme, weapon ?? 'club');
   const C = model.cube;
+  const SUB = 2;
   const group = new THREE.Group();
   const parts: Record<string, THREE.Mesh> = {};
 
   const meshFrom = (voxels: { x: number; y: number; z: number; c: number }[]): THREE.Mesh => {
-    const v = new Vox(C);
+    const v = new Vox(C, SUB);
     for (const p of voxels) v.add(p.x, p.y, p.z, p.c);
     return v.mesh();
   };
@@ -756,12 +788,14 @@ function buildOrcRig(scheme: CharacterScheme, weapon: WeaponKind): Rig {
   });
 
   // held weapon (animated Group — kept in characters.ts for torch flame/orb)
-  const wg = buildWeapon(weapon, scheme.accent, 0.07);
-  if (weapon === 'torch') { wg.position.set(0.42, 0.72, 0.1); wg.rotation.x = -0.12; }
-  else { wg.position.set(0.42, 0.5, 0.1); wg.rotation.x = weapon === 'bow' ? 0 : 1.35; }
-  group.add(wg);
-  parts.weapon = wg as unknown as THREE.Mesh;
-  (wg as unknown as THREE.Object3D).userData.kind = weapon;
+  if (weapon) {
+    const wg = buildWeapon(weapon, scheme.accent, 0.07, SUB);
+    if (weapon === 'torch') { wg.position.set(0.42, 0.72, 0.1); wg.rotation.x = -0.12; }
+    else { wg.position.set(0.42, 0.5, 0.1); wg.rotation.x = weapon === 'bow' ? 0 : 1.35; }
+    group.add(wg);
+    parts.weapon = wg as unknown as THREE.Mesh;
+    (wg as unknown as THREE.Object3D).userData.kind = weapon;
+  }
 
   group.scale.setScalar(scheme.bulk ?? 1);
   return { group, parts, anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 } };
@@ -782,9 +816,10 @@ interface HumanoidFeat {
   bun?: boolean; bald?: boolean; apron?: boolean; vest?: boolean;
   stars?: boolean; tray?: boolean;
 }
-function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind, feat: HumanoidFeat): Rig {
+function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefined, feat: HumanoidFeat): Rig {
   const C = C_DETAIL;
   const WC = C_NORMAL;
+  const SUB = 1;
   const group = new THREE.Group();
   const parts: Record<string, THREE.Object3D> = {};
   const skin = scheme.skin, skinD = shade(skin, 0.86), skinHL = shade(skin, 1.1);
@@ -874,8 +909,8 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind, feat: Hum
   for (const s of [-1, 1] as const) {
     cur = s < 0 ? buckets.handL : buckets.handR;
     const cx = s * ARM_X;
-    ell(cx, 0, 0, 2.2, 2.4, 2.2, skin);
-    for (let f = -1; f <= 1; f++) box(cx + f, 28, -1, cx + f, 30, 1, skin);
+    ell(cx, 33, 0, 2.2, 2.4, 2.2, skin);
+    for (let f = -1; f <= 1; f++) box(cx + f, 31, -1, cx + f, 33, 1, skin);
   }
   // ── HEAD + face ──
   cur = buckets.head;
@@ -904,7 +939,7 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind, feat: Hum
   // torso / head / hair rigid; legs & arms are two-bone limbs (knee / elbow).
   for (const name of ['torso', 'head', 'hair'] as const) {
     const info = partInfo[name];
-    const vo = new Vox(C);
+    const vo = new Vox(C, SUB);
     for (const [k, c] of buckets[name]) { const [gx, gy, gz] = k.split(',').map(Number); vo.add(gx - info.cx, gy - info.cy, gz, c, 0.035); }
     const m = vo.mesh(); m.position.set(info.cx * C, info.cy * C, 0); parts[name] = m; group.add(m);
   }
@@ -927,10 +962,10 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind, feat: Hum
     mug.position.set(0.1, 0.09, 0.1); tray.add(mug);
     const handR = parts.handR as THREE.Mesh | undefined;
     if (handR) handR.add(tray); else group.add(tray);
-  } else {
+  } else if (weapon) {
     const wg = buildWeapon(weapon, scheme.accent, WC);
     wg.position.set(0.03, (34 - HAND_G) * C, 5 * C);
-    wg.rotation.x = weapon === 'bow' || weapon === 'torch' ? -0.12 : 1.35;
+    wg.rotation.x = weapon === 'staff' ? 0 : (weapon === 'bow' || weapon === 'torch' ? -0.12 : 1.35);
     const handR = parts.handR as THREE.Mesh | undefined;
     if (handR) handR.add(wg); else group.add(wg);
     parts.weapon = wg as unknown as THREE.Mesh; (wg as any).userData.kind = weapon;
@@ -944,13 +979,14 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind, feat: Hum
   };
 }
 
-export function buildCharacter(scheme: CharacterScheme, weapon: WeaponKind): Rig {
+export function buildCharacter(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
   if (scheme.monster === 'rat') return buildRatRig(scheme);
   if (scheme.monster === 'bat') return buildBatRig(scheme);
   if (scheme.monster === 'skeleton') return buildSkeletonRig(scheme, weapon);
   if (scheme.kind === 'wizard') return buildHumanoidRig(scheme, weapon, { robe: true, beard: true, hat: true, stars: true });
   if (scheme.kind === 'barmaid') return buildHumanoidRig(scheme, weapon, { dress: true, apron: true, bun: true, tray: true });
   if (scheme.kind === 'bouncer') return buildHumanoidRig(scheme, weapon, { bald: true, vest: true });
+  if (scheme.kind === 'barkeep') return buildHumanoidRig(scheme, weapon, { apron: true, bald: true });
   if (scheme.style === 'normal') return buildPlayerRig(scheme, weapon);
   if (scheme.orc) return buildOrcRig(scheme, weapon);
   return buildChibiRig(scheme, weapon);
@@ -1039,6 +1075,47 @@ function initDeath(rig: Rig): DeathState {
   return d;
 }
 
+/** soft-body "passed out / lying down" pose — same spring collapse as death,
+ *  but settles flat with splayed limbs and a gentle breathing wobble (it's a
+ *  resting state, not a one-shot topple). */
+function initCollapse(rig: Rig, lie: boolean): DeathState {
+  const rand = (a: number, b: number) => a + Math.random() * (b - a);
+  const p = rig.parts;
+  const gtxSign = lie ? -1 : 1;                       // asleep → on back, passed-out → face down
+  const d: DeathState = {
+    gvx: rand(-1.5, 1.5),
+    gvz: rand(-1, 1),
+    gtx: gtxSign * Math.PI / 2 * rand(0.9, 1.0),      // lie flat
+    gtz: rand(-0.25, 0.25),
+    gvy: 0,
+    gty: (rig.group.userData.baseY as number) ?? rig.group.position.y,
+    pv: {}, pt: {},
+    jelly: 0.1,
+    impacted: false,
+  };
+  const set = (name: string, tx: number, ty: number, tz: number) => {
+    if (!p[name]) return;
+    d.pt[name] = new THREE.Vector3(tx, ty, tz);
+    d.pv[name] = new THREE.Vector3(rand(-2, 2), rand(-2, 2), rand(-2, 2));
+  };
+  set('legL', rand(-0.6, -0.2), rand(-0.3, 0.3), rand(0.5, 1.0));   // splayed + slack
+  set('legR', rand(-0.6, -0.2), rand(-0.3, 0.3), rand(-1.0, -0.5));
+  set('shinL', rand(0.2, 0.8), 0, rand(-0.2, 0.2));
+  set('shinR', rand(0.2, 0.8), 0, rand(-0.2, 0.2));
+  set('armL', rand(0.6, 1.4), 0, rand(0.8, 1.6));                 // flung out, resting on ground
+  set('armR', rand(0.6, 1.4), 0, rand(-1.6, -0.8));
+  set('foreL', rand(0.3, 1.0), 0, rand(-0.3, 0.3));
+  set('foreR', rand(0.3, 1.0), 0, rand(-0.3, 0.3));
+  set('handL', rand(0.3, 0.9), 0, rand(0.4, 1.0));
+  set('handR', rand(0.3, 0.9), 0, rand(-1.0, -0.4));
+  set('head', rand(0.2, 0.6), rand(-0.4, 0.4), rand(-0.6, 0.6));  // head lolls
+  set('torso', rand(-0.15, 0.15), 0, rand(-0.2, 0.2));
+  set('hair', rand(0.1, 0.5), 0, rand(-0.2, 0.2));
+  set('hood', rand(0.1, 0.4), 0, 0); set('hoodTip', rand(0.2, 0.6), 0, 0);
+  set('padL', rand(0.1, 0.5), 0, rand(0.1, 0.5)); set('padR', rand(0.1, 0.5), 0, rand(-0.5, -0.1));
+  return d;
+}
+
 // one step of a semi-implicit damped spring; returns [newValue, newVelocity]
 function springStep(x: number, target: number, v: number, dt: number, stiff: number, damp: number): [number, number] {
   v += (stiff * (target - x) - damp * v) * dt;
@@ -1051,17 +1128,18 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const p = rig.parts;
   const P = rig.pivots;
 
-  if (a.mode === 'dead') {
-    const d = a.death ?? (a.death = initDeath(rig));
+  if (a.mode === 'dead' || a.mode === 'floor' || a.mode === 'lie') {
+    const d = a.death ?? (a.death = (a.mode === 'dead' ? initDeath(rig) : initCollapse(rig, a.mode === 'lie')));
     const g = rig.group;
     const h = Math.min(dt, 1 / 30);                       // clamp step for stability
     const STIFF = 130, DAMP = 13;                         // under-damped → soft overshoot
     // whole-body topple + sink to the floor
     [g.rotation.x, d.gvx] = springStep(g.rotation.x, d.gtx, d.gvx, h, STIFF, DAMP);
     [g.rotation.z, d.gvz] = springStep(g.rotation.z, d.gtz, d.gvz, h, STIFF, DAMP);
-    [g.position.y, d.gvy] = springStep(g.position.y, d.gty, d.gvy, h, 90, 16);
-    // flag the ground impact once the body has toppled most of the way (for dust FX)
-    if (!d.impacted && Math.abs(g.rotation.x) >= Math.abs(d.gtx) * 0.7) d.impacted = true;
+    if (a.mode === 'dead') {
+      [g.position.y, d.gvy] = springStep(g.position.y, d.gty, d.gvy, h, 90, 16);
+      if (!d.impacted && Math.abs(g.rotation.x) >= Math.abs(d.gtx) * 0.7) d.impacted = true;
+    }
     // per-joint crumple
     for (const name in d.pt) {
       const m = p[name]; if (!m) continue;
@@ -1070,9 +1148,10 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
       [m.rotation.y, v.y] = springStep(m.rotation.y, t.y, v.y, h, STIFF, DAMP);
       [m.rotation.z, v.z] = springStep(m.rotation.z, t.z, v.z, h, STIFF, DAMP);
     }
-    // squash-and-stretch jiggle that decays → "soft body" wobble
-    d.jelly *= Math.exp(-h * 3.2);
-    const wob = Math.sin(a.t * 19) * d.jelly;
+    // squash-and-stretch: decaying jiggle on death, gentle breathing when passed out
+    let wob: number;
+    if (a.mode === 'dead') { d.jelly *= Math.exp(-h * 3.2); wob = Math.sin(a.t * 19) * d.jelly; }
+    else { wob = Math.sin(a.t * 1.6) * 0.05; }
     if (p.torso) p.torso.scale.set(1 + wob * 0.7, 1 - wob * 0.9, 1 + wob * 0.5);
     if (p.head) p.head.scale.setScalar(1 + wob * 0.5);
     return;
@@ -1089,7 +1168,7 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
     }
   }
 
-  rig.group.rotation.x = 0;
+  if (a.mode !== 'getup') rig.group.rotation.x = 0;
   const walking = a.mode === 'walk';
   const w = walking ? Math.sin(a.t * 11) : 0;
   const idle = Math.sin(a.t * 2.2);
@@ -1106,31 +1185,22 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   let armRX = w * 0.6 + idle * 0.05 + cr * 0.25;
   let torsoX = cr * 0.2, headX = -cr * 0.12;
   let hipY = HIP - DROP;
-  let lieTilt = 0;
   const hasKnee = !!P && !!p.shinL;                       // two-bone limbs (player / NPC)
   let kneeL = 0.15, kneeR = 0.15, elbowL = 0.2, elbowR = 0.2;   // bend at the joints
 
   // ── pose presets ──
-  if (a.mode === 'sit') {                                 // seated on a stool / chair
-    DROP += 0.20; legScaleY = Math.max(0.5, 1 - DROP / HIP);
-    legLX = legRX = -1.2; armLX = -0.25 + idle * 0.04; armRX = -0.25 + idle * 0.04;
-    torsoX = 0.06; headX = -0.05; hipY = HIP - 0.22;
-    kneeL = kneeR = 1.45; elbowL = elbowR = 0.5;
-  } else if (a.mode === 'floor') {                        // sitting on the floor
-    DROP += 0.55; legScaleY = Math.max(0.45, 1 - DROP / HIP);
-    legLX = legRX = -1.05; armLX = 0.15 + idle * 0.05; armRX = 0.15 + idle * 0.05;
-    torsoX = 0.16; headX = -0.1; hipY = HIP - 0.55;
-    kneeL = kneeR = 1.3; elbowL = elbowR = 0.4;
-  } else if (a.mode === 'lie') {                          // lying down / asleep
-    lieTilt = -1.45;
-    legLX = legRX = 0.15; armLX = 0.35 + idle * 0.03; armRX = 0.35 + idle * 0.03;
-    torsoX = 0; headX = 0; DROP = 0; legScaleY = 1; hipY = HIP;
-    kneeL = kneeR = 0.1; elbowL = elbowR = 0.25;
-  } else if (a.mode === 'drink') {                        // raise a tankard to the mouth / eat
-    armRX = -2.35 + Math.sin(a.t * 6) * 0.12; armLX = 0.2 + idle * 0.05;
-    headX = -0.16; torsoX = 0.05; legLX = w * 0.4; legRX = -w * 0.4;
-    elbowR = -1.1; elbowL = 0.4;
-  } else if (a.mode === 'crack') {                         // crack knuckles — fists meet at the chest, pumping
+    if (a.mode === 'sit') {                                 // seated: left arm rests forward on the table (mug in hand)
+      DROP += 0.20; legScaleY = Math.max(0.5, 1 - DROP / HIP);
+      legLX = legRX = -1.2; armLX = -1.35 + idle * 0.03; armRX = -0.25 + idle * 0.04;
+      torsoX = 0.06; headX = -0.05; hipY = HIP - 0.22;
+      kneeL = kneeR = 1.45; elbowL = 0.15; elbowR = 0.5;
+    } else if (a.mode === 'drink') {                        // raise the tankard (left hand) to the mouth
+      DROP += 0.20; legScaleY = Math.max(0.5, 1 - DROP / HIP);
+      armLX = -2.35 + Math.sin(a.t * 6) * 0.12; armRX = -0.25 + idle * 0.04;
+      headX = -0.16; torsoX = 0.05; hipY = HIP - 0.22;
+      legLX = legRX = -1.2; kneeL = kneeR = 1.45;
+      elbowL = -1.1; elbowR = 0.5;
+    } else if (a.mode === 'crack') {                         // crack knuckles — fists meet at the chest, pumping
     const pump = Math.sin(a.t * 16) * 0.28;
     armLX = -1.7 + pump; armRX = -1.7 - pump;
     legLX = legRX = 0; torsoX = 0.06; headX = -0.05; hipY = HIP;
@@ -1144,7 +1214,7 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
     elbowR = -L * 0.6;
   }
 
-  rig.group.rotation.x = lieTilt;
+  rig.group.rotation.x = 0;
 
   // ── legs: swing the thigh, then bend the knee (relative) ──
   p.legL.rotation.x = legLX; p.legR.rotation.x = legRX;
@@ -1178,11 +1248,16 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
     p.handL.rotation.z = f; p.handR.rotation.z = -f;
   }
 
-  const weapon = p.weapon as unknown as THREE.Object3D | undefined;
-  if (weapon) {
-    const weaponBase = (weapon as any).userData?.kind === 'torch' ? 0.4 : 1.35;   // blade points FORWARD (+Z)
-    weapon.rotation.x = weaponBase + (hasKnee && p.foreR ? p.foreR.rotation.x + p.armR.rotation.x : p.armR.rotation.x) * 0.9;
-  }
+    const weapon = p.weapon as unknown as THREE.Object3D | undefined;
+    if (weapon) {
+      const wkind = (weapon as any).userData?.kind;
+      if (wkind === 'staff') {
+        weapon.rotation.x = 0;   // a staff is held upright, independent of the arm swing
+      } else {
+        const weaponBase = wkind === 'torch' ? 0.4 : 1.35;   // blade points FORWARD (+Z)
+        weapon.rotation.x = weaponBase + (hasKnee && p.foreR ? p.foreR.rotation.x + p.armR.rotation.x : p.armR.rotation.x) * 0.9;
+      }
+    }
 
   const bob = walking ? Math.abs(Math.sin(a.t * 11)) * 0.07 : idle * 0.02;
   a.bob = bob;

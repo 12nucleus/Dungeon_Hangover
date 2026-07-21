@@ -26,7 +26,7 @@ export interface CharacterScheme {
   orc?: boolean;        // green-skin features: pointed ears, tusks, brow
   style?: 'normal' | 'chibi';  // normal proportions or chibi stubby
   monster?: 'rat' | 'bat' | 'skeleton';  // beast/undead rigs (characters.ts)
-  kind?: 'wizard' | 'barmaid' | 'bouncer';  // distinct tavern NPC silhouettes
+  kind?: 'wizard' | 'barmaid' | 'bouncer' | 'barkeep';  // distinct tavern NPC silhouettes
 }
 
 export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club' | 'torch';

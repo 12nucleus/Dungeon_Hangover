@@ -204,7 +204,8 @@ export class GameEngine {
     if (!this.fadeEl) {
       this.fadeEl = document.createElement('div');
       this.fadeEl.className = 'cine-fade';
-      document.body.appendChild(this.fadeEl);
+      // mount inside .game-root so it layers between canvas and HUD (captions)
+      (this.container.parentElement ?? document.body).appendChild(this.fadeEl);
     }
     this.fadeEl.style.opacity = String(v);
   }
@@ -468,11 +469,6 @@ export class GameEngine {
       this.rubbleMeshes.push({ mesh: r, tile: t });
     }
 
-    // give the lone warrior a lit hand-torch — but only once he's in the
-    // dungeon (not during the tavern flashback of the intro cutscene)
-    const hero = this.combat.living('party')[0];
-    const hv = hero ? this.visuals.get(hero.id) : null;
-    if (hv && !this.inTavern) this.attachHeroTorch(hv.rig);
   }
 
   /** Mount a burning torch in the hero's off-hand; its point light is the
@@ -501,13 +497,10 @@ export class GameEngine {
       new THREE.MeshBasicMaterial({ color: 0xffe9a8 }),
     );
     core.position.y = 0.7; torch.add(core);
-    const light = new THREE.PointLight(0xffb060, 13, 15, 1.5);
-    light.position.set(0, 0.66, 0);
-    torch.add(light);
+    // NOTE: no PointLight here — Greg must never emit light (see chandelier for scene fill)
     torch.position.set(0, 0.02, 0.06);
     hand.add(torch);
     this.heroTorchFlame = flame;
-    this.heroLight = light;
   }
 
   private static inRect(p: GridPos, r: { x0: number; z0: number; x1: number; z1: number }) {
@@ -724,49 +717,147 @@ export class GameEngine {
   // ══ tavern flashback set (intro cutscene) ═════════════════════
   private buildTavern(): THREE.Group {
     const g = new THREE.Group();
-    const wood = 0x6b4a2e, woodD = 0x4a3320, stone = 0x55504a, iron = 0x2a2622;
-    const box = (w: number, h: number, d: number, c: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: c }));
-      m.castShadow = m.receiveShadow = true; return m;
+    let fireT = 0;
+    const wood = 0x6b4a2e, woodD = 0x4a3320, woodL = 0x8a6238, stone = 0x55504a, stoneD = 0x3c3833, iron = 0x2a2622;
+    const mat = (c: number) => new THREE.MeshLambertMaterial({ color: c });
+    const jit = (c: number, amt = 0.12) => {
+      const f = 1 - amt / 2 + Math.random() * amt;
+      const r = (Math.min(255, ((c >> 16) & 255) * f)) | 0, gg = (Math.min(255, ((c >> 8) & 255) * f)) | 0, b = (Math.min(255, (c & 255) * f)) | 0;
+      return (r << 16) | (gg << 8) | b;
     };
-    // floor (wooden planks)
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(13, 0.3, 11), new THREE.MeshLambertMaterial({ color: woodD }));
-    floor.position.y = -0.15; g.add(floor);
-    // back + side walls
-    const back = box(13, 4, 0.3, stone); back.position.set(0, 2, -5.2); g.add(back);
-    const left = box(0.3, 4, 11, stone); left.position.set(-6.2, 2, 0); g.add(left);
-    const right = box(0.3, 4, 11, stone); right.position.set(6.2, 2, 0); g.add(right);
-    // a couple of warm wall torches
+    const box = (w: number, h: number, d: number, c: number, x: number, y: number, z: number, ry = 0) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(jit(c)));
+      m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; g.add(m); return m;
+    };
+    const cyl = (rT: number, rB: number, h: number, c: number, x: number, y: number, z: number, seg = 12) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rT, rB, h, seg), mat(c));
+      m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; g.add(m); return m;
+    };
+
+    // ── floor (planked, with per-board colour variation) + walls ──
+    for (let pz = -5.25; pz < 5.5; pz += 0.5) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(13, 0.12, 0.46), mat(jit(woodD, 0.22)));
+      m.position.set(0, -0.06, pz); m.receiveShadow = true; g.add(m);
+    }
+    box(13, 4, 0.3, stone, 0, 2, -5.2);            // back wall
+    box(0.3, 4, 11, stone, -6.2, 2, 0);            // left wall
+    box(0.3, 4, 11, stone, 6.2, 2, 0);             // right wall
+    box(13, 1.2, 0.16, woodD, 0, 3.4, -5.05);      // back-wall wainscot
+    for (const z of [-4, -1.5, 1, 3.5]) box(13, 0.32, 0.32, woodD, 0, 4.0, z);   // ceiling beams
+
+    // a few rugs for warmth (raised just above the floor to avoid z-fighting)
+    const rug = (w: number, d: number, c: number, x: number, z: number) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), mat(c)); m.position.set(x, 0.05, z); m.receiveShadow = true; g.add(m);
+    };
+    rug(3.0, 2.4, 0x6b2233, 0, 0.6); rug(2.2, 2.0, 0x2f4a55, -2.6, 2.8); rug(2.2, 2.0, 0x4a3f22, 2.9, -0.9);
+
+    // ── wall torches + a couple of hanging mugs ──
     for (const x of [-4.5, 4.5]) {
-      const bracket = box(0.2, 0.5, 0.2, iron); bracket.position.set(x, 2.6, -5); g.add(bracket);
+      box(0.2, 0.5, 0.2, iron, x, 2.6, -5);
       const flame = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.4, 7), new THREE.MeshBasicMaterial({ color: 0xffb545 }));
       flame.position.set(x, 3.0, -4.95); g.add(flame);
       const l = new THREE.PointLight(0xffb060, 9, 11, 1.6); l.position.set(x, 3.0, -4.6); g.add(l);
     }
-    // the hero's table
+    for (const x of [-5, -3, 3, 5]) cyl(0.07, 0.06, 0.18, 0x8a5a2a, x, 3.1, -4.9);   // hanging tankards
+
+    // tavern banners
+    box(1.2, 2.6, 0.1, 0x7a2230, -1.5, 3.0, -5.05); box(1.2, 2.6, 0.1, 0x2e5a7a, 1.5, 3.0, -5.05);
+
+    // ── fireplace on the back wall (right of centre) ──
+    box(2.4, 2.6, 0.5, stoneD, 3.6, 1.3, -5.0);
+    box(2.0, 0.3, 0.6, stone, 3.6, 0.2, -4.95); box(2.0, 0.3, 0.6, stone, 3.6, 2.4, -4.95);
+    box(0.3, 2.2, 0.6, stone, 2.5, 1.3, -4.95); box(0.3, 2.2, 0.6, stone, 4.7, 1.3, -4.95);
+    for (const fy of [0.7, 1.0]) {
+      const fire = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.9, 7), new THREE.MeshBasicMaterial({ color: fy < 0.9 ? 0xff8a2a : 0xffd24a }));
+      fire.position.set(3.6, fy, -4.8); g.add(fire);
+    }
+    const fireLight = new THREE.PointLight(0xffa040, 14, 14, 1.7); fireLight.position.set(3.6, 1.4, -4.4); g.add(fireLight);
+    // fireplace flicker + rising embers (runs only while the tavern exists)
+    this.propAnims.push((dt: number) => {
+      if (!this.tavern) return true;
+      fireT += dt;
+      fireLight.intensity = 14 * (0.78 + Math.sin(fireT * 13) * 0.14 + Math.random() * 0.12);
+      if (Math.random() < dt * 7) this.particles.burst({
+        pos: new THREE.Vector3(3.6, 1.0, -4.6), count: 2,
+        color: [0xff8a2a, 0xffd24a, 0xffae3a], speed: [0.3, 1.3], life: [0.4, 0.9],
+        size: [0.08, 0.22], gravity: -1.4, up: 1.6, drag: 0.6, endScale: 0.1,
+      });
+      return false;
+    });
+
+    // ── the bar: counter with a service notch for the barkeep, back-shelf, glasses ──
+    const barCx = -5.0;
+    const barSeg = (z0: number, z1: number) => {
+      box(2.1, 1.0, z1 - z0, wood, barCx, 0.5, (z0 + z1) / 2);
+      box(2.3, 0.16, (z1 - z0) + 0.2, woodL, barCx, 1.04, (z0 + z1) / 2);
+      box(2.1, 0.1, z1 - z0, woodD, barCx, 0.06, (z0 + z1) / 2);
+    };
+    barSeg(-3.6, -1.1); barSeg(1.3, 3.8);   // leave a service notch at z≈0.2 for the barkeep
+    // back shelf + bottles
+    box(2.1, 0.12, 0.5, woodD, barCx, 2.4, -5.0); box(2.1, 0.1, 0.5, woodD, barCx, 1.7, -5.0);
+    const bottleCols = [0x3a6b2a, 0x6b3a2a, 0x2a4a6b, 0x6b2a55, 0x8a7a2a, 0x2a6b5a];
+    for (let i = 0; i < 7; i++) {
+      const bx = barCx - 0.9 + i * 0.3;
+      cyl(0.08, 0.09, 0.5, bottleCols[i % bottleCols.length], bx, 2.66, -5.0, 8);
+      cyl(0.07, 0.08, 0.36, bottleCols[(i + 3) % bottleCols.length], bx, 1.92, -5.0, 8);
+    }
+    // glasses on the counter (kept clear of the barkeep's notch)
+    for (const gz of [-3.0, -2.0, 2.2, 3.2]) cyl(0.1, 0.08, 0.22, 0xbfae8a, barCx + 0.5, 1.18, gz, 8);
+
+    // ── the hero's table ──
     const table = new THREE.Group();
-    const top = box(2.4, 0.18, 1.4, wood); top.position.y = 1.0; table.add(top);
+    const top = box(2.4, 0.18, 1.4, wood, 0, 1.0, 0); table.add(top);
     for (const [sx, sz] of [[-1, -0.5], [1, -0.5], [-1, 0.5], [1, 0.5]] as const) {
-      const leg = box(0.18, 1.0, 0.18, woodD); leg.position.set(sx, 0.5, sz); table.add(leg);
+      const leg = box(0.18, 1.0, 0.18, woodD, sx, 0.5, sz); table.add(leg);
     }
     table.position.set(0, 0, 0.4); g.add(table);
-    // a stool for Greg
-    const stool = box(0.7, 0.7, 0.7, woodD); stool.position.set(0, 0.35, 1.9); g.add(stool);
-    // a barrel in the corner
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.3, 12), new THREE.MeshLambertMaterial({ color: wood }));
-    barrel.position.set(4.6, 0.65, -3.8); g.add(barrel);
-    // a snoozing patron slumped at a far table — comic background detail (asleep)
+    box(0.7, 0.7, 0.7, woodD, 0, 0.35, 1.9);   // Greg's stool
+
+    // ── two more tables with seated guests ──
+    const mkTable = (x: number, z: number) => {
+      const t = new THREE.Group();
+      const tp = box(1.8, 0.16, 1.8, wood, 0, 0.95, 0); t.add(tp);
+      for (const sx of [-0.7, 0.7]) for (const sz of [-0.7, 0.7]) { const lg = box(0.14, 0.95, 0.14, woodD, sx, 0.47, sz); t.add(lg); }
+      t.position.set(x, 0, z); g.add(t);
+      for (const [dx, dz, ry] of [[0, 1.25, Math.PI], [1.25, 0, -Math.PI / 2], [-1.25, 0, Math.PI / 2]] as const) {
+        box(0.5, 0.6, 0.5, woodD, x + dx, 0.3, z + dz, ry);
+      }
+    };
+    mkTable(-2.4, 2.6); mkTable(2.8, -0.6);
+
+    // barrels in corners
+    for (const [bx, bz] of [[5.4, -4.2], [-5.6, 4.4], [5.6, 3.6]] as const) {
+      cyl(0.6, 0.6, 1.3, wood, bx, 0.65, bz, 14);
+      box(1.3, 0.12, 1.3, iron, bx, 1.25, bz); box(1.3, 0.12, 1.3, iron, bx, 0.05, bz);
+    }
+
+    // ── NPCs ──
+    // snoozing patron (asleep, far table) — comic background detail
     const snoozer = buildCharacter(
-      { skin: 0x9a7a55, cloth: 0x3a4a5a, accent: 0x2a2a2a, hair: 0x140f0f, hood: false, style: 'normal' }, 'mug' as any,
+      { skin: 0x9a7a55, cloth: 0x3a4a5a, accent: 0x2a2a2a, hair: 0x140f0f, hood: false, style: 'normal' },
     );
-    snoozer.group.position.set(-3.6, 0, -3.2);
-    snoozer.group.rotation.y = Math.PI * 0.9;
-    (snoozer.group.children.find((c) => c.type === 'Group') as THREE.Object3D | undefined)?.traverse((o) => { (o as THREE.Mesh).visible = true; });
-    snoozer.anim.mode = 'lie';
-    g.add(snoozer.group); this.tavernRigs.push(snoozer);
-    // barmaid behind the counter (left) — short dress, apron, tray
+    snoozer.group.position.set(3.4, 0, 3.6); snoozer.group.rotation.y = Math.PI;
+    snoozer.anim.mode = 'lie'; g.add(snoozer.group); this.tavernRigs.push(snoozer);
+    this.spawnDrunkStars(new THREE.Vector3(3.4, 0.7, 2.3));   // "passed out drunk" stars, circling his head
+
+    // barkeep behind the counter (faces into the room)
+    const barkeep = buildCharacter(
+      { skin: 0xc98a5a, cloth: 0x2a2230, accent: 0x6b3a1a, hair: 0x20140c, hood: false, kind: 'barkeep' },
+    );
+    barkeep.group.position.set(-5.55, 0, 0.2); barkeep.group.rotation.y = Math.PI / 2;
+    barkeep.anim.mode = 'idle'; g.add(barkeep.group); this.tavernRigs.push(barkeep);
+
+    // seated guests at the two side tables
+    // a standing patron nursing a drink near the fire
+    const stander = buildCharacter(
+      { skin: 0x8a6a4a, cloth: 0x4a4a2a, accent: 0x2a2a2a, hair: 0x3a2a1a, hood: false, style: 'normal' },
+    );
+    stander.group.position.set(1.4, 0, -3.8); stander.group.rotation.y = -0.4; stander.anim.mode = 'idle';
+    g.add(stander.group); this.tavernRigs.push(stander);
+
+    // barmaid — front-left, serving (camera-focused)
     const barmaid = buildCharacter(
-      { skin: 0xd9a066, cloth: 0xdfe4ea, accent: 0x8b7355, hair: 0xc48a44, hood: false, kind: 'barmaid' }, 'staff' as any,
+      { skin: 0xd9a066, cloth: 0xdfe4ea, accent: 0x8b7355, hair: 0xc48a44, hood: false, kind: 'barmaid' },
     );
     barmaid.group.position.set(-3.8, 0, -1.5);
     barmaid.group.rotation.y = 0.7;
@@ -781,11 +872,31 @@ export class GameEngine {
     g.add(wizard.group); this.tavernRigs.push(wizard); this.tavernActors.wizard = wizard;
     // retired-orc bouncer near the entrance — bald, black vest, bulky, club
     const bouncer = buildCharacter(
-      { skin: 0x5f7a3a, cloth: 0x2a1f1a, accent: 0x1a0f0a, hair: 0x101010, hood: false, kind: 'bouncer', bulk: 1.45 }, 'club',
+      { skin: 0x5f7a3a, cloth: 0x2a1f1a, accent: 0x1a0f0a, hair: 0x101010, hood: false, kind: 'bouncer', bulk: 1.45 },
     );
     bouncer.group.position.set(3.4, 0, -4.0);
     bouncer.group.rotation.y = -0.5;
     g.add(bouncer.group); this.tavernRigs.push(bouncer); this.tavernActors.bouncer = bouncer;
+
+    // ── chandelier: a hanging fixture that lights the whole room (ambient fill) ──
+    const chand = new THREE.Group();
+    const cmat = new THREE.MeshLambertMaterial({ color: 0x2a2018 });
+    for (let i = 0; i < 4; i++) { const r = 0.5 + i * 0.35; const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.04, 6, 20), cmat); ring.rotation.x = Math.PI / 2; ring.position.y = -i * 0.12; chand.add(ring); }
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const cx = Math.cos(a) * 1.0, cz = Math.sin(a) * 1.0;
+      const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 6), new THREE.MeshLambertMaterial({ color: 0xe8e0c8 }));
+      candle.position.set(cx, -0.1, cz); chand.add(candle);
+      const fl = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 6), new THREE.MeshBasicMaterial({ color: 0xffb545 }));
+      fl.position.set(cx, 0.04, cz); chand.add(fl);
+    }
+    const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 6), cmat);
+    chain.position.y = 0.55; chand.add(chain);
+    chand.position.set(0, 3.7, 0); g.add(chand);
+    const chandLight = new THREE.PointLight(0xffd9a0, 26, 24, 1.4);
+    chandLight.position.set(0, 3.4, 0); g.add(chandLight);
+    g.add(new THREE.AmbientLight(0xfff0dd, 0.55));   // even fill so the whole scene reads
+
     return g;
   }
 
@@ -828,12 +939,18 @@ export class GameEngine {
     this.inTavern = true;
     this.world.group.visible = false;
     this.props.group.visible = false;
+    // hide the dungeon's inhabitants (and their name/HP labels) so they don't
+    // render *through* the tavern set — the tavern is built over the starter room
+    for (const [id, v] of this.visuals) {
+      v.bar.style.display = 'none';
+      if (id !== hero.id) v.rig.group.visible = false;
+    }
     this.tavern = this.buildTavern();
     this.scene.add(this.tavern);
     this.scene.fog = new THREE.Fog(0x140d08, 6, 26);
 
-    // seat Greg at the table with a tankard (facing the table, not the wall)
-    const seat = new THREE.Vector3(0, 0, 1.9);
+    // seat Greg at the table: pulled up to it and down onto the stool, facing the table
+    const seat = new THREE.Vector3(0, 0.58, 1.65);   // hips on the stool, close to the table
     hv.rig.group.position.copy(seat);
     hv.rig.group.rotation.y = Math.PI;
     hv.yaw = hv.targetYaw = Math.PI;
@@ -843,10 +960,12 @@ export class GameEngine {
     const mugFoam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 8), new THREE.MeshLambertMaterial({ color: 0xf2ead2 }));
     mugFoam.position.y = 0.14; mug.add(mugBody, mugFoam);
     (mugBody.geometry as THREE.BufferGeometry).computeBoundingSphere();
-    const hand = hv.rig.parts.handR ?? hv.rig.parts.armR;
+    const hand = hv.rig.parts.handL ?? hv.rig.parts.armL;   // left hand rests on the table with the drink
     let mugHand: THREE.Object3D | null = null;
     if (hand) { mug.position.set(0, 0.18, 0.12); hand.add(mug); mugHand = hand; }
     hv.rig.group.scale.setScalar(1);
+    // Greg is a drunk, not a warrior — no weapon or torch during the flashback
+    setWeapon(hv.rig, null, hero.scheme.accent);
 
     // camera: cinematic slow ease, keep the lens *inside* the tavern set
     this.iso.lerp = 2.0;
@@ -855,6 +974,7 @@ export class GameEngine {
     this.iso.desiredYaw = -Math.PI * 0.22; this.iso.desiredPitch = 0.5; this.iso.desiredDist = 5.2;
     this.iso.focus(head);
     this.fadeTo(0);          // fade in from black
+    this.audio.stopMusic(); this.audio.playTavernMusic();   // swap dungeon ambience for the tavern theme
     await this.cineDelay(900);
     if (this.introSkipped) { this.finishIntro(); return; }
 
@@ -871,7 +991,10 @@ export class GameEngine {
     const bc = this.tavernActors.bouncer;
     this.iso.desiredYaw = -1.2; this.iso.desiredDist = 4.6; this.iso.focus(new THREE.Vector3(-3.8, 1.2, -1.5));
     await this.cineDelay(600);
-    await this.narrate('narr_tavern', 'The barmaid has seen this routine forty-seven times. She pours another. Greg takes it as encouragement. Nobody else in the room moves.', 7200);
+    // the barmaid crosses to Greg's table with another round (runs alongside the line)
+    const bar = this.tavernActors.barmaid;
+    if (bar) this.barmaidServe(bar);
+    await this.narrate('narr_tavern', 'The barmaid has seen this routine forty-seven times. She pours another and wanders it over. Greg takes it as encouragement. Nobody else in the room moves.', 7200);
     if (this.introSkipped) { this.finishIntro(); return; }
 
     this.iso.desiredYaw = 0.4; this.iso.desiredDist = 4.6; this.iso.focus(new THREE.Vector3(4.5, 1.3, -3.3));
@@ -880,13 +1003,12 @@ export class GameEngine {
     if (this.introSkipped) { this.finishIntro(); return; }
 
     // ── the bouncer cracks his knuckles (animated) as the narrator names him ──
-    this.iso.desiredYaw = 0.5; this.iso.desiredDist = 5.0;
-    this.iso.focus(new THREE.Vector3(3.4, 1.0, -4.0));
+    this.iso.desiredYaw = -0.5; this.iso.desiredDist = 5.4;
+    this.iso.focus(new THREE.Vector3(3.4, 1.1, -4.0));
     if (bc) bc.anim.mode = 'crack';
-    await this.cineDelay(400);
-    this.iso.focus(head); this.iso.desiredDist = 5.5;
     await this.narrate('narr_bouncer', 'The bouncer — a retired orc warlord who traded raiding for the quiet life — cracks his knuckles. Greg mistakes this for applause and stands on the table.', 7600);
     if (bc) bc.anim.mode = 'idle';
+    this.iso.focus(head); this.iso.desiredDist = 5.5;   // swing back to Greg for the table-climb
     if (this.introSkipped) { this.finishIntro(); return; }
     // Greg clambers onto the table
     hv.rig.group.position.y = 1.3;     // on top of the table
@@ -903,22 +1025,39 @@ export class GameEngine {
     this.animateTo(() => stoolMesh.position.y, (v) => { stoolMesh.position.y = v; }, stoolTarget.y, 0.5);
     this.iso.shake = Math.max(this.iso.shake, 0.15);
     await this.cineDelay(250);
-    // PURPLE FLASH — polymorph!
-    FX.explosion(this.particles, stoolTarget, 1.2);
-    this.particles.burst({ pos: stoolTarget, count: 30, color: [0x8a4af0, 0xb06af0, 0xffffff, 0xdaa0ff], speed: [1, 4], life: [0.4, 0.9], size: [0.3, 0.8], gravity: -1.5, up: 2.5, endScale: 0.1 });
+    // wizard casts — camera swings to him as the bolt streaks from his staff to Greg
+    const wiz = this.tavernActors.wizard;
+    const from = new THREE.Vector3(4.4, 1.35, -2.3);   // ≈ staff tip, beside the wizard
+    const to = hv.rig.group.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+    this.iso.desiredYaw = -1.3; this.iso.desiredDist = 5.0; this.iso.focus(new THREE.Vector3(4.5, 1.4, -3.3));
+    if (wiz) wiz.anim.lunge = -0.6;                     // wind up
+    this.audio.play('magic_missile', 0.9);
+    await this.cineDelay(160);
+    if (wiz) wiz.anim.lunge = 1;                        // thrust + cast
+    this.launchMagicMissile(from, to);
+    this.iso.shake = Math.max(this.iso.shake, 0.12);
+    await this.cineDelay(220);                          // bolt leaves the staff
+    this.iso.focus(head); this.iso.desiredDist = 5.5;   // swing back to Greg for the impact
+    await this.cineDelay(220);
+    if (wiz) wiz.anim.lunge = 0;
+    // IMPACT — purple flash + polymorph
+    FX.explosion(this.particles, to, 1.2);
+    this.particles.burst({ pos: to, count: 30, color: [0x8a4af0, 0xb06af0, 0xffffff, 0xdaa0ff], speed: [1, 4], life: [0.4, 0.9], size: [0.3, 0.8], gravity: -1.5, up: 2.5, endScale: 0.1 });
     this.iso.shake = Math.max(this.iso.shake, 0.22);
     if (this.heroLight) this.heroLight.color.setHex(0x8a4af0);  // purple flash
-    // swap Greg's rig for an actual sheep for ~3 seconds
+    // swap Greg's rig for an actual sheep — shrunk to half size
     const gregWp = hv.rig.group.position.clone();
     const sheep = this.buildSheep();
-    sheep.position.copy(gregWp); sheep.scale.setScalar(hv.rig.group.scale.x);
+    sheep.position.copy(gregWp); sheep.rotation.y = hv.rig.group.rotation.y;
+    sheep.scale.setScalar(0.5);
     this.tavern!.add(sheep);
     hv.rig.group.visible = false;
-    await this.cineDelay(3000);
+    // keep Greg a sheep until the narration of the gag is done
+    await this.narrate('narr_sheep', 'A barstool flies. The wizard shrieks. There is a flash of purple light. And for approximately three seconds, Greg the Grim is a very, very loud sheep.', 7600);
+    // revert only after the story beat finishes
     hv.rig.group.visible = true;
     this.tavern!.remove(sheep);
     if (this.heroLight) this.heroLight.color.setHex(0xffb060);  // restore
-    await this.narrate('narr_sheep', 'A barstool flies. The wizard shrieks. There is a flash of purple light. And for approximately three seconds, Greg the Grim is a very, very loud sheep.', 7600);
     this.scene.remove(stoolMesh); stoolMesh.geometry.dispose();
     if (this.introSkipped) { this.finishIntro(); return; }
     // Greg stumbles off the table, dizzy
@@ -932,11 +1071,14 @@ export class GameEngine {
     this.iso.desiredDist = 3.6; this.iso.focus(head);   // tight on his face
     await this.cineDelay(900);
     hv.rig.anim.flinch = 1; this.iso.shake = Math.max(this.iso.shake, 0.18);   // he wilts
-    hv.rig.group.rotation.x = -0.5;   // face plants toward the table
-    await this.cineDelay(1100);
-    this.clearCine();
-    this.fadeTo(1);                    // to black
-    await this.cineDelay(800);
+    hv.rig.group.rotation.x = -0.5;   // slumps forward
+    await this.cineDelay(900);
+    // voice-over as the world goes soft, then a slow blur into black (a faint, not a cut)
+    await this.narrate('narr_faint', 'Greg the Grim drains the last of it, declares the stool defeated, and pitches forward into the sawdust. The room tilts… and goes dark.', 7000);
+    if (this.introSkipped) { this.finishIntro(); return; }
+    this.passOut(1.6);
+    this.audio.stopTavernMusic(); this.audio.playMusic('music_ambient');   // fade the tavern theme out as he passes out
+    await this.cineDelay(1800);
     await this.narrate('narr_bridge', 'Greg the Grim drank the tavern dry, insulted a man with a sword, challenged a polymorph wizard to a fistfight, and briefly became livestock. None of those ended well.', 6800);
     if (this.introSkipped) { this.finishIntro(); return; }
 
@@ -946,6 +1088,8 @@ export class GameEngine {
     this.props.group.visible = true;
     this.scene.fog = new THREE.Fog(0x08080e, 4, 24);
     this.inTavern = false;
+    for (const [id, v] of this.visuals) { if (id !== hero.id) v.rig.group.visible = true; }
+    setWeapon(hv.rig, hero.weapon, hero.scheme.accent);   // re-arm Greg for the dungeon
 
     // Greg lies on the floor of the starter room, groggy
     const floorWp = this.unitWorld(this.combat.units[0].pos);
@@ -957,6 +1101,8 @@ export class GameEngine {
 
     this.iso.desiredYaw = Math.PI * 0.25; this.iso.desiredPitch = 0.62; this.iso.desiredDist = 8;
     this.iso.focus(floorWp.clone().add(new THREE.Vector3(0, 1.2, 0)));
+    this.renderer.domElement.style.filter = 'none';        // clear the pass-out blur
+    if (this.fadeEl) this.fadeEl.style.transition = '';    // restore the smooth fade-in
     this.fadeTo(0);
     await delay(700);
     await this.narrate('narr_wake', 'You wake at the bottom of a fifty floor dungeon. In your underwear. With a headache that could crush a small kingdom.', 6200);
@@ -968,12 +1114,17 @@ export class GameEngine {
     await this.narrate('narr_premise', 'A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that probably won\'t last. The only way out is up.', 6600);
     if (this.introSkipped) { this.finishIntro(); return; }
 
-    // he hauls himself to his feet (crouch → stand) while the stars spin off
-    hv.rig.anim.mode = 'idle'; hv.rig.anim.crouch = 1.2;
-    this.animateTo(() => hv.rig.anim.crouch, (val) => { hv.rig.anim.crouch = val; }, 0, 1.3);
+    // he hauls himself up — first sit up (rotate upright), then rise to his feet
+    hv.rig.group.rotation.x = -Math.PI / 2;     // start flat on the floor
+    hv.rig.anim.mode = 'getup';
+    hv.rig.anim.crouch = 1.3;                    // deep knee-bend for the "getting up" pose
     this.iso.desiredDist = 5.5; this.iso.focus(floorWp.clone().add(new THREE.Vector3(0, 1.4, 0)));
+    this.animateTo(() => hv.rig.group.rotation.x, (val) => { hv.rig.group.rotation.x = val; }, 0, 0.7);  // sit up
+    await delay(700);
+    this.animateTo(() => hv.rig.anim.crouch, (val) => { hv.rig.anim.crouch = val; }, 0, 0.8);            // stand
     for (let i = 0; i < 3; i++) { this.spawnStars(starPos); await delay(450); }
     await delay(700);
+    hv.rig.anim.mode = 'idle'; hv.rig.anim.crouch = 0;
     await this.narrate('narr_small', 'Yes. Underwear. The dungeon, it seems, has a sense of humour. Try not to lose the potion before the first rat, hmm?', 6000);
     this.spawnStars(starPos);
     await delay(900);
@@ -988,14 +1139,21 @@ export class GameEngine {
     this.introPlayed = true;
     this.introActive = false;
     this.introSkipped = false;
+    this.inTavern = false;
+    this.world.group.visible = true;
+    this.props.group.visible = true;
+    this.audio.stopTavernMusic(); this.audio.playMusic('music_ambient');
+    const hero = this.combat.living('party')[0];
+    // reveal the dungeon's inhabitants again (hidden during the tavern flashback)
+    for (const [id, v] of this.visuals) { if (!hero || id !== hero.id) v.rig.group.visible = true; }
     this.clearCine();
     this.fadeTo(0);
-    const hero = this.combat.living('party')[0];
     if (hero) {
       const hv = this.visuals.get(hero.id);
       if (hv) {
         hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 0; hv.rig.group.rotation.set(0, Math.PI, 0);
         hv.yaw = hv.targetYaw = Math.PI;
+        if (hero.weapon) setWeapon(hv.rig, hero.weapon, hero.scheme.accent);
         if (!this.heroLight) this.attachHeroTorch(hv.rig);   // give him the torch now
       }
     }
@@ -1006,6 +1164,76 @@ export class GameEngine {
     this.phase = 'explore';
     this.pushLog('Floor 1 — The Warlord\'s Warren. (B) jumps to the boss cutscene. Light the bonfire to set your respawn.', 'system');
     this.emitSnapshot();
+  }
+
+  /** Title card: a slow fade to black, then a view of the tavern from the
+   *  outside with two caption lines, and finally the interior cutscene. */
+  private async playTitleSequence() {
+    this.busy = true;
+    this.introActive = true;
+    this.cutsceneSkip = false;
+    this.cinematic = true;            // hide the menu UI while the title plays
+    this.emitSnapshot();
+
+    // tuck the dungeon away — we're showing the tavern exterior
+    this.world.group.visible = false;
+    this.props.group.visible = false;
+    for (const [, v] of this.visuals) v.rig.group.visible = false;
+
+    const prevBg = this.scene.background;
+    this.scene.background = new THREE.Color(0x070713);
+    this.scene.fog = new THREE.Fog(0x070713, 14, 40);
+
+    const ext = this.buildTavernExterior();
+    this.scene.add(ext);
+
+    this.iso.lerp = 2.0;
+    this.iso.box = { minX: -14, maxX: 14, minZ: -14, maxZ: 14, minY: 0, maxY: 16 };
+    this.iso.desiredYaw = 0.18; this.iso.desiredPitch = 0.42; this.iso.desiredDist = 9;
+    this.iso.focus(new THREE.Vector3(0, 2.2, 0));
+
+    // ease out to black, then reveal the exterior
+    this.fadeTo(1); await this.cineDelay(700);
+    this.fadeTo(0); this.audio.stopMusic();
+    await this.cineDelay(600);
+    if (this.introSkipped) { this.endTitleSequence(ext, prevBg); return; }
+
+    await this.narrate('title_1', 'In a tavern far, far away…', 3200);
+    if (this.introSkipped) { this.endTitleSequence(ext, prevBg); return; }
+    await this.narrate('title_2', 'Actually, not that far. Just around the corner from the village.', 3800);
+    if (this.introSkipped) { this.endTitleSequence(ext, prevBg); return; }
+
+    // fade back to black and roll into the interior cutscene
+    this.fadeTo(1); await this.cineDelay(700);
+    this.endTitleSequence(ext, prevBg);
+  }
+
+  private endTitleSequence(ext: THREE.Group, prevBg: any) {
+    this.clearCine();
+    this.scene.remove(ext);
+    this.scene.background = prevBg;
+    const hero = this.combat.living('party')[0];
+    const hv = hero ? this.visuals.get(hero.id) : null;
+    if (hv) hv.rig.group.visible = true;   // playIntroCutscene expects the hero visible
+    this.playIntroCutscene();
+  }
+
+  /** a cosy tavern building, seen from the street at night */
+  private buildTavernExterior(): THREE.Group {
+    const g = new THREE.Group();
+    const mat = (c: number) => new THREE.MeshLambertMaterial({ color: c });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 5), mat(0x4a3a2a)); body.position.set(0, 2, 0); g.add(body);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(4.7, 2.2, 4), mat(0x6b2f2a)); roof.position.set(0, 5.1, 0); roof.rotation.y = Math.PI / 4; g.add(roof);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.0, 0.2), mat(0x3a2614)); door.position.set(0, 1.0, 2.51); g.add(door);
+    for (const wx of [-1.8, 1.8]) {
+      const win = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 0.2), new THREE.MeshBasicMaterial({ color: 0xffcf7a }));
+      win.position.set(wx, 2.2, 2.51); g.add(win);
+      const wl = new THREE.PointLight(0xffb060, 6, 9, 1.6); wl.position.set(wx, 2.2, 3.4); g.add(wl);
+    }
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.4, 0.12), mat(0x3a2614)); post.position.set(2.7, 1.2, 2.6); g.add(post);
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.7, 0.12), mat(0x5a3a1e)); sign.position.set(1.7, 2.0, 2.6); g.add(sign);
+    const moon = new THREE.DirectionalLight(0x8090c0, 0.5); moon.position.set(-6, 9, 7); g.add(moon);
+    return g;
   }
 
   /** Ease the boss's facing toward a world point (the smooth-facing lerp in the
@@ -1055,6 +1283,28 @@ export class GameEngine {
     });
   }
 
+  /** a glowing magic bolt that flies from `from` to `to`, trailing sparks */
+  private launchMagicMissile(from: THREE.Vector3, to: THREE.Vector3) {
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0xc89bff }),
+    );
+    orb.position.copy(from); this.scene.add(orb);
+    const dur = 0.42; let t = 0;
+    this.propAnims.push((dt: number) => {
+      t = Math.min(dur, t + dt);
+      const k = t / dur;
+      orb.position.lerpVectors(from, to, k);
+      this.particles.burst({
+        pos: orb.position.clone(), count: 3,
+        color: [0x8a4af0, 0xb06af0, 0xe0c0ff], speed: [0.2, 0.9], life: [0.2, 0.45],
+        size: [0.14, 0.34], gravity: -0.4, up: 0, drag: 0.92, endScale: 0.1,
+      });
+      if (t >= dur) { this.scene.remove(orb); orb.geometry.dispose(); return true; }
+      return false;
+    });
+  }
+
   /** dazed "stars" circling the head — little yellow sparkles in a slow ring */
   private spawnStars(p: THREE.Vector3) {
     const N = 7;
@@ -1069,6 +1319,78 @@ export class GameEngine {
       });
       void vx; void vz; void vy;
     }
+  }
+
+  /** walk a loose tavern rig (not a combat UnitVisual) across the floor to `to`,
+   *  playing the walk cycle and turning to face the travel direction. */
+  private walkRig(rig: Rig, to: THREE.Vector3, dur: number): Promise<void> {
+    return new Promise((resolve) => {
+      const from = rig.group.position.clone();
+      const yaw = Math.atan2(to.x - from.x, to.z - from.z);
+      rig.anim.mode = 'walk';
+      let t = 0;
+      this.propAnims.push((dt: number) => {
+        t = Math.min(dur, t + dt);
+        const k = dur > 0 ? t / dur : 1;
+        rig.group.position.x = from.x + (to.x - from.x) * k;
+        rig.group.position.z = from.z + (to.z - from.z) * k;
+        let d = yaw - rig.group.rotation.y;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        rig.group.rotation.y += d * Math.min(1, dt * 6);
+        if (t >= dur) { rig.group.position.copy(to); rig.anim.mode = 'idle'; resolve(); return true; }
+        return false;
+      });
+    });
+  }
+
+  /** barmaid's "another round" bit: step up to Greg's table from the side (never
+   *  through it), pause with the tray, then stroll back to her post. */
+  private async barmaidServe(bar: Rig) {
+    if (this.introSkipped) return;
+    this.walkRig(bar, new THREE.Vector3(-1.8, 0, 0.4), 1.6);   // left of the table, clear of it
+    await this.cineDelay(1600);
+    if (this.introSkipped) return;
+    await this.cineDelay(1300);                       // present the tray at the table
+    if (this.introSkipped) return;
+    this.walkRig(bar, new THREE.Vector3(-3.8, 0, -1.5), 1.6);
+    await this.cineDelay(1600);
+  }
+
+  /** "passing out" transition: slowly blur the rendered frame and fade to black,
+   *  instead of an instant cut. */
+  private passOut(dur: number) {
+    const cv = this.renderer.domElement;
+    if (this.fadeEl) this.fadeEl.style.transition = 'none';
+    const t0 = performance.now();
+    const tick = () => {
+      const k = Math.min(1, (performance.now() - t0) / (dur * 1000));
+      const e = 1 - (1 - k) * (1 - k);                // ease-out
+      cv.style.filter = `blur(${(e * 9).toFixed(2)}px)`;
+      if (this.fadeEl) this.fadeEl.style.opacity = String(e);
+      else this.fadeTo(e);
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  /** persistent ring of "drunk" stars orbiting a passed-out patron's head */
+  private spawnDrunkStars(center: THREE.Vector3) {
+    let ang = 0;
+    this.propAnims.push((dt: number) => {
+      if (!this.tavern) return true;                 // stop once the tavern is gone
+      ang += dt * 1.6;
+      if (Math.random() < dt * 6) {
+        const a = ang + Math.random() * 0.6;
+        const r = 0.45 + Math.random() * 0.15;
+        const p = center.clone().add(new THREE.Vector3(Math.cos(a) * r, (Math.random() - 0.5) * 0.3, Math.sin(a) * r));
+        this.particles.burst({
+          pos: p, count: 1, color: [0xffe066, 0xfff3b0, 0xffd23a], speed: [0.1, 0.3],
+          life: [0.9, 1.4], size: [0.25, 0.5], gravity: -0.4, up: 0, drag: 0.9, endScale: 0.1,
+        });
+      }
+      return false;
+    });
   }
 
   private async playBossCutscene() {
@@ -1574,7 +1896,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     if (!this.introPlayed) {
       this.phase = 'menu';     // gated while the intro plays
       this.busy = true;
-      void this.playIntroCutscene();
+      void this.playTitleSequence();
       return;
     }
     this.phase = 'explore';
@@ -2578,7 +2900,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     // unit bars
     for (const [id, v] of this.visuals) {
       const u = this.byId(id);
-      if (!u || !u.alive || this.phase === 'menu') { if (v.bar.style.display !== 'none') v.bar.style.display = 'none'; continue; }
+      if (!u || !u.alive || this.phase === 'menu' || this.inTavern) { if (v.bar.style.display !== 'none') v.bar.style.display = 'none'; continue; }
       v.bar.style.display = 'block';
       const sp = v.rig.group.position.clone(); sp.y += v.rig.pivots ? 2.8 : 2.05;
       sp.project(this.iso.cam);

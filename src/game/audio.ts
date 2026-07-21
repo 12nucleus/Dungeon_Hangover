@@ -17,19 +17,23 @@ export class AudioManager {
   private master!: GainNode;
   private sfxGain!: GainNode;
   private musicGain!: GainNode;
+  private tavernGain!: GainNode;
   private buffers = new Map<string, AudioBuffer>();
   private musicSource: AudioBufferSourceNode | null = null;
+  private tavernSource: AudioBufferSourceNode | null = null;
   private drumTimer: number | null = null;
   private nextBeat = 0;
   private beatCount = 0;
   muted = false;
   private started = false;
+  private tavernPending = false;
 
   /** must be called from a user gesture */
   async init() {
     if (this.started) return;
     this.started = true;
     this.ctx = new AudioContext();
+    if (this.ctx.state === 'suspended') { try { await this.ctx.resume(); } catch { /* ignore */ } }
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.9;
     this.master.connect(this.ctx.destination);
@@ -39,6 +43,9 @@ export class AudioManager {
     this.musicGain = this.ctx.createGain();
     this.musicGain.gain.value = 0.42;
     this.musicGain.connect(this.master);
+    this.tavernGain = this.ctx.createGain();
+    this.tavernGain.gain.value = 0;   // silent until the tavern plays
+    this.tavernGain.connect(this.master);
 
     const load = async (name: string) => {
       try {
@@ -47,8 +54,9 @@ export class AudioManager {
         this.buffers.set(name, await this.ctx!.decodeAudioData(buf));
       } catch { /* missing file → silently skip */ }
     };
-    await Promise.all([...SFX_FILES.map(load), load('music_ambient')]);
+    await Promise.all([...SFX_FILES.map(load), load('music_ambient'), load('tavern_music')]);
     this.playMusic('music_ambient');
+    if (this.tavernPending) { this.tavernPending = false; this.playTavernMusic(); }
   }
 
   play(name: SfxName, volume = 1, rate = 1) {
@@ -75,6 +83,45 @@ export class AudioManager {
     src.connect(this.musicGain);
     src.start();
     this.musicSource = src;
+  }
+
+  /** tavern theme — loops on its own gain so it can fade independently */
+  playTavernMusic() {
+    if (!this.ctx || this.muted) return;
+    const buf = this.buffers.get('tavern_music');
+    if (!buf) { this.tavernPending = true; return; }
+    this.tavernSource?.stop();
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    src.connect(this.tavernGain);
+    src.start();
+    this.tavernSource = src;
+    const now = this.ctx.currentTime;
+    const g = this.tavernGain.gain;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(0.22, now + 2.0);   // well below the narration VO
+  }
+
+  /** fade the tavern theme out (kept quieter than the voiceover throughout) */
+  stopTavernMusic() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const g = this.tavernGain.gain;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(0.0001, now + 1.5);
+    const src = this.tavernSource;
+    this.tavernSource = null;
+    if (src) setTimeout(() => { try { src.stop(); } catch { /* already stopped */ } }, 1700);
+  }
+
+  /** hard-stop the looping dungeon/ambient track (e.g. when swapping to tavern) */
+  stopMusic() {
+    if (!this.ctx) return;
+    this.musicSource?.stop();
+    this.musicSource = null;
   }
 
   /** adaptive layer: war drums while in combat */

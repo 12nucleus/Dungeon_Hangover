@@ -136,7 +136,7 @@ function rockShade(y, t) {
 export function propStalagmite(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 1);
   const v = new Vox();
-  const cube = 0.05;
+  const cube = 0.055;
   const H = 26 + Math.floor(R() * 16);         // grid height
   const r0 = 5 + Math.floor(R() * 2);
   const lean = (R() - 0.5) * 6;
@@ -172,7 +172,7 @@ export function propStalagmite(seed = 0.5) {
 export function propStalactite(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 7);
   const v = new Vox();
-  const cube = 0.05;
+  const cube = 0.055;
   const H = 18 + Math.floor(R() * 14);
   const r0 = 4 + Math.floor(R() * 2);
   const lean = (R() - 0.5) * 4;
@@ -199,7 +199,7 @@ export function propStalactite(seed = 0.5) {
 function crystalCluster(seed, base, glowColor) {
   const R = rng(Math.floor(seed * 1000) + 3);
   const v = new Vox();
-  const cube = 0.05;
+  const cube = 0.055;
   const lo = shade(base, 0.6), hi = shade(base, 1.35), tip = mix(base, 0xffffff, 0.55);
   const shards = 3 + Math.floor(R() * 4);
   let maxH = 0;
@@ -238,7 +238,7 @@ export function propCrystalGreen(seed = 0.5) { const m = crystalCluster(seed, 0x
 export function propBoulder(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 11);
   const v = new Vox();
-  const cube = 0.05;
+  const cube = 0.055;
   const rx = 8 + Math.floor(R() * 3), ry = 6 + Math.floor(R() * 2), rz = 8 + Math.floor(R() * 3);
   for (let x = -rx; x <= rx; x++) for (let y = 0; y <= ry * 2; y++) for (let z = -rz; z <= rz; z++) {
     const dx = x / rx, dy = (y - ry) / ry, dz = z / rz;
@@ -259,7 +259,7 @@ export function propBoulder(seed = 0.5) {
 export function propBones(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 13);
   const v = new Vox();
-  const cube = 0.045;
+  const cube = 0.055;
   const BONE = 0xd8d2c0, BONE_D = 0xb3ab93, BONE_D2 = 0x8f866c, SOCK = 0x2a2620;
   // skull
   const sx = -4, sy = 2, sz = 0;
@@ -293,7 +293,7 @@ export function propBones(seed = 0.5) {
 export function propTorch(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 17);
   const v = new Vox();
-  const cube = 0.05;
+  const cube = 0.055;
   const WOOD = 0x6b4a2e, WOOD_D = 0x4a3320, WOOD_HI = 0x855f3a;
   const RAG = 0x3a2f24, IRON = 0x50535c;
   // pole
@@ -320,7 +320,7 @@ export function propTorch(seed = 0.5) {
 export function propBrazier(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 19);
   const v = new Vox();
-  const cube = 0.05;
+  const cube = 0.055;
   const IRON = 0x4a4d55, IRON_D = 0x33353c, IRON_HI = 0x6a6d78;
   const COAL = 0x1c1410, EMBER = 0xff5a1e, EMBER_HI = 0xffb545;
   // three legs
@@ -353,7 +353,7 @@ export function propBrazier(seed = 0.5) {
 export function propMushroom(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 23);
   const v = new Vox();
-  const cube = 0.045;
+  const cube = 0.055;
   const STEM = 0xe8e0d0, STEM_D = 0xc7bda6, GILL = 0xc98a4a;
   const capHues = [0x49b6ff, 0x8a5cf0, 0x36d17a];
   const cap = capHues[Math.floor(R() * capHues.length)];
@@ -396,7 +396,7 @@ export function propMushroom(seed = 0.5) {
 export function propBonfire(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 29);
   const v = new Vox();
-  const cube = 0.05;
+  const cube = 0.055;
   const STONE = 0x5a5560, STONE_D = 0x413d47, STONE_HI = 0x6f6a78;
   const WOOD = 0x6b4a2e, WOOD_D = 0x4a3320, WOOD_HI = 0x855f3a, ASH = 0x3a3630;
   // stone ring
@@ -431,7 +431,7 @@ export function propBonfire(seed = 0.5) {
 export function propWebPile(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 31);
   const v = new Vox();
-  const cube = 0.05;
+  const cube = 0.055;
   const WEB = 0xdad6ce, WEB_D = 0xa7a49c;
   for (let i = 0; i < 10; i++) {
     const ang = (i / 10) * Math.PI;
@@ -448,7 +448,7 @@ export function propWebPile(seed = 0.5) {
 export function propRubble(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 37);
   const v = new Vox();
-  const cube = 0.05;
+  const cube = 0.055;
   for (let i = 0; i < 9; i++) {
     const cx = Math.round((R() - 0.5) * 14), cz = Math.round((R() - 0.5) * 14);
     const s = 1 + Math.floor(R() * 2);
@@ -487,7 +487,7 @@ const CLOTH = 0xb8a06a, CLOTH_D = 0x8f7a4c, ROPE = 0x6b5836;
 export function destrCrate(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 101);
   const v = new Vox();
-  const cube = 0.06;
+  const cube = 0.055;
   const N = 11;          // 0..11
   const plank = (x, y, z) => {
     // vertical plank grooves every 3 cols on x/z faces
@@ -518,7 +518,7 @@ export function destrCrate(seed = 0.5) {
 // BARREL — curved staves, iron hoops, lid
 export function destrBarrel(seed = 0.5) {
   const v = new Vox();
-  const cube = 0.06;
+  const cube = 0.055;
   const H = 13;
   for (let y = 0; y <= H; y++) {
     const t = y / H;
@@ -548,7 +548,7 @@ export function destrBarrel(seed = 0.5) {
 // VASE — clay urn with painted band
 export function destrVase(seed = 0.5) {
   const v = new Vox();
-  const cube = 0.06;
+  const cube = 0.055;
   const profile = [2.0, 2.6, 3.2, 3.6, 3.4, 2.6, 1.6, 1.4, 1.8, 2.0]; // base→belly→neck→lip
   for (let y = 0; y < profile.length; y++) {
     const r = profile[y];
@@ -570,7 +570,7 @@ export function destrVase(seed = 0.5) {
 // CHEST — wooden body, curved lid, iron bands, gold lock
 export function destrChest(seed = 0.5) {
   const v = new Vox();
-  const cube = 0.06;
+  const cube = 0.055;
   const W = 12, D = 8, HB = 6;   // body dims
   // body shell
   for (let x = 0; x <= W; x++) for (let y = 0; y <= HB; y++) for (let z = 0; z <= D; z++) {
@@ -606,7 +606,7 @@ export function destrChest(seed = 0.5) {
 export function destrSack(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 103);
   const v = new Vox();
-  const cube = 0.06;
+  const cube = 0.055;
   const H = 11;
   for (let y = 0; y <= H; y++) {
     const t = y / H;

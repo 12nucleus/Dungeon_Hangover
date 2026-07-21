@@ -147,7 +147,7 @@ export class VoxelWorld {
   private buildMeshes() {
     const S = WORLD_SIZE;
     const tex = getTextures().map;
-    const CAVE_VOX = 0.16;   // character-scale voxel (matches monster/player detail)
+    const CAVE_VOX = 0.055;   // unified fine voxel (matches monster/player detail)
     const N = Math.round(TILE / CAVE_VOX);  // ~6 sub-voxels per tile side
     const geo = new THREE.BoxGeometry(CAVE_VOX, CAVE_VOX, CAVE_VOX);
     const L = this.level;
@@ -175,6 +175,7 @@ export class VoxelWorld {
           const nx = x + dx, nz = z + dz;
           if (this.inBounds(nx, nz) && this.heights[nx][nz] < MAX_H) { exposed = true; break; }
         }
+        const HSCALE = 0.16 / CAVE_VOX;   // keep wall world-height constant after voxel shrink
         const thick = exposed ? 2 : 1;   // thicker solid at the visible faces, hollow inside
         const baseH = 6 + Math.floor(hash(x, z, this.seed + 99) * 5);   // 6..10 base height
         for (let ix = 0; ix < N; ix++) for (let iz = 0; iz < N; iz++) {
@@ -182,8 +183,8 @@ export class VoxelWorld {
           if (!exposed && edgeDist >= thick) continue;      // skip interior when sealed
           // smooth per-column height (sub-tile frequency) → rolling rocky top
           const n = vnoise(x + (ix - N / 2) * 0.55, z + (iz - N / 2) * 0.55, this.seed + 77);
-          const amp = edgeDist === 0 ? 5 : 2.5;            // exposed faces get more relief
-          const colH = Math.max(2, Math.min(16, Math.round(baseH + (n - 0.5) * amp * 2)));
+          const amp = (edgeDist === 0 ? 5 : 2.5) * HSCALE;            // exposed faces get more relief
+          const colH = Math.max(2, Math.min(Math.round(16 * HSCALE), Math.round(baseH * HSCALE + (n - 0.5) * amp * 2)));
           for (let iy = 0; iy < colH; iy++) {
             push('cave_wall', cx + ix * CAVE_VOX, iy * CAVE_VOX, cz + iz * CAVE_VOX);
           }

@@ -239,7 +239,7 @@ export function createRoster(): Unit[] {
   return [
     // ── the party — one warrior, alone in the cave ──
     mkUnit({
-      name: 'Kael', title: 'Human Fighter', team: 'party', klass: 'fighter', pos: { x: 10, z: 8 },
+      name: 'Greg the Drunk', title: 'Human Fighter', team: 'party', klass: 'fighter', pos: { x: 10, z: 8 },
       maxHp: 38, hp: 38, ac: 16,
       abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 11, cha: 12 },
       knownSkills: ['slash', 'cleave', 'shield_bash'],
@@ -316,7 +316,7 @@ export function createDungeonRoster(sp: DungeonSpawns): Unit[] {
 
   // ── the lone hero — a warrior with a torch for light and a real blade ──
   units.push(mkUnit({
-    name: 'Kael', title: 'Human Fighter', team: 'party', klass: 'fighter', pos: { ...sp.party },
+    name: 'Greg the Drunk', title: 'Human Fighter', team: 'party', klass: 'fighter', pos: { ...sp.party },
     maxHp: 46, hp: 46, ac: 16, level: 4,
     abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 11, cha: 12 },
     knownSkills: ['slash', 'cleave', 'shield_bash', 'power_strike'],
