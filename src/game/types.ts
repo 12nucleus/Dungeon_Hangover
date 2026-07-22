@@ -139,6 +139,9 @@ export interface UISnapshot {
   showBonfireUI?: boolean;
   hermitTalk?: boolean;
   showDialogue?: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null;
+  /** cheat console overlay (backtick key) */
+  showConsole?: boolean;
+  consoleInput?: string;
 }
 
 // ── combat events: the pure-logic layer (combat.ts) emits these,

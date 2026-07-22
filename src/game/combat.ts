@@ -20,6 +20,8 @@ export class Combat {
   phase: GamePhase = 'explore';
   surpriseRound = false;
   surpriseHits: Set<string> = new Set();
+  /** cheat: when true, party members take no damage */
+  godMode = false;
 
   private world: VoxelWorld;
   constructor(world: VoxelWorld) { this.world = world; }
@@ -364,6 +366,7 @@ export class Combat {
   }
 
   private applyDamage(ev: CombatEvent[], t: Unit, amount: number, kind: import('./types').DamageType, crit: boolean) {
+    if (this.godMode && t.team === 'party') return;   // cheat: party takes no damage
     t.hp = Math.max(0, t.hp - amount);
     ev.push({ type: 'damage', unitId: t.id, amount, kind, crit });
     ev.push({ type: 'float', unitId: t.id, text: `${crit ? '💥' : ''}-${amount}`, cls: crit ? 'crit' : 'dmg' });

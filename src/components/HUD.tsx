@@ -349,6 +349,38 @@ export function HUD({ snap, engine }: Props) {
           </ul>
         </div>
       )}
+
+      {/* ══ CHEAT CONSOLE (backtick key) ══ */}
+      {snap.showConsole && (
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          background: 'rgba(10, 12, 18, 0.95)', border: '2px solid #4a9',
+          borderRadius: '8px', padding: '16px 20px', zIndex: 9999,
+          fontFamily: 'monospace', minWidth: '480px', boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+        }}>
+          <div style={{ color: '#4a9', fontSize: '12px', marginBottom: '8px', opacity: 0.7 }}>
+            CHEAT CONSOLE — type a command, press Enter (Esc to close)
+          </div>
+          <div style={{ color: '#7cc4ff', fontSize: '11px', marginBottom: '8px', opacity: 0.5 }}>
+            noaggro · godmode · superhero · heal · killall · boss · gold [amt] · levelup · help
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#4a9', fontFamily: 'monospace', fontSize: '16px' }}>{'>'}</span>
+            <span style={{
+              color: '#fff', fontFamily: 'monospace', fontSize: '16px',
+              minWidth: '400px',
+              borderBottom: '1px solid #4a9', paddingBottom: '4px',
+            }}>
+              {snap.consoleInput ?? ''}
+              <span style={{
+                display: 'inline-block', width: '8px', height: '16px',
+                background: '#4a9', marginLeft: '2px',
+                animation: 'blink 1s step-end infinite',
+              }} />
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

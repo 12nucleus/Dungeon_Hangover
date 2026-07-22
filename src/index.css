@@ -384,6 +384,10 @@ html, body, #root {
   80% { opacity: 0.8; }
   100% { opacity: 0; transform: translate(-50%, -60%) scale(1.1); }
 }
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
 
 @media (max-width: 900px) {
   .combat-log { width: 230px; }
