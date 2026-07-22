@@ -137,6 +137,7 @@ export interface UISnapshot {
   cinematic?: boolean;
   minimapTiles?: { walk: boolean[][]; heights: number[][]; units: { x: number; z: number; team: 'party' | 'enemy'; }[] };
   showBonfireUI?: boolean;
+  showFullMap?: boolean;
   hermitTalk?: boolean;
   showDialogue?: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null;
   /** cheat console overlay (backtick key) */

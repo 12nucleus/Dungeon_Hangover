@@ -69,7 +69,7 @@ function buildDungeon(seed: number) {
     mezzanineSteps: 1,
     floorPalette: ['cave_floor', 'cave_stone', 'gravel'],
     wallPalette: ['cave_stone', 'cave_floor'],
-    wallHeight: [2.8, 4.2],
+    wallHeight: [3.6, 5.5],
   });
 
   const { walk, rooms, centers, bossRoomIndex, bossDoor, bossConnect, mezzanineRoomIndices } = built;

@@ -336,12 +336,22 @@ export class GameEngine {
   private hasGoldenKey = false;
   private gameWon = false;
 
+  // ── fog of war ─────────────────────────────────────────────
+  /** tiles the player has seen at least once */
+  private explored: boolean[][] = [];
+  /** dark overlay meshes covering unexplored tiles (indexed by "x,z") */
+  private fogGroup: THREE.Group | null = null;
+  private fogCubes: Map<string, THREE.Mesh> = new Map();
+  /** vision radius (tiles) — torch extends it; base is a small cone */
+  private visionRadius = 6;
+
   // ── cheat console ──────────────────────────────────────────
   /** when true the camera continuously follows the party leader */
   private followCam = false;
   /** proximity aggro is OFF by default — the player explores freely;
    *  toggle with the `noaggro` console command */
   private aggroDisabled = true;
+  private showFullMap = false;
   /** console overlay open? (backtick key) */
   private consoleOpen = false;
   /** current console input line */
@@ -407,6 +417,15 @@ export class GameEngine {
     // world — underground cave level
     this.world = new VoxelWorld(dungeonLevel, 1337);
     this.scene.add(this.world.group);
+
+    // ── fog of war: initialize the explored grid (all dark) + overlay group ──
+    {
+      const FS = this.world.heights.length;
+      this.explored = Array.from({ length: FS }, () => new Array<boolean>(FS).fill(false));
+      this.fogGroup = new THREE.Group();
+      this.scene.add(this.fogGroup);
+    }
+
     // find bonfire prop
     for (const child of this.world.group.children) {
       if ((child as any).userData?.isBonfire) {
@@ -1011,11 +1030,14 @@ export class GameEngine {
         }
         break;
       case 'reveal':
-        // reveal the full map by setting all tiles visible
-        for (let x = 0; x < this.world.heights.length; x++)
-          for (let z = 0; z < this.world.heights[x].length; z++)
-            this.world.blocked[x][z] = this.world.blocked[x][z]; // no-op but could expand vision
-        reply('Map revealed (fog cleared).');
+        // reveal the full map — clear all fog of war
+        for (let x = 0; x < this.explored.length; x++)
+          for (let z = 0; z < this.explored[x].length; z++)
+            this.explored[x][z] = true;
+        // remove all fog overlay cubes immediately
+        for (const [, cube] of this.fogCubes) this.fogGroup?.remove(cube);
+        this.fogCubes.clear();
+        reply('Map revealed — fog of war cleared!');
         break;
       case 'help':
         reply('Commands: noaggro, godmode, superhero, heal, killall, boss, gold [amt], levelup, help');
@@ -1875,6 +1897,7 @@ export class GameEngine {
     if (k === 'c' && this.phase === 'explore' && !this.combat.inCombat) { this.toggleSneak(); return; }
     if (k === 't') { this.toggleTorch(); return; }
     if (k === 'v') { this.followCam = !this.followCam; this.pushLog(`Follow camera ${this.followCam ? 'ON' : 'OFF'}`, 'system'); this.emitSnapshot(); return; }
+    if (k === 'm') { this.showFullMap = !this.showFullMap; this.emitSnapshot(); return; }
     if (k === 'b') { this.debugWarpToBoss(); return; }   // TODO(debug): remove — jumps to boss cutscene
     if (k === 'escape') {
       // skip an in-progress cutscene (intro or boss) — route through the
@@ -1929,6 +1952,63 @@ export class GameEngine {
    * — clicking always picks the floor tile the player meant, regardless of
    * how the voxel terrain is meshed.
    */
+  /** fog of war: mark tiles within the party leader's vision radius as
+   *  explored, and show/hide dark overlay cubes on unexplored walkable
+   *  tiles so the player only sees where they've been + a bit ahead. */
+  private updateFog(_dt: number) {
+    if (!this.explored.length || this.phase === 'menu' || this.busy) return;
+    const leader = this.byId(this.selectedId ?? '') ?? this.combat?.living('party')[0];
+    if (!leader) return;
+
+    // vision radius: base 6 tiles + extra 5 if torch is lit
+    const radius = this.torchLit ? this.visionRadius + 5 : this.visionRadius;
+
+    // mark tiles within radius (Chebyshev distance) as explored
+    const px = leader.pos.x, pz = leader.pos.z;
+    const S = this.explored.length;
+    const x0 = Math.max(0, px - radius), x1 = Math.min(S - 1, px + radius);
+    const z0 = Math.max(0, pz - radius), z1 = Math.min(S - 1, pz + radius);
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        const dist = Math.max(Math.abs(x - px), Math.abs(z - pz));
+        if (dist <= radius && this.world.isWalkable(x, z) && !this.explored[x][z]) {
+          this.explored[x][z] = true;
+        }
+      }
+    }
+
+    // lazily create fog overlay cubes for walkable tiles near the leader
+    // that aren't explored yet. We only scan within a generous radius of the
+    // leader (not the entire map) to avoid creating thousands of meshes for
+    // tiles the player will never see until they walk there.
+    const scanRadius = radius + 10;
+    const sx0 = Math.max(0, px - scanRadius), sx1 = Math.min(S - 1, px + scanRadius);
+    const sz0 = Math.max(0, pz - scanRadius), sz1 = Math.min(S - 1, pz + scanRadius);
+    for (let x = sx0; x <= sx1; x++) {
+      for (let z = sz0; z <= sz1; z++) {
+        if (!this.world.isWalkable(x, z)) continue;
+        const key = `${x},${z}`;
+        if (!this.explored[x][z]) {
+          // need a fog cube — create if missing
+          if (!this.fogCubes.has(key) && this.fogGroup) {
+            const g = new THREE.BoxGeometry(1.06, 12, 1.06);
+            const m = new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: false });
+            const mesh = new THREE.Mesh(g, m);
+            const wp = this.unitWorld({ x, z });
+            mesh.position.set(wp.x, wp.y + 3, wp.z);
+            mesh.renderOrder = 5;
+            this.fogGroup.add(mesh);
+            this.fogCubes.set(key, mesh);
+          }
+        } else {
+          // explored — remove the cube if it exists
+          const cube = this.fogCubes.get(key);
+          if (cube) { this.fogGroup?.remove(cube); this.fogCubes.delete(key); }
+        }
+      }
+    }
+  }
+
   private pickTile(): GridPos | null {
     this.ray.setFromCamera(this.pointer, this.iso.cam);
     // use the party leader's floor height as the pick plane
@@ -3197,6 +3277,9 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       }
     }
 
+    // fog of war: mark tiles within vision as explored, show/hide dark overlays
+    this.updateFog(dt);
+
     // sneak visual — smooth crouch
     this.crouchLerp += (this.sneaking ? 1 : 0) * Math.min(1, dt * 6) - this.crouchLerp * Math.min(1, dt * 6);
 
@@ -3418,15 +3501,19 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
   private emitSnapshot() {
     if (!this.combat) return;
     const minimapUnits = this.combat.units
-      .filter(u => u.alive)
+      .filter(u => u.alive && this.explored[u.pos.x]?.[u.pos.z])
       .map(u => ({ x: u.pos.x, z: u.pos.z, team: u.team }));
+    // minimap: only show explored tiles (fog of war)
+    const MS = this.world.heights.length;  // WORLD_SIZE
     const minimapWalk: boolean[][] = [];
     const minimapHeights: number[][] = [];
-    for (let x = 0; x < 46; x++) {
+    for (let x = 0; x < MS; x++) {
       minimapWalk[x] = [];
       minimapHeights[x] = [];
-      for (let z = 0; z < 46; z++) {
-        minimapWalk[x][z] = this.world.isWalkable(x, z);
+      for (let z = 0; z < MS; z++) {
+        // only show tiles that have been explored OR are within current vision
+        const seen = this.explored.length > x && this.explored[x]?.[z] === true;
+        minimapWalk[x][z] = seen && this.world.isWalkable(x, z);
         minimapHeights[x][z] = this.world.heightAt(x, z);
       }
     }
@@ -3453,6 +3540,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       cinematic: this.cinematic,
       minimapTiles: { walk: minimapWalk, heights: minimapHeights, units: minimapUnits },
       showBonfireUI: this.showBonfireUI,
+      showFullMap: this.showFullMap,
       hermitTalk: this.hermitPos ? this.combat.living('party').some(p => Combat.dist(p.pos, this.hermitPos!) <= 3) : false,
       showDialogue: this.showDialogue,
       showConsole: this.consoleOpen,

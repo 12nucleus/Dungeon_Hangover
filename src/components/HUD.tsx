@@ -26,7 +26,11 @@ function Portrait({ u, size = 44, active = false }: { u: Unit; size?: number; ac
 
 function Minimap({ snap }: { snap: UISnapshot }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
+  const [zoom, setZoom] = useState(2);
+  const fullMap = snap.showFullMap ?? false;
+  const SIZE = 142;
+  const FULL_SIZE = Math.min(window.innerWidth * 0.78, window.innerHeight * 0.78);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !snap.minimapTiles) return;
@@ -34,9 +38,8 @@ function Minimap({ snap }: { snap: UISnapshot }) {
     if (!ctx) return;
     const { walk, heights, units } = snap.minimapTiles;
     const S = walk.length;
-    const cellSize = 3;
-    const w = S * cellSize;
-    const h = S * cellSize;
+    const w = S * zoom;
+    const h = S * zoom;
     canvas.width = w;
     canvas.height = h;
     
@@ -54,14 +57,14 @@ function Minimap({ snap }: { snap: UISnapshot }) {
         } else {
           ctx.fillStyle = '#1a1a2a';
         }
-        ctx.fillRect(z * cellSize, x * cellSize, cellSize, cellSize);
+        ctx.fillRect(z * zoom, x * zoom, zoom, zoom);
       }
     }
     
     // draw units
     for (const u of units) {
       ctx.fillStyle = u.team === 'party' ? '#4ade80' : '#ef4444';
-      ctx.fillRect(u.z * cellSize, u.x * cellSize, cellSize, cellSize);
+      ctx.fillRect(u.z * zoom, u.x * zoom, Math.max(2, zoom), Math.max(2, zoom));
     }
     
     // draw player highlight
@@ -69,14 +72,38 @@ function Minimap({ snap }: { snap: UISnapshot }) {
     if (player) {
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1;
-      ctx.strokeRect(player.z * cellSize - 1, player.x * cellSize - 1, cellSize + 2, cellSize + 2);
+      ctx.strokeRect(player.z * zoom - 1, player.x * zoom - 1, Math.max(2, zoom) + 2, Math.max(2, zoom) + 2);
     }
-  }, [snap.minimapTiles]);
+  }, [snap.minimapTiles, zoom]);
   
   if (!snap.minimapTiles) return null;
+  const S = snap.minimapTiles.walk.length;
+  const player = snap.minimapTiles.units.find(u => u.team === 'party');
+  const px = player?.x ?? 0, pz = player?.z ?? 0;
   return (
-    <div className="minimap">
-      <canvas ref={canvasRef} className="minimap-canvas" width={138} height={138} />
+    <div style={{ position: 'relative' }}>
+      {!fullMap ? (
+        <div style={{ width: SIZE, height: SIZE, overflow: 'hidden', border: '1px solid #334', borderRadius: 6, background: '#0a0a14' }}>
+          <div style={{ transform: `translate(${SIZE/2 - pz * zoom}px, ${SIZE/2 - px * zoom}px)`, width: S * zoom, height: S * zoom }}>
+            <canvas ref={canvasRef} style={{ width: S * zoom, height: S * zoom }} />
+          </div>
+          <div style={{ position: 'absolute', top: 2, right: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <button onClick={() => setZoom(z => Math.max(1, z - 1))} style={{ background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: 3, width: 18, height: 18, fontSize: 11, lineHeight: 0, cursor: 'pointer' }}>−</button>
+            <button onClick={() => setZoom(z => Math.min(6, z + 1))} style={{ background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: 3, width: 18, height: 18, fontSize: 11, lineHeight: 0, cursor: 'pointer' }}>+</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(5,5,15,0.92)', zIndex: 9998, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ color: '#888', fontSize: 13, marginBottom: 6, fontFamily: 'monospace' }}>FULL MAP — press M to close — [+/−] to zoom</div>
+          <div style={{ width: FULL_SIZE, height: FULL_SIZE, overflow: 'auto', border: '2px solid #4a9', borderRadius: 8, background: '#0a0a14' }}>
+            <canvas ref={canvasRef} style={{ width: S * zoom, height: S * zoom }} />
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button onClick={() => setZoom(z => Math.max(1, z - 1))} style={{ background: '#222', color: '#ccc', border: '1px solid #444', borderRadius: 4, width: 28, height: 28, fontSize: 15, cursor: 'pointer' }}>−</button>
+            <button onClick={() => setZoom(z => Math.min(8, z + 1))} style={{ background: '#222', color: '#ccc', border: '1px solid #444', borderRadius: 4, width: 28, height: 28, fontSize: 15, cursor: 'pointer' }}>+</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
