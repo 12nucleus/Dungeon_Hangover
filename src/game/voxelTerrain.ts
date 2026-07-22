@@ -39,7 +39,7 @@ export interface VoxelBudget {
   /** hard cap on total BoxGeometry instances before merge (perf knob) */
   maxBoxes: number;
 }
-export const DEFAULT_BUDGET: VoxelBudget = { maxBoxes: 220_000 };
+export const DEFAULT_BUDGET: VoxelBudget = { maxBoxes: 600_000 };
 
 export type PaletteFn = (mat: string) => number; // material name → hex color
 
@@ -150,32 +150,59 @@ export function buildVoxelTerrain(
   // ── budget guard: estimate voxel-detail box count at a given step,
   // coarsen the step until we're under budget ──
   const estimateDetailBoxes = (step: number) => {
+    let floorTiles = 0;
     let edgeTiles = 0;
     let wallFaceTiles = 0;
     for (let x = 1; x < S - 1; x++) for (let z = 1; z < S - 1; z++) {
       if (walk[x][z]) {
+        floorTiles++;
         for (const [dx, dz] of D4) if (!walk[x + dx]?.[z + dz]) { edgeTiles++; break; }
       } else {
         for (const [dx, dz] of D8) if (walk[x + dx]?.[z + dz]) { wallFaceTiles++; break; }
       }
     }
-    const subPerTile = Math.ceil(TILE / step);    // sub-cells per tile side
+    const subPerTile = Math.ceil(TILE / step);    // sub-cells per tile side (for walls/edges)
     const avgColLayers = 3;                         // rough wall cube count in Y per column
+    // floor voxels use a FIXED coarse step (floorVox ≈ 0.165 → 6² = 36 per tile)
+    const floorCubesPerTile = 36;
+    const floorTotal = floorTiles * floorCubesPerTile;
     // edge skirts: ~subPerTile cubes stacked per exposed edge tile (rough)
     // wall columns: subPerTile across X × subPerTile along Z × ~avgColLayers stacked
-    return edgeTiles * subPerTile + wallFaceTiles * subPerTile * subPerTile * avgColLayers;
+    return floorTotal
+      + edgeTiles * subPerTile
+      + wallFaceTiles * subPerTile * subPerTile * avgColLayers;
   };
   let voxStep = VOX;
   while (estimateDetailBoxes(voxStep) > budget.maxBoxes && voxStep < 0.6) voxStep *= 2;
 
-  // ── 1) flat interior slabs — one merged box per walkable tile ──
+  // ── 1) voxellized floor — each tile is a grid of sub-voxel cubes with
+  // per-voxel color jitter and micro-height noise so the floor reads as
+  // textured hewn rock, not a flat panel. Uses a FIXED coarse floor-step
+  // (floorVox ≈ 0.16, 6×6 per tile) instead of the detail voxStep, so a
+  // 120×120 grid stays performant (~144k floor cubes) while still showing
+  // texture. ──
   // (skipped on water tiles — those get a translucent sheet later)
+  const floorVox = 0.165;   // 6 cubes per tile side — textured but cheap
   for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
     if (!walk[x][z]) continue;
     if (water?.[x]?.[z]) continue;
     const { wx, wz } = toWorld(x, z);
     const h = heights[x][z];
-    pushBox(flatGeos, TILE * 0.98, 0.12, TILE * 0.98, wx, h - 0.06, wz, opts.floorPalette(floorMats[x][z]), 0.10);
+    const matCol = opts.floorPalette(floorMats[x][z]);
+    const cols = Math.max(1, Math.round(TILE / floorVox));
+    for (let cx = 0; cx < cols; cx++) {
+      for (let cz = 0; cz < cols; cz++) {
+        const ox = wx - TILE / 2 + floorVox * (cx + 0.5);
+        const oz = wz - TILE / 2 + floorVox * (cz + 0.5);
+        // per-voxel micro-height: faint noise bump for surface relief
+        const bump = vnoise(x * 3 + cx * 0.3, z * 3 + cz * 0.3, (opts.seed | 0) + 42) * 0.02;
+        // per-voxel color jitter — some voxels darker (cracks), some lighter (pebbles)
+        const jit = hash(x * 17 + cx, z * 13 + cz, (opts.seed | 0) + 88);
+        const dark = jit < 0.12;   // ~12% are darker crack-voxels
+        const col = dark ? (matCol & 0xfefefe) >> 1 | 0x1a1a1a : matCol;  // darken
+        pushBox(flatGeos, floorVox * 0.98, 0.08, floorVox * 0.98, ox, h - 0.04 + bump, oz, col, 0.12);
+      }
+    }
   }
 
   // ── 2) voxel-detail edge skirts — this doubles as ramps/mezzanine lips:

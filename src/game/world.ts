@@ -19,7 +19,7 @@ const BLOCKING_PROPS = new Set(['torch', 'bonfire', 'brazier']);
 // If you still use the open-world heightmap mode (level === null), its
 // hardcoded `arena` rect and river placement were tuned for 46 and will
 // need re-tuning for the bigger grid.
-export const WORLD_SIZE = 90;
+export const WORLD_SIZE = 120;
 export const TILE = 1;
 const MAX_H = 3;
 

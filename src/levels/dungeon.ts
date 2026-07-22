@@ -57,19 +57,19 @@ function buildDungeon(seed: number) {
   const built: GeneratedDungeon = generateDungeon({
     seed,
     size: S,
-    rooms: 50,                       // ~50 explorable chambers
-    roomRadius: [3, 6],
-    bore: [0.8, 1.4],
-    loops: 14,                        // extra connectivity so a big map doesn't feel like one long corridor
-    spurs: 24,                        // dead-end pockets for hidden treasure / collapsed rubble
-    roughness: 0.14,
+    rooms: 25,                       // fewer, bigger rooms — well-separated
+    roomRadius: [4, 8],               // larger rooms
+    bore: [0.5, 0.7],                 // narrow carved tunnels, not blob-corridors
+    loops: 3,                         // minimal loops → rooms feel isolated, connected by tunnels
+    spurs: 12,                        // dead-end pockets for hidden treasure / collapsed rubble
+    roughness: 0.04,                  // very low → clean edges, no voxel litter
     sealFinalRoom: true,              // → boss chamber, single door, sealed last
     finalRoomRadius: [9, 12],
-    mezzanines: 6,                    // 6 rooms get a raised shelf + auto-graded ramp
+    mezzanines: 4,                    // 4 rooms get a raised shelf + auto-graded ramp
     mezzanineSteps: 1,
     floorPalette: ['cave_floor', 'cave_stone', 'gravel'],
     wallPalette: ['cave_stone', 'cave_floor'],
-    wallHeight: [2.6, 3.8],
+    wallHeight: [2.8, 4.2],
   });
 
   const { walk, rooms, centers, bossRoomIndex, bossDoor, bossConnect, mezzanineRoomIndices } = built;

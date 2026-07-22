@@ -414,6 +414,8 @@ export class GameEngine {
         break;
       }
     }
+    // pickables: for the fallback InstancedMesh cave builder (old path).
+    // The new voxel terrain uses math-based tile picking (see pickTile).
     this.world.group.traverse((o) => { if (o instanceof THREE.InstancedMesh) this.pickables.push(o); });
     this.pickables.push(this.world.water);
     this.scene.add(this.particles.points);
@@ -1823,8 +1825,7 @@ export class GameEngine {
     this.ray.setFromCamera(this.pointer, this.iso.cam);
     const unitHit = this.ray.intersectObjects(this.unitProxies, false)[0];
     const propHit = this.ray.intersectObjects(this.props.pickboxes, false)[0];
-    const groundHit = this.ray.intersectObjects(this.pickables, false)[0];
-    const tile = groundHit ? this.world.worldToTile(groundHit.point.x, groundHit.point.z) : null;
+    const tile = this.pickTile();
 
     if (this.phase === 'explore') this.clickExplore(unitHit?.object.userData.unitId, tile, propHit?.object.userData.propId);
     else if (this.phase === 'combat') this.clickCombat(unitHit?.object.userData.unitId, tile, propHit?.object.userData.propId);
@@ -1920,6 +1921,30 @@ export class GameEngine {
 
   private byId(id: string) { return this.combat.units.find((u) => u.id === id) ?? null; }
 
+  /**
+   * Math-based tile picking: casts the ray from the camera through the
+   * mouse pointer against a horizontal plane at the party leader's floor
+   * height, then converts the hit point to a tile. This avoids the
+   * raycaster hitting wall geometry or the water plane at the wrong height
+   * — clicking always picks the floor tile the player meant, regardless of
+   * how the voxel terrain is meshed.
+   */
+  private pickTile(): GridPos | null {
+    this.ray.setFromCamera(this.pointer, this.iso.cam);
+    // use the party leader's floor height as the pick plane
+    const leader = this.byId(this.selectedId ?? '') ?? this.combat?.living('party')[0];
+    const pickY = leader ? this.world.heightAt(leader.pos.x, leader.pos.z) : 1;
+    // ray-plane intersection: plane at y=pickY
+    const origin = this.ray.ray.origin;
+    const dir = this.ray.ray.direction;
+    if (Math.abs(dir.y) < 1e-6) return null;  // ray parallel to plane
+    const t = (pickY - origin.y) / dir.y;
+    if (t < 0) return null;  // behind camera
+    const hx = origin.x + dir.x * t;
+    const hz = origin.z + dir.z * t;
+    return this.world.worldToTile(hx, hz);
+  }
+
   private updateHover() {
     this.ray.setFromCamera(this.pointer, this.iso.cam);
     const unitHit = this.ray.intersectObjects(this.unitProxies, false)[0];
@@ -1935,8 +1960,7 @@ export class GameEngine {
     }
     // trap hover (revealed only)
     if (!info && this.phase === 'explore' && !this.combat.inCombat) {
-      const groundHit = this.ray.intersectObjects(this.pickables, false)[0];
-      const tile = groundHit ? this.world.worldToTile(groundHit.point.x, groundHit.point.z) : null;
+      const tile = this.pickTile();
       if (tile) {
         const trap = this.trapManager.at(tile.x, tile.z);
         if (trap && trap.revealed) {
@@ -1947,8 +1971,7 @@ export class GameEngine {
     }
     // aoe blast preview follows the cursor
     if (this.targeting && !unitHit) {
-      const groundHit = this.ray.intersectObjects(this.pickables, false)[0];
-      const tile = groundHit ? this.world.worldToTile(groundHit.point.x, groundHit.point.z) : null;
+      const tile = this.pickTile();
       const s = SKILLS[this.targeting];
       const a = this.combat.active;
       if (tile && s && s.aoeRadius > 0 && !s.selfCentered && a) this.showAoePreview(s, tile);

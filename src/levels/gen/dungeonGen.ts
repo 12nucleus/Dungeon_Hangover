@@ -493,7 +493,6 @@ export function generateDungeon(cfg: DungeonGenConfig): GeneratedDungeon {
   const rng = cav.rng;
   const nRooms = cfg.rooms ?? 8;
   const [rMin, rMax] = cfg.roomRadius ?? [3, 6];
-  const [bMin, bMax] = cfg.bore ?? [0.8, 1.4];
   const loops = cfg.loops ?? 3;
   const spurs = cfg.spurs ?? 8;
 
@@ -529,10 +528,10 @@ export function generateDungeon(cfg: DungeonGenConfig): GeneratedDungeon {
       x0: Math.round(cx - rx), z0: Math.round(cz - rz),
       x1: Math.round(cx + rx), z1: Math.round(cz + rz),
     };
-    // keep a 2-tile gap between rooms so walls exist between them
-    if (rooms.some((r) => rect.x0 < r.x1 + 2 && rect.x1 > r.x0 - 2 && rect.z0 < r.z1 + 2 && rect.z1 > r.z0 - 2)) continue;
-    // never overlap the boss area (3-tile wall band around it)
-    if (bossRect && rect.x0 < bossRect.x1 + 3 && rect.x1 > bossRect.x0 - 3 && rect.z0 < bossRect.z1 + 3 && rect.z1 > bossRect.z0 - 3) continue;
+    // keep a 5-tile gap between rooms so long tunnels can be carved between them
+    if (rooms.some((r) => rect.x0 < r.x1 + 5 && rect.x1 > r.x0 - 5 && rect.z0 < r.z1 + 5 && rect.z1 > r.z0 - 5)) continue;
+    // never overlap the boss area (5-tile wall band around it)
+    if (bossRect && rect.x0 < bossRect.x1 + 5 && rect.x1 > bossRect.x0 - 5 && rect.z0 < bossRect.z1 + 5 && rect.z1 > bossRect.z0 - 5) continue;
     rooms.push(rect);
     cav.blobRoom(rect);
   }
@@ -558,12 +557,13 @@ export function generateDungeon(cfg: DungeonGenConfig): GeneratedDungeon {
       if (!best || d < best[2]) best = [i, j, d];
     }
     if (!best) break;
-    cav.tunnel(centers[best[0]], centers[best[1]], bMin + rng() * (bMax - bMin));
+    // straight L-shaped corridor — looks like a carved tunnel, not a wandering blob
+    cav.line(centers[best[0]].x, centers[best[0]].z, centers[best[1]].x, centers[best[1]].z);
     linked.add(best[1]);
   }
   for (let i = 0; i < loops; i++) {
     const a = Math.floor(rng() * rooms.length), b = Math.floor(rng() * rooms.length);
-    if (a !== b) cav.tunnel(centers[a], centers[b], bMin + rng() * (bMax - bMin));
+    if (a !== b) cav.line(centers[a].x, centers[a].z, centers[b].x, centers[b].z);
   }
 
   // ── dead-end spurs & pocket caverns ──
@@ -606,7 +606,7 @@ export function generateDungeon(cfg: DungeonGenConfig): GeneratedDungeon {
       const d = Math.hypot(centers[i].x - bossCenter.x, centers[i].z - bossCenter.z);
       if (d < nearestD) { nearestD = d; nearestI = i; }
     }
-    cav.tunnel(centers[nearestI], bossCenter, bMin + rng() * (bMax - bMin));
+    cav.line(centers[nearestI].x, centers[nearestI].z, bossCenter.x, bossCenter.z);
 
     // (2) wall the boss ring solid + punch one door — temporarily, so the
     // flood-fill below sees the boss as a sealed island. We'll re-seal at
