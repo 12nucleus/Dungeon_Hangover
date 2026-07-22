@@ -12,6 +12,7 @@ export type DamageType =
   | 'fire' | 'cold' | 'radiant' | 'force' | 'poison';
 export type SkillCost = 'action' | 'bonus' | 'free';
 export type SkillKind = 'melee' | 'ranged' | 'aoe' | 'heal' | 'buff';
+export type EquipSlot = 'head' | 'chest' | 'legs' | 'boots' | 'gloves' | 'weapon' | 'offHand' | 'amulet' | 'ring';
 
 export interface GridPos { x: number; z: number; }
 
@@ -77,7 +78,7 @@ export interface Unit {
   level: number;
   xp: number;             // accumulated experience
   skillPoints: number;    // unspent (used by a later chunk)
-  equipment: { weapon?: import('./items').Item; armor?: import('./items').Item; trinket?: import('./items').Item };
+  equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item };
   maxHp: number;
   hp: number;
   ac: number;
@@ -106,6 +107,7 @@ export interface Unit {
   bossGroup?: boolean;    // only activated by the boss cutscene, never by proximity
   dropKey?: 'iron' | 'golden';  // guaranteed key drop on death
   flying?: boolean;       // hovers above the floor (bats)
+  restedAtBonfire?: boolean;
 }
 
 export type LogKind = 'info' | 'hit' | 'miss' | 'crit' | 'heal' | 'death' | 'system' | 'roll';
@@ -133,6 +135,10 @@ export interface UISnapshot {
   torchEquipped: boolean;
   bigMessage: string | null;
   cinematic?: boolean;
+  minimapTiles?: { walk: boolean[][]; heights: number[][]; units: { x: number; z: number; team: 'party' | 'enemy'; }[] };
+  showBonfireUI?: boolean;
+  hermitTalk?: boolean;
+  showDialogue?: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null;
 }
 
 // ── combat events: the pure-logic layer (combat.ts) emits these,

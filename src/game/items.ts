@@ -6,7 +6,7 @@
 //   rollLootTable()  → per-source drop bundles { items, gold }
 // No rendering here — pure data + dice. Add content, not code.
 // ─────────────────────────────────────────────────────────────
-import type { DamageType, WeaponKind } from './types';
+import type { DamageType, EquipSlot, WeaponKind } from './types';
 
 export type ItemKind = 'weapon' | 'armor' | 'trinket' | 'consumable';
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic';
@@ -15,6 +15,7 @@ export type Tier = 1 | 2 | 3;
 export interface Item {
   id: string;
   kind: ItemKind;
+  slot?: EquipSlot;
   name: string;
   icon: string;
   tier: Tier;
@@ -58,7 +59,7 @@ const ENCHANT_IDS = Object.keys(ENCHANTS);
 
 // ── item bases ───────────────────────────────────────────────
 interface ItemBase {
-  kind: ItemKind; name: string; icon: string; tier: Tier;
+  kind: ItemKind; slot?: EquipSlot; name: string; icon: string; tier: Tier;
   weaponKind?: WeaponKind; damageDice?: string; damageType?: DamageType;
   acBonus?: number; healDice?: string; value: number; desc: string;
 }
@@ -66,17 +67,17 @@ const B = (b: ItemBase) => b;
 
 export const ITEM_BASES: Record<string, ItemBase> = {
   // swords (slashing)
-  sword1: B({ kind: 'weapon', name: 'Worn Longsword', icon: '🗡️', tier: 1, weaponKind: 'sword', damageDice: '1d8+1', damageType: 'slashing', value: 15, desc: 'A notched but trusty blade.' }),
-  sword2: B({ kind: 'weapon', name: 'Fine Longsword', icon: '🗡️', tier: 2, weaponKind: 'sword', damageDice: '1d8+2', damageType: 'slashing', value: 45, desc: 'Balanced steel, keen edge.' }),
-  sword3: B({ kind: 'weapon', name: 'Masterwork Longsword', icon: '⚔️', tier: 3, weaponKind: 'sword', damageDice: '2d6+3', damageType: 'slashing', value: 140, desc: "A smith's life's work." }),
+  sword1: B({ kind: 'weapon', slot: 'weapon', name: 'Worn Longsword', icon: '🗡️', tier: 1, weaponKind: 'sword', damageDice: '1d8+1', damageType: 'slashing', value: 15, desc: 'A notched but trusty blade.' }),
+  sword2: B({ kind: 'weapon', slot: 'weapon', name: 'Fine Longsword', icon: '🗡️', tier: 2, weaponKind: 'sword', damageDice: '1d8+2', damageType: 'slashing', value: 45, desc: 'Balanced steel, keen edge.' }),
+  sword3: B({ kind: 'weapon', slot: 'weapon', name: 'Masterwork Longsword', icon: '⚔️', tier: 3, weaponKind: 'sword', damageDice: '2d6+3', damageType: 'slashing', value: 140, desc: "A smith's life's work." }),
   // daggers (piercing)
-  dagger1: B({ kind: 'weapon', name: 'Rusty Dagger', icon: '🔪', tier: 1, weaponKind: 'dagger', damageDice: '1d4+1', damageType: 'piercing', value: 8, desc: 'Better than fists.' }),
-  dagger2: B({ kind: 'weapon', name: 'Fine Dagger', icon: '🔪', tier: 2, weaponKind: 'dagger', damageDice: '1d4+2', damageType: 'piercing', value: 30, desc: 'Slim and silent.' }),
-  dagger3: B({ kind: 'weapon', name: 'Masterwork Dagger', icon: '🔪', tier: 3, weaponKind: 'dagger', damageDice: '2d4+2', damageType: 'piercing', value: 95, desc: 'A duellist\'s dream.' }),
+  dagger1: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Dagger', icon: '🔪', tier: 1, weaponKind: 'dagger', damageDice: '1d4+1', damageType: 'piercing', value: 8, desc: 'Better than fists.' }),
+  dagger2: B({ kind: 'weapon', slot: 'weapon', name: 'Fine Dagger', icon: '🔪', tier: 2, weaponKind: 'dagger', damageDice: '1d4+2', damageType: 'piercing', value: 30, desc: 'Slim and silent.' }),
+  dagger3: B({ kind: 'weapon', slot: 'weapon', name: 'Masterwork Dagger', icon: '🔪', tier: 3, weaponKind: 'dagger', damageDice: '2d4+2', damageType: 'piercing', value: 95, desc: 'A duellist\'s dream.' }),
   // bows (piercing)
-  bow1: B({ kind: 'weapon', name: 'Bent Shortbow', icon: '🏹', tier: 1, weaponKind: 'bow', damageDice: '1d6+1', damageType: 'piercing', value: 14, desc: 'Creaks, but shoots true-ish.' }),
-  bow2: B({ kind: 'weapon', name: 'Fine Shortbow', icon: '🏹', tier: 2, weaponKind: 'bow', damageDice: '1d6+2', damageType: 'piercing', value: 42, desc: 'Yew laminate, smooth draw.' }),
-  bow3: B({ kind: 'weapon', name: 'Masterwork Shortbow', icon: '🏹', tier: 3, weaponKind: 'bow', damageDice: '2d6+2', damageType: 'piercing', value: 130, desc: 'Elven craftsmanship.' }),
+  bow1: B({ kind: 'weapon', slot: 'weapon', name: 'Bent Shortbow', icon: '🏹', tier: 1, weaponKind: 'bow', damageDice: '1d6+1', damageType: 'piercing', value: 14, desc: 'Creaks, but shoots true-ish.' }),
+  bow2: B({ kind: 'weapon', slot: 'weapon', name: 'Fine Shortbow', icon: '🏹', tier: 2, weaponKind: 'bow', damageDice: '1d6+2', damageType: 'piercing', value: 42, desc: 'Yew laminate, smooth draw.' }),
+  bow3: B({ kind: 'weapon', slot: 'weapon', name: 'Masterwork Shortbow', icon: '🏹', tier: 3, weaponKind: 'bow', damageDice: '2d6+2', damageType: 'piercing', value: 130, desc: 'Elven craftsmanship.' }),
   // maces (bludgeoning)
   mace1: B({ kind: 'weapon', name: 'Cracked Mace', icon: '🔨', tier: 1, weaponKind: 'mace', damageDice: '1d6+1', damageType: 'bludgeoning', value: 12, desc: 'Dents armor. And skulls.' }),
   mace2: B({ kind: 'weapon', name: 'Fine Mace', icon: '🔨', tier: 2, weaponKind: 'mace', damageDice: '1d6+2', damageType: 'bludgeoning', value: 38, desc: 'Blessed by the forge-temple.' }),
@@ -108,6 +109,9 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   golden_key: B({ kind: 'trinket', name: 'Golden Key', icon: '🔑', tier: 3, value: 0, desc: 'Ornate and warm to the touch. It hums with promise.' }),
   // ── the boss reward (special epic loot) ──
   warlord_blade: B({ kind: 'weapon', name: "Warlord's Cleaver", icon: '⚔️', tier: 3, weaponKind: 'sword', damageDice: '2d8+4', damageType: 'slashing', value: 320, desc: 'A brutal greatblade taken from a bathing tyrant. Still faintly soapy.' }),
+  severed_finger: B({ kind: 'trinket', name: "Merv's Severed Finger", icon: '\uD83D\uDD90\uFE0F', tier: 1, value: 0, desc: 'A gnawed-off ring finger, still wearing a tarnished silver band. The ring is engraved: "Agnes".' }),
+  stupid_shirt: B({ kind: 'armor', name: "Stupid Shirt", icon: '\uD83D\uDC55', tier: 1, acBonus: 0, value: 0, desc: "A shirt. It's stupid. Merv gave it to you as a pre-reward. It smells like moss and regret." }),
+  toeless_boots: B({ kind: 'armor', name: "Toeless Boots", icon: '\uD83D\uDC62', tier: 2, acBonus: 1, value: 50, desc: "Fine leather boots. Missing the toes. Don't ask. +1 AC. +1 movement." }),
 };
 
 let iid = 0;

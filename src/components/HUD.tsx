@@ -24,6 +24,63 @@ function Portrait({ u, size = 44, active = false }: { u: Unit; size?: number; ac
   );
 }
 
+function Minimap({ snap }: { snap: UISnapshot }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !snap.minimapTiles) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const { walk, heights, units } = snap.minimapTiles;
+    const S = walk.length;
+    const cellSize = 3;
+    const w = S * cellSize;
+    const h = S * cellSize;
+    canvas.width = w;
+    canvas.height = h;
+    
+    ctx.clearRect(0, 0, w, h);
+    
+    // draw terrain
+    for (let x = 0; x < S; x++) {
+      for (let z = 0; z < S; z++) {
+        if (walk[x][z]) {
+          const ht = heights[x][z];
+          if (ht >= 1.5) ctx.fillStyle = '#8a7a5a';
+          else if (ht >= 1.25) ctx.fillStyle = '#7a6a4a';
+          else if (ht >= 1.0) ctx.fillStyle = '#5a5a5a';
+          else ctx.fillStyle = '#4a4a4a';
+        } else {
+          ctx.fillStyle = '#1a1a2a';
+        }
+        ctx.fillRect(z * cellSize, x * cellSize, cellSize, cellSize);
+      }
+    }
+    
+    // draw units
+    for (const u of units) {
+      ctx.fillStyle = u.team === 'party' ? '#4ade80' : '#ef4444';
+      ctx.fillRect(u.z * cellSize, u.x * cellSize, cellSize, cellSize);
+    }
+    
+    // draw player highlight
+    const player = units.find(u => u.team === 'party');
+    if (player) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(player.z * cellSize - 1, player.x * cellSize - 1, cellSize + 2, cellSize + 2);
+    }
+  }, [snap.minimapTiles]);
+  
+  if (!snap.minimapTiles) return null;
+  return (
+    <div className="minimap">
+      <canvas ref={canvasRef} className="minimap-canvas" width={138} height={138} />
+    </div>
+  );
+}
+
 export function HUD({ snap, engine }: Props) {
   const [showHelp, setShowHelp] = useState(false);
   const [showLog, setShowLog] = useState(true);
@@ -54,7 +111,7 @@ export function HUD({ snap, engine }: Props) {
               <span>🎲 d20 rolls &amp; initiative</span><span>🔥 15+ skills &amp; AoE spells</span>
               <span>🧱 voxel world</span><span>✨ particle sorcery</span><span>🤖 enemy AI</span>
             </div>
-            <p className="menu-controls">WASD pan · Q/E rotate · wheel zoom · 1-4 skills · Space end turn · K skill tree</p>
+            <p className="menu-controls">WASD pan · Q/E rotate · wheel zoom · 1-9,0,-,= skills · Space end turn · K skill tree</p>
           </div>
         </div>
       )}
@@ -108,6 +165,51 @@ export function HUD({ snap, engine }: Props) {
         </div>
       )}
 
+      {/* ══ DIALOGUE OVERLAY ══ */}
+      {snap.showDialogue && (
+        <div className="dialogue-overlay">
+          <div className="dialogue-box">
+            <div className="dialogue-npc-name">{snap.showDialogue.npcName}</div>
+            {snap.showDialogue.caption && <div className="dialogue-caption">{snap.showDialogue.caption}</div>}
+            <div className="dialogue-text">{snap.showDialogue.text}</div>
+            {snap.showDialogue.choices && snap.showDialogue.choices.length > 0 && (
+              <div className="dialogue-choices">
+                {snap.showDialogue.choices.map((c) => (
+                  <button key={c.index} className="dialogue-choice" onClick={() => engine?.dialogueChoice(snap.showDialogue!.npcId, c.index)}>
+                    {c.index + 1}. {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {!snap.showDialogue.choices && (
+              <button className="dialogue-close" onClick={() => engine?.dialogueChoice(snap.showDialogue!.npcId, -1)}>[Continue]</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══ BONFIRE REST UI ══ */}
+      {snap.showBonfireUI && (
+        <div className="bonfire-rest">
+          <div className="bonfire-rest-inner">
+            <div className="bonfire-rest-title">🔥 Resting at the Bonfire</div>
+            <p className="bonfire-rest-desc">The flames warm your bones. The dungeon stirs beyond the light.</p>
+            <div className="bonfire-rest-actions">
+              <button className="btn-primary" onClick={() => engine?.toggleSkillTree()} style={{ fontSize: 14, padding: '8px 24px' }}>
+                📜 Skill Tree & Loadout
+              </button>
+              <button className="btn-primary" onClick={() => engine?.toggleInventory()} style={{ fontSize: 14, padding: '8px 24px' }}>
+                🎒 Inventory
+              </button>
+              <p className="bonfire-rest-hint">Spend XP to level up in the skill tree panel.</p>
+              <button className="btn-primary" onClick={() => engine?.closeBonfireUI()} style={{ fontSize: 14, padding: '8px 24px', background: 'linear-gradient(180deg, #5a3a1e, #3a2010)', border: '1px solid #8a6d14' }}>
+                🔥 Leave Bonfire
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ COMBAT LOG ══ */}
       {phase !== 'menu' && (
         <div className={`combat-log ${showLog ? '' : 'collapsed'}`}>
@@ -122,7 +224,8 @@ export function HUD({ snap, engine }: Props) {
         </div>
       )}
 
-      {/* ══ BOTTOM BAR ══ */}
+      {/* ══ MINIMAP ══ */}
+      {phase !== 'menu' && <Minimap snap={snap} />}
       {phase !== 'menu' && (
         <div className="bottom-bar">
           {/* party frames */}
@@ -148,45 +251,57 @@ export function HUD({ snap, engine }: Props) {
             </div>
           )}
 
-          {/* hotbar */}
-          {phase === 'combat' && active && active.team === 'party' && (
-            <div className="hotbar">
-              <div className="action-pips" title="Action / Bonus action">
-                <span className={`pip ${active.hasAction ? 'on' : ''}`}>⚡</span>
-                <span className={`pip bonus ${active.hasBonus ? 'on' : ''}`}>🔸</span>
-                <span className="move-pip">👟 {active.movementLeft}</span>
-              </div>
-              {active.equippedSkills.map((sid, i) => {
-                const s = SKILLS[sid];
-                const cd = active.cooldowns[sid] ?? 0;
-                const unavailable = (s.cost === 'action' && !active.hasAction) || (s.cost === 'bonus' && !active.hasBonus) || cd > 0;
+          {/* permanent skill bar — always visible */}
+          {active && active.team === 'party' && (
+            <div className="hotbar-permanent">
+              {phase === 'combat' && (
+                <div className="action-pips" title="Action / Bonus action">
+                  <span className={`pip ${active.hasAction ? 'on' : ''}`}>⚡</span>
+                  <span className={`pip bonus ${active.hasBonus ? 'on' : ''}`}>🔸</span>
+                  <span className="move-pip">👟 {active.movementLeft}</span>
+                </div>
+              )}
+              {/* default attack button */}
+              <button
+                className="skill-btn default-attack"
+                onClick={() => engine?.selectSkill(active.equippedSkills[0] ?? 'slash')}
+                title="Default Attack"
+              >
+                <span className="skill-icon">⚔️</span>
+              </button>
+              {/* 12 skill slots */}
+              {Array.from({ length: 12 }).map((_, i) => {
+                const sid = active.equippedSkills[i];
+                const s = sid ? SKILLS[sid] : null;
+                const cd = sid ? (active.cooldowns[sid] ?? 0) : 0;
+                const unavailable = sid && phase === 'combat' ? ((s?.cost === 'action' && !active.hasAction) || (s?.cost === 'bonus' && !active.hasBonus) || cd > 0) : false;
+                const keyLabel = i < 9 ? `${i + 1}` : i === 9 ? '0' : i === 10 ? '-' : '=';
                 return (
                   <button
-                    key={sid}
-                    className={`skill-btn ${snap.selectedSkill === sid ? 'selected' : ''} ${unavailable ? 'disabled' : ''}`}
-                    onClick={() => engine?.selectSkill(sid)}
-                    title={`${s.name} — ${s.desc}${s.cooldown ? ` (CD ${s.cooldown})` : ''} [${i + 1}]`}
+                    key={i}
+                    className={`skill-btn ${sid && snap.selectedSkill === sid ? 'selected' : ''} ${unavailable ? 'disabled' : ''} ${!sid ? 'empty' : ''}`}
+                    onClick={() => sid ? engine?.selectSkill(sid) : undefined}
+                    title={s ? `${s.name} — ${s.desc}${s.cooldown ? ` (CD ${s.cooldown})` : ''} [${keyLabel}]` : `Empty slot [${keyLabel}]`}
                   >
-                    <span className="skill-icon">{s.icon}</span>
-                    <span className="skill-key">{i + 1}</span>
-                    {s.cost === 'bonus' && <span className="skill-cost">B</span>}
+                    <span className="skill-icon">{s?.icon ?? ''}</span>
+                    <span className="skill-key">{keyLabel}</span>
+                    {s?.cost === 'bonus' && <span className="skill-cost">B</span>}
                     {cd > 0 && <span className="skill-cd">{cd}</span>}
                   </button>
                 );
               })}
-              <button className="end-turn" onClick={() => engine?.endTurn()} title="End turn [Space]">
-                END<br />TURN
-              </button>
+              {phase === 'combat' && (
+                <button className="end-turn" onClick={() => engine?.endTurn()} title="End turn [Space]">
+                  END<br />TURN
+                </button>
+              )}
             </div>
           )}
           {phase === 'combat' && active && active.team === 'enemy' && (
             <div className="enemy-turn-banner">⚔ {active.name} is acting…</div>
           )}
-          {phase === 'explore' && snap.sneaking && (
-            <div className="sneak-badge">👤 Sneaking [C] — move silently, avoid enemy vision cones</div>
-          )}
-          {phase === 'explore' && !snap.sneaking && (
-            <div className="explore-hint">🧭 Click the ground to move your party — the ruins to the north-east are crawling with goblins…</div>
+          {phase === 'explore' && (
+            <div className="explore-hint">🧭 Click ground to move · I Inventory · K Skill tree · C Sneak · Space Rest</div>
           )}
 
           {/* right controls */}
@@ -222,11 +337,11 @@ export function HUD({ snap, engine }: Props) {
           <ul>
             <li><b>Explore:</b> click ground to move, click a hero to select the leader.</li>
             <li><b>Combat:</b> blue tiles = movement. Click a tile to move, click an enemy for a quick attack.</li>
-            <li><b>Skills:</b> hotbar or keys 1-9. 🔥/❄ aim with the mouse — red tiles show the blast.</li>
+            <li><b>Skills:</b> hotbar or keys 1-9,0,-,=. 🔥/❄ aim with the mouse — red tiles show the blast.</li>
             <li><b>Action economy:</b> ⚡ action, 🔸 bonus action, 👟 movement per turn.</li>
             <li><b>Camera:</b> WASD pan, Q/E rotate, wheel zoom, F focus active unit.</li>
             <li><b>Inventory:</b> I or 🎒 — equip gear, drink potions (bonus action in combat).</li>
-            <li><b>Skill tree:</b> K or 📜 — spend skill points to unlock passives &amp; new skills (earned on level-up). Equip up to 4 skills on the hotbar.</li>
+            <li><b>Skill tree:</b> K or 📜 — spend skill points to unlock passives &amp; new skills (earned on level-up — spend XP at bonfires to level up). Equip up to 12 skills on the hotbar.</li>
             <li><b>Sneak:</b> C or 🕴️ — toggle stealth. Move slower but avoid enemy vision cones. Surprise enemies for an auto-crit first strike!</li>
             <li><b>Traps:</b> hidden hazards trigger when stepped on. Reveal them with passive perception (Wisdom). Click a revealed trap to disarm.</li>
             <li><b>Loot:</b> smash crates/barrels/vases; enemies drop gear &amp; gold. Rarity: grey→green→blue→purple.</li>

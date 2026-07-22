@@ -245,7 +245,7 @@ export function createRoster(): Unit[] {
       knownSkills: ['slash', 'cleave', 'shield_bash'],
       scheme: { skin: 0xd9a066, cloth: 0xffffff, accent: 0x6b7280, hair: 0x4a2f1a, hood: false, style: 'normal' },
       weapon: 'torch', xpValue: 0,
-      equipment: { weapon: makeItem('torch1'), armor: makeItem('padded') },
+      equipment: { weapon: makeItem('torch1'), chest: makeItem('padded') },
     }),
     // ── the goblin warband at the ruins ──
     mkUnit({
@@ -303,6 +303,7 @@ export interface DungeonSpawns {
   secret?: GridPos;       // secret room guardian (optional)
   boss: GridPos;          // the warlord, in his bath
   bossGuards: GridPos[];  // undead honor-guard, wakes with the boss
+  baronGnaw?: GridPos;    // named quest rat near hermit chamber
 }
 
 const ratScheme = { skin: 0x6b4a2f, cloth: 0x9a7a55, accent: 0xc79a9a, hair: 0x140f0f, hood: false, monster: 'rat' as const };
@@ -322,7 +323,7 @@ export function createDungeonRoster(sp: DungeonSpawns): Unit[] {
     knownSkills: ['slash', 'cleave', 'shield_bash', 'power_strike'],
     scheme: { skin: 0xd9a066, cloth: 0xdfe4ea, accent: 0x6b7280, hair: 0x4a2f1a, hood: false, style: 'normal' },
     weapon: 'sword', xpValue: 0,
-    equipment: { weapon: makeItem('sword2'), armor: makeItem('chain') },
+    equipment: { weapon: makeItem('sword2'), chest: makeItem('chain') },
   }));
 
   const rat = (pos: GridPos, group: string) => mkUnit({
@@ -384,6 +385,18 @@ export function createDungeonRoster(sp: DungeonSpawns): Unit[] {
   }));
   // boss honor-guard (undead), wakes with the cutscene
   sp.bossGuards.forEach((p, i) => units.push(skeleton(p, 'boss_group', i % 2 ? 'mace' : 'sword', undefined, true)));
+
+  // Baron Gnaw — named quest rat in a side tunnel near the hermit's chamber
+  if (sp.baronGnaw) {
+    units.push(mkUnit({
+      name: 'Baron Gnaw', title: 'Finger-Thieving Rat', team: 'enemy', klass: 'goblin', pos: { ...sp.baronGnaw },
+      maxHp: 16, hp: 16, ac: 13, level: 2,
+      abilities: { str: 10, dex: 16, con: 12, int: 4, wis: 10, cha: 6 },
+      knownSkills: ['rabid_bite'], moveRange: 7, xpValue: 40,
+      scheme: { skin: 0x5a3a28, cloth: 0x8a6a4a, accent: 0xc79a9a, hair: 0xff2a18, hood: false, monster: 'rat' as const, bulk: 1.15 },
+      weapon: 'dagger', dormant: true, groupId: 'baron_gnaw',
+    }));
+  }
 
   return units;
 }

@@ -1,12 +1,6 @@
-// ─────────────────────────────────────────────────────────────
-// Inventory & equipment panel — party cards (equip slots, XP bars)
-// on the left, shared bag grid + gold on the right. Rarity-colored
-// borders: common grey / uncommon green / rare blue / epic purple.
-// Select an item, then click a hero card to equip (or drink) it.
-// ─────────────────────────────────────────────────────────────
 import { useState } from 'react';
 import type { GameEngine } from '@/game/engine';
-import type { UISnapshot, Unit } from '@/game/types';
+import type { UISnapshot } from '@/game/types';
 import type { Item, Rarity } from '@/game/items';
 import { ENCHANTS } from '@/game/items';
 import { effAC, effMaxHp, xpProgress } from '@/game/stats';
@@ -15,7 +9,17 @@ const RARITY_COLOR: Record<Rarity, string> = {
   common: '#9ca3af', uncommon: '#4ade80', rare: '#60a5fa', epic: '#c084fc',
 };
 
-const SLOT_ICON: Record<string, string> = { weapon: '⚔️', armor: '🛡️', trinket: '💍' };
+const SLOT_ICON: Record<string, string> = {
+  head: '⛑️', chest: '🦺', legs: '👖', boots: '👢', gloves: '🧤',
+  weapon: '⚔️', offHand: '🛡️', amulet: '📿', ring1: '💍', ring2: '💍',
+};
+
+const SLOT_LABEL: Record<string, string> = {
+  head: 'Head', chest: 'Chest', legs: 'Legs', boots: 'Boots', gloves: 'Gloves',
+  weapon: 'Weapon', offHand: 'Off-Hand', amulet: 'Amulet', ring1: 'Ring 1', ring2: 'Ring 2',
+};
+
+const PAPER_DOLL_SLOTS = ['head', 'chest', 'legs', 'boots', 'gloves', 'weapon', 'offHand', 'amulet', 'ring1', 'ring2'] as const;
 
 function ItemIcon({ item, size = 40, selected = false, onClick, title }: {
   item: Item; size?: number; selected?: boolean; onClick?: () => void; title?: string;
@@ -35,44 +39,23 @@ function ItemIcon({ item, size = 40, selected = false, onClick, title }: {
   );
 }
 
-function MemberCard({ u, engine, armed, onArm }: {
-  u: Unit; engine: GameEngine; armed: boolean; onArm: () => void;
-}) {
-  const xp = xpProgress(u);
-  return (
-    <div className={`inv-member ${armed ? 'armed' : ''} ${u.alive ? '' : 'dead'}`} onClick={onArm}>
-      <div className="inv-member-head">
-        <span className="inv-member-name">{u.name}</span>
-        <span className="inv-member-sub">Lv {u.level} {u.klass} · {u.hp}/{effMaxHp(u)} HP · AC {effAC(u)}</span>
-        <div className="xp-bar" title={`${xp.cur}/${xp.need} XP to next level`}><i style={{ width: `${xp.pct * 100}%` }} /></div>
-      </div>
-      <div className="inv-slots">
-        {(['weapon', 'armor', 'trinket'] as const).map((slot) => {
-          const it = u.equipment[slot];
-          return it ? (
-            <ItemIcon key={slot} item={it} size={36} onClick={() => engine.unequipItem(u.id, slot)} />
-          ) : (
-            <div key={slot} className="inv-item empty" style={{ width: 36, height: 36 }} title={`${slot} slot (empty)`}>
-              <span className="inv-item-icon">{SLOT_ICON[slot]}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: GameEngine }) {
   const [selId, setSelId] = useState<string | null>(null);
   const party = snap.units.filter((u) => u.team === 'party');
+  const [tab, setTab] = useState(party[0]?.id ?? '');
+  const u = party.find((p) => p.id === tab) ?? party[0];
   const sel = snap.inventory.find((i) => i.id === selId) ?? null;
 
-  const armOn = (u: Unit) => {
+  if (!u) return null;
+
+  const armOn = () => {
     if (!sel) return;
     if (sel.kind === 'consumable') engine.useConsumable(sel.id, u.id);
     else engine.equipItem(u.id, sel.id);
     setSelId(null);
   };
+
+  const xp = xpProgress(u);
 
   return (
     <div className="inv-panel">
@@ -81,23 +64,56 @@ export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: Gam
         <span className="inv-gold">🪙 {snap.gold}</span>
         <button onClick={() => engine.toggleInventory()}>✕</button>
       </div>
-      <div className="inv-body">
-        <div className="inv-members">
-          {party.map((u) => (
-            <MemberCard key={u.id} u={u} engine={engine} armed={!!sel} onArm={() => armOn(u)} />
-          ))}
+
+      <div className="st-tabs" style={{ marginBottom: 8 }}>
+        {party.map((m) => (
+          <button key={m.id} className={`st-tab ${m.id === u.id ? 'active' : ''}`} onClick={() => setTab(m.id)}>
+            {m.name} · Lv{m.level} {m.klass}
+          </button>
+        ))}
+      </div>
+
+      <div className="inv-body-new">
+        <div className="paper-doll">
+          <div className="paper-doll-header">
+            <span className="paper-doll-name">{u.name}</span>
+            <span className="paper-doll-sub">Lv {u.level} · HP {u.hp}/{effMaxHp(u)} · AC {effAC(u)}</span>
+            <div className="xp-bar" title={`${xp.cur}/${xp.need} XP`}><i style={{ width: `${xp.pct * 100}%` }} /></div>
+          </div>
+          <div className="paper-doll-slots">
+            {PAPER_DOLL_SLOTS.map((slot) => {
+              const it = (u.equipment as Record<string, Item | undefined>)[slot];
+              return (
+                <div key={slot} className={`paper-doll-slot ${sel ? 'armed' : ''}`}>
+                  <span className="paper-doll-label">{SLOT_LABEL[slot]}</span>
+                  {it ? (
+                    <ItemIcon item={it} size={38} onClick={() => engine.unequipItem(u.id, slot)} />
+                  ) : (
+                    <div className="inv-item empty" style={{ width: 38, height: 38 }} onClick={sel ? () => armOn() : undefined}>
+                      <span className="inv-item-icon">{SLOT_ICON[slot]}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div className="inv-bag">
-          {snap.inventory.length === 0 && <div className="inv-empty">Empty — smash crates, barrels &amp; vases to find loot.</div>}
-          {snap.inventory.map((it) => (
-            <ItemIcon key={it.id} item={it} selected={selId === it.id} onClick={() => setSelId(selId === it.id ? null : it.id)} />
-          ))}
+
+        <div className="inv-bag-col">
+          <div className="inv-bag-title">Bag ({snap.inventory.length}/50)</div>
+          <div className="inv-bag-new">
+            {snap.inventory.length === 0 && <div className="inv-empty">Empty</div>}
+            {snap.inventory.map((it) => (
+              <ItemIcon key={it.id} item={it} selected={selId === it.id} onClick={() => setSelId(selId === it.id ? null : it.id)} />
+            ))}
+          </div>
         </div>
       </div>
+
       {sel && (
         <div className="inv-selbar" style={{ borderColor: RARITY_COLOR[sel.rarity] }}>
           <span>{sel.icon} <b style={{ color: RARITY_COLOR[sel.rarity] }}>{sel.name}</b> — {sel.desc}</span>
-          <span className="inv-sel-hint">{sel.kind === 'consumable' ? '🥤 click a hero to drink' : '🦸 click a hero to equip'} · click item again to cancel</span>
+          <span className="inv-sel-hint">{sel.kind === 'consumable' ? '🥤 click a hero to drink' : '🦸 click a slot to equip'} · click item again to cancel</span>
         </div>
       )}
     </div>

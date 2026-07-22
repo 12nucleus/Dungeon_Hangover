@@ -11,7 +11,9 @@
     "vox:player": "node scripts/gen_vox.mjs",
     "vox:props": "node scripts/gen_props_vox.mjs",
     "vox:monsters": "node scripts/gen_monsters_vox.mjs",
-    "vox": "node scripts/gen_vox.mjs && node scripts/gen_props_vox.mjs && node scripts/gen_monsters_vox.mjs"
+    "vox": "node scripts/gen_vox.mjs && node scripts/gen_props_vox.mjs && node scripts/gen_monsters_vox.mjs",
+    "tauri": "tauri",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -65,6 +67,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

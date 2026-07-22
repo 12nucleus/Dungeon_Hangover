@@ -132,6 +132,17 @@ export class DestructibleManager {
     this.world.blocked[spot.x][spot.z] = true;
   }
 
+  resetAll() {
+    for (const p of this.list) {
+      if (!p.alive) {
+        p.alive = true;
+        this.group.add(p.group, p.pick);
+        this.pickboxes.push(p.pick);
+        this.world.blocked[p.pos.x][p.pos.z] = true;
+      }
+    }
+  }
+
   /** remove from scene, unblock tile, roll the loot table */
   destroy(p: Destructible): { items: Item[]; gold: number } {
     if (!p.alive) return { items: [], gold: 0 };

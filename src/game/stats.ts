@@ -4,32 +4,42 @@
 // (hit checks, movement, heal caps) and by the HUD (HP/XP bars).
 // ─────────────────────────────────────────────────────────────
 import type { Unit } from './types';
-import { ENCHANTS } from './items';
+import { ENCHANTS, type Item } from './items';
 
-const ench = (u: Unit) => ({
-  w: u.equipment.weapon?.enchantId ? ENCHANTS[u.equipment.weapon.enchantId] : undefined,
-  a: u.equipment.armor?.enchantId ? ENCHANTS[u.equipment.armor.enchantId] : undefined,
-  t: u.equipment.trinket?.enchantId ? ENCHANTS[u.equipment.trinket.enchantId] : undefined,
-});
+function allItems(u: Unit): (Item | undefined)[] {
+  return [
+    u.equipment.head, u.equipment.chest, u.equipment.legs,
+    u.equipment.boots, u.equipment.gloves, u.equipment.weapon,
+    u.equipment.offHand, u.equipment.amulet, u.equipment.ring1, u.equipment.ring2,
+  ];
+}
+
+function allEnchs(u: Unit) {
+  return allItems(u).map((item) => item?.enchantId ? ENCHANTS[item.enchantId] : undefined);
+}
 
 export function effAC(u: Unit): number {
-  const e = ench(u);
-  return u.ac + (u.equipment.armor?.acBonus ?? 0) + (e.a?.acBonus ?? 0) + (e.t?.acBonus ?? 0)
-    + u.bonusAC + (u.conditions.some((c) => c.id === 'shielded') ? 2 : 0);
+  let bonus = 0;
+  for (const item of allItems(u)) bonus += item?.acBonus ?? 0;
+  for (const e of allEnchs(u)) bonus += e?.acBonus ?? 0;
+  return u.ac + bonus + u.bonusAC + (u.conditions.some((c) => c.id === 'shielded') ? 2 : 0);
 }
 
 export function effMove(u: Unit): number {
-  const e = ench(u);
-  return u.moveRange + (e.a?.moveBonus ?? 0) + (e.t?.moveBonus ?? 0) + (e.w?.moveBonus ?? 0) + u.bonusMove;
+  let bonus = 0;
+  for (const e of allEnchs(u)) bonus += e?.moveBonus ?? 0;
+  return u.moveRange + bonus + u.bonusMove;
 }
 
 export function effMaxHp(u: Unit): number {
-  const e = ench(u);
-  return u.maxHp + (e.a?.hpBonus ?? 0) + (e.t?.hpBonus ?? 0) + (e.w?.hpBonus ?? 0);
+  let bonus = 0;
+  for (const e of allEnchs(u)) bonus += e?.hpBonus ?? 0;
+  return u.maxHp + bonus;
 }
 
 export function effAtkBonus(u: Unit): number {
-  return ench(u).w?.atkBonus ?? 0; // keen
+  const wEnch = u.equipment.weapon?.enchantId ? ENCHANTS[u.equipment.weapon.enchantId] : undefined;
+  return wEnch?.atkBonus ?? 0;
 }
 
 // ── XP / levels (roster starts at level 3) ──────────────────

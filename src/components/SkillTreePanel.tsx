@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────
 // Skill tree panel — per-class unlock graphs, 2 branches × 3
 // tiers, cost 1/1/2 points. Click nodes to unlock, toggle
-// known skills on/off the hotbar (max 4 equipped). Match the
+// known skills on/off the hotbar (max 12 equipped). Match the
 // dark-glass HUD style (index.css).
 // ─────────────────────────────────────────────────────────────
 import { useState } from 'react';
@@ -91,7 +91,7 @@ export function SkillTreePanel({ snap, engine }: Props) {
 
       {/* loadout */}
       <div className="st-loadout">
-        <div className="st-loadout-title">Loadout (max 4)</div>
+        <div className="st-loadout-title">Loadout (max 12)</div>
         <div className="st-loadout-skills">
           {u.knownSkills.map((sid) => {
             const s = SKILLS[sid];

@@ -17,6 +17,12 @@ export interface Rect { x0: number; z0: number; x1: number; z1: number; }
 /** Runtime-generated maze walkability grid (WORLD_SIZE × WORLD_SIZE). */
 export interface LevelLayout {
   walk: boolean[][];
+  heights?: number[][];
+  floorMats?: string[][];
+  wallMats?: string[][];
+  wallH?: number[][];
+  /** river tiles — translucent water sheets + waterfall cascades render on these */
+  water?: boolean[][];
 }
 
 /** Named interactive structures the engine wires up (doors, chests, cutscene). */
@@ -30,6 +36,11 @@ export interface LevelStructures {
   secretLever: GridPos;     // pull (when adjacent) to collapse the rubble wall
   secretRubble: GridPos[];  // tiles blocked by rubble until the lever is pulled
   secretChest: GridPos;     // free bonus chest inside the secret room
+  hermitChamber?: GridPos;
+  hiddenTreasures?: GridPos[];
+  mezzanines?: Rect[];
+  stairs?: { a: GridPos; b: GridPos }[];
+  collapsedDeadEnds?: GridPos[];
 }
 
 export interface LevelDef {

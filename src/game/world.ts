@@ -1,16 +1,25 @@
-// Voxel world: seeded heightmap terrain rendered as ONE InstancedMesh
-// per material (top faces + exposed side skirts only). Props are placed
-// from a LevelDef (if provided) � otherwise fall back to surface defaults.
+// Voxel world: seeded heightmap terrain. Dungeon levels (anything with
+// a `layout` + full terrain pack) now render as TRUE 0.055-scale voxel
+// geometry via voxelTerrain.ts — flat slabs for tile interiors, real
+// stacked voxel cubes for every edge/wall/ramp/mezzanine lip, budgeted
+// so a 50+ room level stays performant. Levels without a full pack
+// (or the open-world heightmap mode) fall back to the original
+// textured-InstancedMesh cave builder, unchanged.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getTextures } from './textures';
 import { createProp, type BuiltProp } from './props';
 import type { LevelDef } from '../levels/levelTypes';
+import { buildVoxelTerrain, DEFAULT_BUDGET, paletteLookup, type Grid } from './voxelTerrain';
 
 // decorative props that also block their tile (preserve legacy behaviour)
 const BLOCKING_PROPS = new Set(['torch', 'bonfire', 'brazier']);
 
-export const WORLD_SIZE = 46;
+// NOTE: bumped from 46 → 90 to fit ~50 rooms + a boss room comfortably.
+// If you still use the open-world heightmap mode (level === null), its
+// hardcoded `arena` rect and river placement were tuned for 46 and will
+// need re-tuning for the bigger grid.
+export const WORLD_SIZE = 90;
 export const TILE = 1;
 const MAX_H = 3;
 
@@ -42,6 +51,14 @@ export class VoxelWorld {
   water!: THREE.Mesh;
   private time = 0;
   private propUpdates: NonNullable<BuiltProp['update']>[] = [];
+
+  // populated only when the level ships a full terrain pack (see
+  // dungeonGen.ts's TerrainPack) — drives the new voxel renderer.
+  floorMats: string[][] = [];
+  wallMats: string[][] = [];
+  wallH: number[][] = [];
+  // river tiles — translucent water sheets + waterfall cascades render on these
+  waterTiles: boolean[][] | null = null;
 
   /** Arena (combat clearing) rectangle in tile coords. */
   readonly arena = { x0: 28, z0: 6, x1: 42, z1: 20 };
@@ -81,24 +98,35 @@ export class VoxelWorld {
     const arena = L ? L.arena : this.arena;
 
     // ── Maze/dungeon layout mode ──────────────────────────────
-    // A LevelDef may ship a pre-baked walkability grid. When present we
-    // ignore the arena/river/heightmap logic entirely: every walkable
-    // tile becomes a flat stone floor and everything else a solid wall.
+    // A LevelDef may ship a pre-baked walkability grid (+ optionally a
+    // full terrain pack: floorMats/wallMats/wallH — see dungeonGen.ts).
+    // When present we ignore the arena/river/heightmap logic entirely.
     const layout = L?.layout;
     if (layout) {
+      const hmap = layout.heights;
       for (let x = 0; x < S; x++) {
         for (let z = 0; z < S; z++) {
           const walk = !!(layout.walk[x] && layout.walk[x][z]);
           if (walk) {
-            this.heights[x][z] = 1;
+            this.heights[x][z] = hmap ? (hmap[x]?.[z] ?? 1) : 1;
             this.blocked[x][z] = false;
-            this.topMat[x][z] = 'stone';   // → groundMats[2] (cave_stone) floor
+            this.topMat[x][z] = 'stone';
           } else {
             this.heights[x][z] = MAX_H;
             this.blocked[x][z] = true;
             this.topMat[x][z] = 'cave_wall';
           }
         }
+      }
+      // full terrain pack present → the new voxel renderer takes over
+      // in buildMeshes(); otherwise it falls back to the old textured path.
+      if (layout.floorMats && layout.wallMats && layout.wallH) {
+        this.floorMats = layout.floorMats;
+        this.wallMats = layout.wallMats;
+        this.wallH = layout.wallH;
+        this.waterTiles = layout.water ?? null;
+      } else {
+        this.waterTiles = null;
       }
       return;
     }
@@ -114,7 +142,7 @@ export class VoxelWorld {
         }
         const n = vnoise(x * 0.09, z * 0.09, this.seed) * 0.7 + vnoise(x * 0.22, z * 0.22, this.seed + 9) * 0.3;
         let h = Math.floor(n * (MAX_H + 1.6));
-        // river: winding band along x�10 with sine wobble
+        // river: winding band along x≈10 with sine wobble
         const riverX = 10 + Math.sin(z * 0.25) * 2.5;
         const dRiver = Math.abs(x - riverX);
         if (dRiver < 1.6) h = -1;
@@ -147,84 +175,124 @@ export class VoxelWorld {
   private buildMeshes() {
     const S = WORLD_SIZE;
     const tex = getTextures().map;
-    const CAVE_VOX = 0.055;   // unified fine voxel (matches monster/player detail)
-    const N = Math.round(TILE / CAVE_VOX);  // ~6 sub-voxels per tile side
-    const geo = new THREE.BoxGeometry(CAVE_VOX, CAVE_VOX, CAVE_VOX);
     const L = this.level;
 
-    interface Inst { x: number; y: number; z: number; tint: number; }
-    const buckets: Record<string, Inst[]> = { grass: [], dirt: [], stone: [], sand: [], cave_wall: [] };
-    const push = (m: string, x: number, y: number, z: number) => {
-      const tint = 0.9 + hash(x * 3 + y, z * 3, this.seed + 5) * 0.2;
-      (buckets[m] ?? buckets.stone).push({ x, y, z, tint });
-    };
+    if (this.floorMats.length && this.wallMats.length && this.wallH.length) {
+      // ══ NEW: true voxel terrain (BG3-style), budgeted ══════════
+      const walkGrid: Grid = this.blocked.map((row) => row.map((b) => !b));
+      const { group: voxGroup, voxStep, stats } = buildVoxelTerrain(
+        walkGrid, this.heights, this.wallH, this.floorMats, this.wallMats,
+        {
+          floorPalette: paletteLookup,
+          wallPalette: paletteLookup,
+          seed: this.seed,
+          waterColor: L ? L.waterColor : 0x2a6f8f,
+        },
+        DEFAULT_BUDGET,
+        this.waterTiles,
+      );
+      this.group.add(voxGroup);
+      // eslint-disable-next-line no-console
+      console.log(`[VoxelWorld] voxel terrain: ${stats.boxes.toLocaleString()} boxes / ~${stats.approxTris.toLocaleString()} tris @ step ${voxStep} (budget ${stats.budget.toLocaleString()})`);
+    } else {
+      // ══ FALLBACK: original textured-InstancedMesh cave builder ══
+      const CAVE_VOX = 0.22;   // unified fine voxel (matches monster/player detail)
+      const N = Math.round(TILE / CAVE_VOX);  // ~6 sub-voxels per tile side
+      const geo = new THREE.BoxGeometry(CAVE_VOX, CAVE_VOX, CAVE_VOX);
 
-    for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
-      const h = this.heights[x][z];
-      const tx = (x - S / 2 + 0.5) * TILE, tz = (z - S / 2 + 0.5) * TILE;
-      const cx = tx - TILE / 2 + CAVE_VOX / 2;   // sub-grid origin (corner offset)
-      const cz = tz - TILE / 2 + CAVE_VOX / 2;
-      if (h < 0) { push('sand', tx, -1, tz); continue; }
+      interface Inst { x: number; y: number; z: number; tint: number; }
+      const buckets: Record<string, Inst[]> = { grass: [], dirt: [], stone: [], sand: [], cave_wall: [] };
+      const push = (m: string, x: number, y: number, z: number) => {
+        const tint = 0.9 + hash(x * 3 + y, z * 3, this.seed + 5) * 0.2;
+        (buckets[m] ?? buckets.stone).push({ x, y, z, tint });
+      };
 
-      if (this.topMat[x][z] === 'cave_wall') {
-        // rough carved-rock wall: every sub-column gets its own height from
-        // smooth fine noise, so the surface is jagged (not a flat-topped block)
-        // and neighbouring tiles differ — reads as hewn cavern stone.
-        let exposed = false;
+      for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
+        const h = this.heights[x][z];
+        const tx = (x - S / 2 + 0.5) * TILE, tz = (z - S / 2 + 0.5) * TILE;
+        const cx = tx - TILE / 2 + CAVE_VOX / 2;   // sub-grid origin (corner offset)
+        const cz = tz - TILE / 2 + CAVE_VOX / 2;
+        if (h < 0) { push('sand', tx, -1, tz); continue; }
+
+        if (this.topMat[x][z] === 'cave_wall') {
+          // rough carved-rock wall: every sub-column gets its own height from
+          // smooth fine noise, so the surface is jagged (not a flat-topped block)
+          // and neighbouring tiles differ — reads as hewn cavern stone.
+          let exposed = false;
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = x + dx, nz = z + dz;
+            if (this.inBounds(nx, nz) && this.heights[nx][nz] < MAX_H) { exposed = true; break; }
+          }
+          const HSCALE = 0.16 / CAVE_VOX;   // keep wall world-height constant after voxel shrink
+          const thick = exposed ? 2 : 1;   // thicker solid at the visible faces, hollow inside
+          const baseH = 6 + Math.floor(hash(x, z, this.seed + 99) * 5);   // 6..10 base height
+          for (let ix = 0; ix < N; ix++) for (let iz = 0; iz < N; iz++) {
+            const edgeDist = Math.min(ix, iz, N - 1 - ix, N - 1 - iz);
+            if (!exposed && edgeDist >= thick) continue;      // skip interior when sealed
+            // smooth per-column height (sub-tile frequency) → rolling rocky top
+            const n = vnoise(x + (ix - N / 2) * 0.55, z + (iz - N / 2) * 0.55, this.seed + 77);
+            const amp = (edgeDist === 0 ? 5 : 2.5) * HSCALE;            // exposed faces get more relief
+            const colH = Math.max(2, Math.min(Math.round(16 * HSCALE), Math.round(baseH * HSCALE + (n - 0.5) * amp * 2)));
+            for (let iy = 0; iy < colH; iy++) {
+              push('cave_wall', cx + ix * CAVE_VOX, iy * CAVE_VOX, cz + iz * CAVE_VOX);
+            }
+          }
+          continue;
+        }
+
+        // walkable floor — flat layer of sub-voxels at the surface
+        for (let ix = 0; ix < N; ix++) for (let iz = 0; iz < N; iz++) {
+          push('stone', cx + ix * CAVE_VOX, h, cz + iz * CAVE_VOX);
+        }
+      }
+
+      for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
+        if (this.topMat[x][z] === 'cave_wall') continue;
+        const h = this.heights[x][z];
+        const tx = (x - S / 2 + 0.5) * TILE, tz = (z - S / 2 + 0.5) * TILE;
         for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const nx = x + dx, nz = z + dz;
-          if (this.inBounds(nx, nz) && this.heights[nx][nz] < MAX_H) { exposed = true; break; }
-        }
-        const HSCALE = 0.16 / CAVE_VOX;   // keep wall world-height constant after voxel shrink
-        const thick = exposed ? 2 : 1;   // thicker solid at the visible faces, hollow inside
-        const baseH = 6 + Math.floor(hash(x, z, this.seed + 99) * 5);   // 6..10 base height
-        for (let ix = 0; ix < N; ix++) for (let iz = 0; iz < N; iz++) {
-          const edgeDist = Math.min(ix, iz, N - 1 - ix, N - 1 - iz);
-          if (!exposed && edgeDist >= thick) continue;      // skip interior when sealed
-          // smooth per-column height (sub-tile frequency) → rolling rocky top
-          const n = vnoise(x + (ix - N / 2) * 0.55, z + (iz - N / 2) * 0.55, this.seed + 77);
-          const amp = (edgeDist === 0 ? 5 : 2.5) * HSCALE;            // exposed faces get more relief
-          const colH = Math.max(2, Math.min(Math.round(16 * HSCALE), Math.round(baseH * HSCALE + (n - 0.5) * amp * 2)));
-          for (let iy = 0; iy < colH; iy++) {
-            push('cave_wall', cx + ix * CAVE_VOX, iy * CAVE_VOX, cz + iz * CAVE_VOX);
+          if (!this.inBounds(nx, nz)) continue;
+          if (this.topMat[nx][nz] === 'cave_wall') continue;
+          const nh = this.heights[nx][nz];
+          if (nh <= h) continue;
+          const stepH = Math.round((nh - h) / CAVE_VOX);
+          const edgeX = tx + dx * TILE / 2;
+          const edgeZ = tz + dz * TILE / 2;
+          for (let iy = 0; iy < stepH; iy++) {
+            push('stone', edgeX, h + iy * CAVE_VOX + CAVE_VOX / 2, edgeZ);
           }
         }
-        continue;
       }
 
-      // walkable floor — flat layer of sub-voxels at the surface
-      for (let ix = 0; ix < N; ix++) for (let iz = 0; iz < N; iz++) {
-        push('stone', cx + ix * CAVE_VOX, h, cz + iz * CAVE_VOX);
+      const matFor = (name: string) => {
+        const gm = L ? L.groundMats : ['grass', 'grass', 'stone', 'sand'];
+        const fm = L ? L.fillMats : ['dirt', 'dirt', 'stone', 'dirt'];
+        if (name === 'cave_wall') return new THREE.MeshLambertMaterial({ map: tex.cave_stone ?? tex.stone });
+        if (name === 'sand') return new THREE.MeshLambertMaterial({ map: tex[gm[3]] ?? tex.sand });
+        if (name === 'grass') return new THREE.MeshLambertMaterial({ map: tex[gm[0]] ?? tex.grass });
+        if (name === 'dirt') return new THREE.MeshLambertMaterial({ map: tex[fm[1]] ?? tex.dirt });
+        return new THREE.MeshLambertMaterial({ map: tex[gm[2]] ?? tex.stone });
+      };
+      const mats: Record<string, THREE.Material> = {
+        grass: matFor('grass'), dirt: matFor('dirt'), stone: matFor('stone'), sand: matFor('sand'),
+        cave_wall: matFor('cave_wall'),
+      };
+      const c = new THREE.Color();
+      for (const [name, list] of Object.entries(buckets)) {
+        if (!list.length) continue;
+        const im = new THREE.InstancedMesh(geo, mats[name], list.length);
+        const m4 = new THREE.Matrix4();
+        list.forEach((it, i) => {
+          m4.makeTranslation(it.x, it.y, it.z);
+          im.setMatrixAt(i, m4);
+          c.setScalar(it.tint);
+          im.setColorAt(i, c);
+        });
+        im.receiveShadow = true;
+        im.castShadow = name !== 'sand';
+        this.group.add(im);
       }
-    }
-
-    const matFor = (name: string) => {
-      const gm = L ? L.groundMats : ['grass', 'grass', 'stone', 'sand'];
-      const fm = L ? L.fillMats : ['dirt', 'dirt', 'stone', 'dirt'];
-      if (name === 'cave_wall') return new THREE.MeshLambertMaterial({ map: tex.cave_stone ?? tex.stone });
-      if (name === 'sand') return new THREE.MeshLambertMaterial({ map: tex[gm[3]] ?? tex.sand });
-      if (name === 'grass') return new THREE.MeshLambertMaterial({ map: tex[gm[0]] ?? tex.grass });
-      if (name === 'dirt') return new THREE.MeshLambertMaterial({ map: tex[fm[1]] ?? tex.dirt });
-      return new THREE.MeshLambertMaterial({ map: tex[gm[2]] ?? tex.stone });
-    };
-    const mats: Record<string, THREE.Material> = {
-      grass: matFor('grass'), dirt: matFor('dirt'), stone: matFor('stone'), sand: matFor('sand'),
-      cave_wall: matFor('cave_wall'),
-    };
-    const c = new THREE.Color();
-    for (const [name, list] of Object.entries(buckets)) {
-      if (!list.length) continue;
-      const im = new THREE.InstancedMesh(geo, mats[name], list.length);
-      const m4 = new THREE.Matrix4();
-      list.forEach((it, i) => {
-        m4.makeTranslation(it.x, it.y, it.z);
-        im.setMatrixAt(i, m4);
-        c.setScalar(it.tint);
-        im.setColorAt(i, c);
-      });
-      im.receiveShadow = true;
-      im.castShadow = name !== 'sand';
-      this.group.add(im);
     }
 
     // water / underground pool

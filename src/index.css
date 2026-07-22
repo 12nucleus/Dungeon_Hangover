@@ -131,6 +131,16 @@ html, body, #root {
 .log-line.roll { color: #8fa8d8; font-style: italic; }
 .log-line.info { color: #d8dce8; }
 
+/* ── minimap ── */
+.minimap {
+  position: absolute; top: 12px; right: 12px;
+  border: 2px solid #3d465e; border-radius: 8px;
+  overflow: hidden; pointer-events: none; z-index: 10;
+  background: rgba(8,10,18,0.85);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+.minimap-canvas { display: block; width: 138px; height: 138px; image-rendering: pixelated; }
+
 /* ── bottom bar ── */
 .bottom-bar {
   position: absolute; left: 0; right: 0; bottom: 0;
@@ -164,6 +174,13 @@ html, body, #root {
   border: 1px solid #3d465e; border-radius: 12px; padding: 8px 10px;
   box-shadow: 0 6px 24px rgba(0,0,0,0.55);
 }
+/* ── permanent skill bar (BG3 style) ── */
+.hotbar-permanent {
+  display: flex; gap: 4px; align-items: center; pointer-events: auto;
+  background: linear-gradient(180deg, rgba(18,20,34,0.94), rgba(10,12,20,0.9));
+  border: 1px solid #3d465e; border-radius: 12px; padding: 6px 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.55);
+}
 .action-pips { display: flex; flex-direction: column; gap: 2px; margin-right: 4px; font-size: 13px; align-items: center; }
 .pip { opacity: 0.25; filter: grayscale(1); }
 .pip.on { opacity: 1; filter: none; }
@@ -184,6 +201,10 @@ html, body, #root {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   background: rgba(5,6,12,0.72); border-radius: 9px; color: #ffd76b; font-size: 20px; font-weight: 800;
 }
+.skill-btn.empty { opacity: 0.3; cursor: default; }
+.skill-btn.empty:hover { transform: none; border-color: #4a5468; }
+.skill-btn.default-attack { border-color: #8a6d14; }
+.skill-btn.default-attack:hover { border-color: #c9a227; }
 .end-turn {
   font-family: inherit; cursor: pointer; margin-left: 6px;
   background: linear-gradient(180deg, #6e1f1f, #471313); color: #ffd9b0;
@@ -368,3 +389,45 @@ html, body, #root {
   .combat-log { width: 230px; }
   .menu-inner h1 { font-size: 42px; }
 }
+
+/* ── dialogue overlay ── */
+.dialogue-overlay {
+  position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: 180px; pointer-events: auto; z-index: 25;
+}
+.dialogue-box {
+  background: linear-gradient(180deg, rgba(16,18,30,0.96), rgba(10,12,20,0.94));
+  border: 1px solid #c9a227; border-radius: 14px; padding: 16px 22px;
+  max-width: 560px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+}
+.dialogue-npc-name { color: #c9a227; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; }
+.dialogue-caption { color: #8fa0c0; font-size: 11px; font-style: italic; margin-bottom: 8px; }
+.dialogue-text { color: #e8e2d2; font-size: 14px; line-height: 1.55; margin-bottom: 12px; }
+.dialogue-choices { display: flex; flex-direction: column; gap: 5px; }
+.dialogue-choice {
+  font-family: inherit; font-size: 13px; cursor: pointer; text-align: left; padding: 7px 12px;
+  background: linear-gradient(180deg, #2a3048, #1a1f30); border: 1px solid #4a5468; border-radius: 8px;
+  color: #d8dce8; transition: border-color 0.12s;
+}
+.dialogue-choice:hover { border-color: #c9a227; color: #f3e9c8; }
+.dialogue-close {
+  font-family: inherit; font-size: 12px; cursor: pointer; padding: 6px 16px;
+  background: linear-gradient(180deg, #2a3048, #1a1f30); border: 1px solid #4a5468; border-radius: 8px;
+  color: #9aa3b8; display: block; margin: 0 auto;
+}
+.dialogue-close:hover { border-color: #c9a227; color: #f3e9c8; }
+
+/* ── bonfire rest UI ── */
+.bonfire-rest {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  pointer-events: auto; z-index: 28;
+}
+.bonfire-rest-inner {
+  background: linear-gradient(180deg, rgba(20,14,8,0.97), rgba(12,8,4,0.95));
+  border: 1px solid #c9a227; border-radius: 16px; padding: 24px 32px;
+  max-width: 480px; text-align: center; box-shadow: 0 0 60px rgba(255,154,40,0.3), 0 10px 40px rgba(0,0,0,0.7);
+}
+.bonfire-rest-title { color: #ffb545; font-size: 22px; font-weight: 800; letter-spacing: 2px; margin-bottom: 8px; }
+.bonfire-rest-desc { color: #b9a888; font-size: 13px; font-style: italic; margin-bottom: 16px; }
+.bonfire-rest-actions { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.bonfire-rest-hint { color: #8a7a5a; font-size: 11px; margin-top: 4px; }

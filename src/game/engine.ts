@@ -27,6 +27,8 @@ import { TrapManager } from './traps';
 import { rollDice } from './dice';
 import { Vox, type Voxel } from './voxelModels.mjs';
 import type { CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit } from './types';
+import { NPCS, type NPCDef } from './npc';
+import { QuestLog, QUESTS } from './quest';
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -223,6 +225,10 @@ export class GameEngine {
   private gold = 0;
   private showInventory = false;
   private showSkillTree = false;
+  private questLog = new QuestLog();
+  private hermitRig: Rig | null = null;
+  private hermitPos: GridPos | null = null;
+  private showDialogue: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null = null;
   private sneaking = false;
   private crouchLerp = 0;
   private torchLit = true;
@@ -230,6 +236,9 @@ export class GameEngine {
   private bonfireGroup: THREE.Group | null = null;
   private bonfirePos: GridPos | null = null;
   private bonfireLit = false;
+  private defeatedSpecialMobs = new Set<string>();
+  private showBonfireUI = false;
+  private restingAtBonfire = false;
   private pendingSmash: { unitId: string; propId: string } | null = null;
   private bigMessage: string | null = null;
   private cinematic = false;
@@ -539,6 +548,32 @@ export class GameEngine {
       place(r, t);
       this.world.blocked[t.x][t.z] = true;
       this.rubbleMeshes.push({ mesh: r, tile: t });
+    }
+
+    // ── Old Merv the hermit ──
+    if (st.hermitChamber) {
+      this.hermitPos = { ...st.hermitChamber };
+      const hermitScheme = NPCS.hermit_merv.scheme;
+      const rig = buildCharacter(hermitScheme);
+      const wp = this.unitWorld(st.hermitChamber);
+      rig.group.position.set(wp.x, wp.y, wp.z);
+      rig.group.rotation.y = 0;
+      rig.group.userData.baseY = wp.y;
+      rig.anim.mode = 'idle';
+      this.scene.add(rig.group);
+      this.hermitRig = rig;
+      const bb = new THREE.Box3().setFromObject(rig.group);
+      const rigH = Math.max(0.7, isFinite(bb.max.y - bb.min.y) ? bb.max.y - bb.min.y : 1.8);
+      const rigR = Math.max(0.45, Math.min(0.9, isFinite(bb.max.x - bb.min.x) ? Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 + 0.15 : 0.5));
+      const yOff = (isFinite(bb.min.y) ? bb.min.y - wp.y : 0) + rigH / 2;
+      const proxy = new THREE.Mesh(
+        new THREE.CylinderGeometry(rigR, rigR, rigH, 8),
+        new THREE.MeshBasicMaterial({ visible: false }),
+      );
+      proxy.userData.hermitNpc = true;
+      proxy.position.copy(wp).y += yOff;
+      this.scene.add(proxy);
+      this.unitProxies.push(proxy);
     }
 
   }
@@ -1330,7 +1365,6 @@ export class GameEngine {
     this.scene.add(ext);
 
     // ── chimney smoke: continuous lazy puffs from the chimney top ──
-    const C = VOX_C;
     const chimTop = ext.userData.chimneyTop as THREE.Vector3;
     let smokeT = 0;
     this.propAnims.push((dt: number) => {
@@ -1400,21 +1434,21 @@ export class GameEngine {
     const gv = new Vox();   // emissive voxels (windows, moon, accents)
 
     // ── palette (weathered, dingy — old tavern long past its prime) ──
-    const TIMBER = 0x4a3526, TIMBER_D = 0x2e1d12, TIMBER_HI = 0x5a4332, TIMBER_ROT = 0x3a2a1c;
+    const TIMBER = 0x4a3526, TIMBER_D = 0x2e1d12;
     const PLAS = 0x9a8a66, PLAS_D = 0x7a6a4e, PLAS_STAIN = 0x5a4a36, PLAS_GRIME = 0x6a5a44;
     const ROOF = 0x5a2620, ROOF_D = 0x3a1810, ROOF_HI = 0x6e2f26, ROOF_BROKEN = 0x2a1208;
-    const DOOR = 0x2e1c0e, DOOR_HI = 0x3a2614, DOOR_ROT = 0x1e1208;
+    const DOOR = 0x2e1c0e, DOOR_HI = 0x3a2614;
     const IRON = 0x23231f, IRON_RUST = 0x5a3a22;
     const WGLOW = 0xffcf7a;
-    const STONE = 0x4a4550, STONE_D = 0x2e2a34, STONE_HI = 0x5a5560, STONE_MOSS = 0x3a4a2a;
+    const STONE = 0x4a4550, STONE_D = 0x2e2a34, STONE_HI = 0x5a5560;
     const TRUNK = 0x3a2818, TRUNK_D = 0x221408;
-    const LEAF = 0x2e4a22, LEAF_HI = 0x3a5a2a, LEAF_DEAD = 0x5a4a2a;
+    const LEAF = 0x2e4a22, LEAF_HI = 0x3a5a2a;
     const BUSH = 0x3a4a22, BUSH_HI = 0x4a5a2a, BUSH_DEAD = 0x6a5a3a;
     const MOON_C = 0xf0e8c0;
     const SIGN = 0x4a2e16, SIGN_D = 0x2e1a0a, SIGN_G = 0xb88a2a, SIGN_LETTER = 0xe8c87a;
     const FENCE = 0x3a2818, FENCE_HI = 0x4a3320, FENCE_ROT = 0x2a1a0c;
     const DIRT = 0x4a3a2e, COB = 0x6a5a48, COB_HI = 0x7a6a58, PUDDLE = 0x2a2a30;
-    const GRIME = 0x3a3528, MOSS = 0x3a4a2a, MOSS_D = 0x2a3a1e;
+    const MOSS = 0x3a4a2a, MOSS_D = 0x2a3a1e;
 
     // ── building dims (voxels; C = 0.055) ──
     const HW = 24;   // half-width
@@ -2070,7 +2104,10 @@ export class GameEngine {
       this.endTurn();
     }
     if (k === 'f') { const a = this.combat?.active ?? this.byId(this.selectedId ?? ''); if (a) this.iso.focus(this.unitWorld(a.pos)); }
-    if (/^[1-9]$/.test(k)) this.hotkeySkill(parseInt(k, 10) - 1);
+    if (k === '0') this.hotkeySkill(9);
+    else if (k === '-') this.hotkeySkill(10);
+    else if (k === '=') this.hotkeySkill(11);
+    else if (/^[1-9]$/.test(k)) this.hotkeySkill(parseInt(k, 10) - 1);
   };
   private onKeyUp = (e: KeyboardEvent) => this.keys.delete(e.key.toLowerCase());
   private onResize = () => {
@@ -2160,6 +2197,23 @@ export class GameEngine {
       const u = this.byId(unitId);
       if (u?.team === 'party') { this.selectedId = u.id; this.audio.play('ui_click'); this.emitSnapshot(); return; }
     }
+
+    // NPC click (hermit)
+    const hermitProxy = this.unitProxies.find(p => p.userData.hermitNpc);
+    if (!unitId && hermitProxy) {
+      this.ray.setFromCamera(this.pointer, this.iso.cam);
+      const hit = this.ray.intersectObjects(this.unitProxies, false)[0];
+      if (hit?.object === hermitProxy && this.hermitPos) {
+        const leader = this.byId(this.selectedId ?? '') ?? this.combat.living('party')[0];
+        if (leader && Combat.dist(leader.pos, this.hermitPos) <= 1.5) {
+          this.talkToNpc('hermit_merv');
+        } else {
+          this.setHoverInfoOnce('Old Merv the hermit — get closer to talk.');
+        }
+        return;
+      }
+    }
+
     // click on a revealed trap → disarm if adjacent
     if (tile) {
       const trap = this.trapManager.at(tile.x, tile.z);
@@ -2171,9 +2225,16 @@ export class GameEngine {
     const leader = this.byId(this.selectedId ?? '') ?? this.combat.living('party')[0];
     if (!leader || !tile) return;
 
-    // bonfire interaction (starter-room checkpoint)
+    // bonfire interaction
+    if (this.bonfireGroup && this.bonfireLit && this.bonfirePos && tile && Combat.dist(leader.pos, this.bonfirePos!) <= 1.5) {
+      if (tile.x === this.bonfirePos.x && tile.z === this.bonfirePos.z) {
+        this.restAtBonfire();
+        return;
+      }
+    }
+    // unlit bonfire
     const cp = this.structures?.checkpoint;
-    if (this.bonfireGroup && !this.bonfireLit && cp && tile.x === cp.x && tile.z === cp.z) {
+    if (this.bonfireGroup && !this.bonfireLit && cp && tile && tile.x === cp.x && tile.z === cp.z) {
       if (Combat.dist(leader.pos, tile) <= 1.5) {
         this.lightBonfire();
         return;
@@ -2294,6 +2355,106 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
 
   private setHoverInfoOnce(s: string) { this.hoverInfo = s; this.emitSnapshot(); }
 
+  // ══ NPC dialogue ═════════════════════════════════════════
+  private talkToNpc(npcId: string) {
+    const npc = NPCS[npcId];
+    if (!npc) return;
+    const questNode = this.questLog.nodeFor(npcId, this.hasItemInInventory('severed_finger'));
+    const nodeId = questNode ?? npc.entryNode;
+    const node = npc.dialogue[nodeId];
+    if (!node) return;
+    this.audio.play('ui_click', 0.6);
+    this.showDialogue = {
+      npcId,
+      npcName: npc.name,
+      text: node.text,
+      caption: node.caption,
+      choices: node.choices?.map((c, i) => ({ label: c.label, index: i })),
+    };
+    this.emitSnapshot();
+  }
+
+  dialogueChoice(npcId: string, choiceIndex: number) {
+    const npc = NPCS[npcId];
+    if (!npc) return;
+    const questNode = this.questLog.nodeFor(npcId, this.hasItemInInventory('severed_finger'));
+    const nodeId = questNode ?? npc.entryNode;
+    const node = npc.dialogue[nodeId];
+    if (!node?.choices?.[choiceIndex]) {
+      this.showDialogue = null;
+      this.emitSnapshot();
+      return;
+    }
+    const choice = node.choices[choiceIndex];
+    if (choice.action) this.executeDialogueAction(choice.action, npc);
+    if (choice.next) {
+      const nextNode = npc.dialogue[choice.next];
+      if (nextNode) {
+        this.showDialogue = {
+          npcId,
+          npcName: npc.name,
+          text: nextNode.text,
+          caption: nextNode.caption,
+          choices: nextNode.choices?.map((c, i) => ({ label: c.label, index: i })),
+        };
+        if (nextNode.action) this.executeDialogueAction(nextNode.action, npc);
+        this.emitSnapshot();
+        return;
+      }
+    }
+    this.showDialogue = null;
+    this.emitSnapshot();
+  }
+
+  private executeDialogueAction(action: { type: string; itemId?: string; questId?: string }, npc: NPCDef) {
+    switch (action.type) {
+      case 'giveItem': {
+        if (action.itemId) {
+          const it = makeItem(action.itemId);
+          this.inventory.push(it);
+          this.pushLog(`${npc.name} gives you ${it.icon} ${it.name}.`, 'system');
+        }
+        break;
+      }
+      case 'startQuest': {
+        if (action.questId) {
+          this.questLog.start(action.questId);
+          this.pushLog(`📜 Quest started: ${QUESTS[action.questId]?.name ?? action.questId}`, 'system');
+        }
+        break;
+      }
+      case 'completeQuest': {
+        if (action.questId) {
+          const q = QUESTS[action.questId];
+          if (!q) break;
+          if (q.requiredItemId) {
+            const idx = this.inventory.findIndex(i => i.id === q.requiredItemId || (i as any)._baseId === q.requiredItemId);
+            if (idx >= 0) this.inventory.splice(idx, 1);
+          }
+          for (const rid of q.rewardItemIds) {
+            const it = makeItem(rid);
+            this.inventory.push(it);
+            this.pushLog(`${npc.name} gives you ${it.icon} ${it.name}.`, 'system');
+          }
+          this.questLog.complete(action.questId);
+          this.pushLog(`📜 Quest complete: ${q.name}!`, 'system');
+          this.bigMessage = `Quest Complete: ${q.name}!`;
+          this.emitSnapshot();
+          setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2500);
+        }
+        break;
+      }
+      case 'endConvo': {
+        this.showDialogue = null;
+        break;
+      }
+    }
+  }
+
+  private hasItemInInventory(baseId: string): boolean {
+    return this.inventory.some(i => i.id === baseId || (i as any)._baseId === baseId || (baseId === 'severed_finger' && i.name.includes('Severed Finger')));
+  }
+
   // ══ HUD API (called from React) ════════════════════════════
   startGame() {
     void this.audio.init();
@@ -2313,6 +2474,10 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     const active = this.combat.active;
     if (!active || active.team !== 'party' || this.busy) return;
     if (!skillId) { this.cancelTargeting(); return; }
+    if (this.phase !== 'combat') {
+      this.setHoverInfoOnce('Skills can only be used in combat.');
+      return;
+    }
     const s = SKILLS[skillId];
     const deny = this.combat.canUse(active, s);
     if (deny) { this.setHoverInfoOnce(deny); return; }
@@ -2363,6 +2528,8 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     this.emitSnapshot();
   }
 
+  closeDialogue() { this.showDialogue = null; this.emitSnapshot(); }
+
   lightBonfire() {
     if (!this.bonfireGroup || this.bonfireLit) return;
     this.bonfireLit = true;
@@ -2399,6 +2566,67 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2500);
   }
 
+  restAtBonfire() {
+    if (!this.bonfireLit || !this.bonfirePos) return;
+    this.audio.play('heal', 0.9);
+    this.restingAtBonfire = true;
+
+    for (const u of this.combat.living('party')) {
+      u.hp = effMaxHp(u);
+      u.conditions = [];
+      (u as any).restedAtBonfire = true;
+    }
+
+    for (const u of this.combat.units) {
+      if (!u.alive && u.team === 'enemy' && !u.bossGroup && u.name !== 'Baron Gnaw') {
+        if (this.defeatedSpecialMobs.has(u.id)) continue;
+        u.alive = true;
+        u.hp = u.maxHp;
+        (u as any).dormant = true;
+        u.conditions = [];
+        const v = this.visuals.get(u.id);
+        if (v) {
+          v.rig.anim.mode = 'idle';
+          v.rig.anim.t = 0;
+          v.bar.style.display = '';
+          (v as any).dustDone = false;
+        }
+      }
+    }
+
+    this.props.resetAll();
+
+    this.showBonfireUI = true;
+    this.pushLog('🔥 You rest at the bonfire. Your wounds close. The dungeon stirs...', 'system');
+    this.pushLog('Spend your XP here to level up, or change your skill loadout.', 'system');
+    this.bigMessage = 'Bonfire Rest';
+    this.emitSnapshot();
+    setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2000);
+  }
+
+  closeBonfireUI() {
+    this.showBonfireUI = false;
+    this.restingAtBonfire = false;
+    this.emitSnapshot();
+  }
+
+  levelUpAtBonfire(unitId: string) {
+    const u = this.byId(unitId);
+    if (!u || u.team !== 'party' || !this.restingAtBonfire) return;
+    if (u.level >= 5) { this.setHoverInfoOnce('Already at maximum level.'); return; }
+    const threshold = u.level === 3 ? 300 : u.level === 4 ? 650 : 9999;
+    if (u.xp < threshold) { this.setHoverInfoOnce(`Need ${threshold} XP to level up (have ${u.xp}).`); return; }
+    u.xp -= threshold;
+    u.level++;
+    u.maxHp += 6;
+    u.hp = Math.min(effMaxHp(u), u.hp + 6);
+    u.skillPoints += 1;
+    this.audio.play('heal', 0.9, 1.3);
+    this.pushLog(`⬆ ${u.name} reaches level ${u.level}! (+6 max HP, +1 skill point). You feel slightly less drunk.`, 'system');
+    FX.levelup(this.particles, this.unitWorld(u.pos).add(new THREE.Vector3(0, 0.6, 0)));
+    this.emitSnapshot();
+  }
+
   respawn() {
     if (!this.bonfireLit || !this.bonfirePos) return;
     this.phase = 'explore';
@@ -2406,11 +2634,34 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       u.hp = effMaxHp(u);
       u.pos = { ...this.bonfirePos };
       const v = this.visuals.get(u.id);
-      if (v) { v.rig.group.position.copy(this.world.tileToWorld(this.bonfirePos.x, this.bonfirePos.z)); v.rig.anim.mode = 'idle'; }
+      if (v) {
+        const wp = this.world.tileToWorld(this.bonfirePos.x, this.bonfirePos.z);
+        v.rig.group.position.copy(wp);
+        v.rig.anim.mode = 'idle';
+      }
     }
+    for (const u of this.combat.units) {
+      if (!u.alive && u.team === 'enemy' && !u.bossGroup && u.name !== 'Baron Gnaw') {
+        if (this.defeatedSpecialMobs.has(u.id)) continue;
+        u.alive = true;
+        u.hp = u.maxHp;
+        (u as any).dormant = true;
+        u.conditions = [];
+        const v = this.visuals.get(u.id);
+        if (v) {
+          v.rig.anim.mode = 'idle';
+          v.rig.anim.t = 0;
+          v.bar.style.display = '';
+          (v as any).dustDone = false;
+          const wp = this.unitWorld(u.pos);
+          v.rig.group.position.copy(wp);
+        }
+      }
+    }
+    this.props.resetAll();
     this.combat.inCombat = false;
     this.selectedId = this.combat.living('party')[0]?.id ?? null;
-    this.pushLog('The bonfire restores you. The Underdrek still awaits.', 'system');
+    this.pushLog('💀 Death is not the end. The bonfire restores you. The dungeon stirs...', 'system');
     this.emitSnapshot();
   }
 
@@ -2421,20 +2672,25 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     this.emitSnapshot();
   }
 
-  /** equip an inventory item on a party member; the old item returns to the bag */
   equipItem(unitId: string, itemId: string) {
     const u = this.byId(unitId);
     const idx = this.inventory.findIndex((i) => i.id === itemId);
     if (!u || u.team !== 'party' || idx < 0) return;
     const item = this.inventory[idx];
-    const slot = item.kind === 'weapon' ? 'weapon' : item.kind === 'armor' ? 'armor' : item.kind === 'trinket' ? 'trinket' : null;
-    if (!slot) { this.setHoverInfoOnce('Consumables are used, not equipped.'); return; }
+    if (item.kind === 'consumable') { this.setHoverInfoOnce('Consumables are used, not equipped.'); return; }
+    let slot: string | null = item.slot ?? (item.kind === 'weapon' ? 'weapon' : item.kind === 'armor' ? 'chest' : null);
+    if (!slot) { this.setHoverInfoOnce('No valid slot for this item.'); return; }
+    let actualSlot: string = slot;
+    if (slot === 'ring') {
+      if (!u.equipment.ring1) actualSlot = 'ring1';
+      else if (!u.equipment.ring2) actualSlot = 'ring2';
+      else { this.setHoverInfoOnce('Both ring slots are full. Unequip a ring first.'); return; }
+    }
     this.inventory.splice(idx, 1);
-    const old = u.equipment[slot];
+    const old = (u.equipment as Record<string, Item | undefined>)[actualSlot];
     if (old) this.inventory.push(old);
-    u.equipment[slot] = item;
-    // reflect a newly-equipped weapon on the character's hand
-    if (slot === 'weapon' && item.weaponKind) {
+    (u.equipment as Record<string, Item | undefined>)[actualSlot] = item;
+    if (actualSlot === 'weapon' && item.weaponKind) {
       u.weapon = item.weaponKind;
       const rig = this.visuals.get(u.id)?.rig;
       if (rig) setWeapon(rig, item.weaponKind, u.scheme.accent);
@@ -2444,14 +2700,13 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     this.emitSnapshot();
   }
 
-  unequipItem(unitId: string, slot: 'weapon' | 'armor' | 'trinket') {
+  unequipItem(unitId: string, slot: string) {
     const u = this.byId(unitId);
     if (!u || u.team !== 'party') return;
-    const item = u.equipment[slot];
+    const item = (u.equipment as Record<string, Item | undefined>)[slot];
     if (!item) return;
-    u.equipment[slot] = undefined;
+    (u.equipment as Record<string, Item | undefined>)[slot] = undefined;
     this.inventory.push(item);
-    // remove the weapon from the character's hand so it's no longer visible
     if (slot === 'weapon') {
       const rig = this.visuals.get(u.id)?.rig;
       if (rig) setWeapon(rig, null, u.scheme.accent);
@@ -2463,6 +2718,10 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
 
   // ══ skill tree (called from React HUD) ═══════════════
   toggleSkillTree() {
+    if (!this.showBonfireUI && !this.gameWon) {
+      this.setHoverInfoOnce('You can only access the skill tree while resting at a bonfire.');
+      return;
+    }
     this.showSkillTree = !this.showSkillTree;
     this.audio.play('ui_click', 0.6);
     this.emitSnapshot();
@@ -2480,7 +2739,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     u.unlockedNodes.push(node.id);
     if (node.unlockSkill && !u.knownSkills.includes(node.unlockSkill)) {
       u.knownSkills.push(node.unlockSkill);
-      if (u.equippedSkills.length < 4 && !u.equippedSkills.includes(node.unlockSkill)) {
+      if (u.equippedSkills.length < 12 && !u.equippedSkills.includes(node.unlockSkill)) {
         u.equippedSkills.push(node.unlockSkill);
       }
     }
@@ -2505,7 +2764,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
   equipSkill(unitId: string, skillId: string) {
     if (this.combat.inCombat) return;
     const u = this.byId(unitId);
-    if (!u || !u.knownSkills.includes(skillId) || u.equippedSkills.includes(skillId) || u.equippedSkills.length >= 4) return;
+    if (!u || !u.knownSkills.includes(skillId) || u.equippedSkills.includes(skillId) || u.equippedSkills.length >= 12) return;
     u.equippedSkills.push(skillId);
     this.audio.play('ui_click', 0.5);
     this.emitSnapshot();
@@ -2541,8 +2800,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
   }
 
   private hotkeySkill(i: number) {
-    if (this.phase !== 'combat') return;
-    const a = this.combat.active;
+    const a = this.combat.active ?? this.byId(this.selectedId ?? '') ?? this.combat.living('party')[0];
     if (!a || a.team !== 'party') return;
     const id = a.equippedSkills[i];
     if (id) this.selectSkill(id);
@@ -2680,6 +2938,14 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
         this.audio.play('sword_hit', 0.4, 0.6);
         const slain = this.byId(ev.unitId);
         if (slain?.dropKey) this.grantKey(slain.dropKey);
+        if (slain?.bossGroup || slain?.name === 'Baron Gnaw') {
+          this.defeatedSpecialMobs.add(slain.id);
+        }
+        if (slain?.name === 'Baron Gnaw') {
+          const finger = makeItem('severed_finger');
+          this.inventory.push(finger);
+          this.pushLog(`🐀 Baron Gnaw drops ${finger.icon} ${finger.name}!`, 'system');
+        }
         await delay(500);
         break;
       }
@@ -3119,6 +3385,8 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
         if (u && v.rig.anim.mode !== 'dead') updateRig(v.rig, dt, 1);
       }
     }
+    // hermit NPC
+    if (this.hermitRig) updateRig(this.hermitRig, dt, 1);
     // units
     for (const [id, v] of this.visuals) {
       const u = this.byId(id);
@@ -3323,6 +3591,19 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
 
   private emitSnapshot() {
     if (!this.combat) return;
+    const minimapUnits = this.combat.units
+      .filter(u => u.alive)
+      .map(u => ({ x: u.pos.x, z: u.pos.z, team: u.team }));
+    const minimapWalk: boolean[][] = [];
+    const minimapHeights: number[][] = [];
+    for (let x = 0; x < 46; x++) {
+      minimapWalk[x] = [];
+      minimapHeights[x] = [];
+      for (let z = 0; z < 46; z++) {
+        minimapWalk[x][z] = this.world.isWalkable(x, z);
+        minimapHeights[x][z] = this.world.heightAt(x, z);
+      }
+    }
     this.onSnapshot({
       phase: this.phase,
       units: this.combat.units.map((u) => ({ ...u, conditions: [...u.conditions], abilities: { ...u.abilities }, cooldowns: { ...u.cooldowns }, pos: { ...u.pos }, equipment: { ...u.equipment }, knownSkills: [...u.knownSkills], equippedSkills: [...u.equippedSkills], unlockedNodes: [...u.unlockedNodes] })),
@@ -3344,6 +3625,10 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       torchEquipped: this.combat?.living('party')[0]?.weapon === 'torch',
       bigMessage: this.bigMessage,
       cinematic: this.cinematic,
+      minimapTiles: { walk: minimapWalk, heights: minimapHeights, units: minimapUnits },
+      showBonfireUI: this.showBonfireUI,
+      hermitTalk: this.hermitPos ? this.combat.living('party').some(p => Combat.dist(p.pos, this.hermitPos!) <= 3) : false,
+      showDialogue: this.showDialogue,
     });
   }
 

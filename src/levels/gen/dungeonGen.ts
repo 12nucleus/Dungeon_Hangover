@@ -12,7 +12,9 @@
 //                        per-tile wall heights and per-tile floor/wall
 //                        material assignment from palettes + zones.
 //   3. generateDungeon — full-auto pipeline (auto rooms + links +
-//                        spurs + terrain) for quick/expansion levels.
+//                        spurs + terrain, optional sealed final/boss
+//                        room + multi-room mezzanine plateaus) for
+//                        quick/expansion levels.
 //
 // Authored levels (like The Warlord's Warren) drive Carver by hand
 // and then call buildTerrain with their own palettes/zones, so every
@@ -239,14 +241,14 @@ export interface TerrainConfig {
   flatten?: GridPos[];
   /** explicit stairs: each entry carves a straight step ramp a→b (±stepSize per tile) */
   stairs?: { a: GridPos; b: GridPos }[];
-  /** tiles forced to a specific height after terracing (e.g. a raised boss dais) */
+  /** tiles forced to a specific height after terracing (e.g. a raised boss dais, or a mezzanine) */
   plateaus?: { rect: Rect; steps: number }[];
   // ── walls ──
   /** [min,max] wall height in world units (default [2.6, 3.8]) */
   wallHeight?: [number, number];
   /** noise frequency for wall-height variation (default 0.09) */
   wallScale?: number;
-  // ── materials (any painter name from textures.ts) ──
+  // ── materials (any painter name from textures.ts, or a voxelTerrain palette key) ──
   /** floor palette — picked per-tile via patch noise, first = dominant */
   floorPalette: string[];
   /** wall palette — picked per-tile via patch noise, first = dominant */
@@ -264,6 +266,8 @@ export interface TerrainPack {
   wallMats: string[][];
   /** per-tile wall height in world units (non-walkable tiles) */
   wallH: number[][];
+  /** per-tile water flag — river tiles get translucent sheets + waterfall cascades */
+  water?: Grid;
 }
 
 const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
@@ -299,7 +303,7 @@ export function buildTerrain(walk: Grid, cfg: TerrainConfig): TerrainPack {
     heights[x][z] = floorBase + Math.max(-maxSteps, Math.min(maxSteps, s)) * step;
   }
 
-  // authored plateaus (boss dais, sunken pit, …)
+  // authored plateaus (boss dais, sunken pit, mezzanine shelf, …)
   for (const p of cfg.plateaus ?? []) {
     for (let x = p.rect.x0; x <= p.rect.x1; x++) for (let z = p.rect.z0; z <= p.rect.z1; z++) {
       if (walk[x]?.[z]) heights[x][z] = floorBase + p.steps * step;
@@ -319,6 +323,12 @@ export function buildTerrain(walk: Grid, cfg: TerrainConfig): TerrainPack {
   // ── 3) relaxation: every walkable neighbour within ±step ──
   // pull violators toward each other (pinned tiles never move);
   // a few passes converge everywhere → traversal always possible.
+  // NOTE: plateaus are intentionally left unpinned here — this is what
+  // makes them read as a real BG3 mezzanine: relaxation automatically
+  // grades the tiles immediately around a raised rect down toward the
+  // surrounding floor in `step` increments, i.e. it generates the ramp
+  // for you. voxelTerrain.ts then turns every one of those height
+  // deltas into an actual stacked-voxel stair/lip.
   for (let pass = 0; pass < 10; pass++) {
     let changed = false;
     for (let x = 1; x < S - 1; x++) for (let z = 1; z < S - 1; z++) {
@@ -403,7 +413,7 @@ export function buildTerrain(walk: Grid, cfg: TerrainConfig): TerrainPack {
 export interface DungeonGenConfig extends TerrainConfig {
   /** grid size (square). Default 46. */
   size?: number;
-  /** number of blob rooms (default 8) */
+  /** number of blob rooms (default 8), NOT counting the sealed final/boss room */
   rooms?: number;
   /** room rect radius range in tiles (default [3,6]) */
   roomRadius?: [number, number];
@@ -415,19 +425,65 @@ export interface DungeonGenConfig extends TerrainConfig {
   spurs?: number;
   /** cellular roughness probability (default 0.14) */
   roughness?: number;
+
+  /**
+   * Carve one extra, larger room far from the spawn room and seal it
+   * behind a single door (walled ring, one entrance) — the boss chamber.
+   * It participates in the network like any other room (so roughen/
+   * fillPinholes treat it identically) but gets explicitly re-sealed
+   * as the very last carving step, after roughen would otherwise have
+   * nibbled its walls open. Default false.
+   */
+  sealFinalRoom?: boolean;
+  /** boss room radius range in tiles (default [7,9] — noticeably bigger than normal rooms) */
+  finalRoomRadius?: [number, number];
+
+  /**
+   * Promote this many of the generated rooms (excluding spawn & the
+   * boss room) to raised mezzanine shelves — real BG3-style elevated
+   * platforms, each with its surrounding ramp generated automatically
+   * by buildTerrain's relaxation pass. Default 0.
+   */
+  mezzanines?: number;
+  /** how many terrace steps a mezzanine sits above its room's base height (default 1) */
+  mezzanineSteps?: number;
 }
 
 export interface GeneratedDungeon extends TerrainPack {
   walk: Grid;
+  /** all rooms including the sealed boss room, if any, as the last entry */
   rooms: Rect[];
   /** suggested party spawn — centre of the first room */
   partySpawn: GridPos;
-  /** room centres, handy for spawn/prop placement */
+  /** room centres, handy for spawn/prop placement (same indexing as `rooms`) */
   centers: GridPos[];
+  /** index into `rooms`/`centers` of the sealed boss room, if `sealFinalRoom` was set */
+  bossRoomIndex?: number;
+  /** the single door tile into the sealed boss room */
+  bossDoor?: GridPos;
+  /** the maze-side tile the boss door connects to */
+  bossConnect?: GridPos;
+  /** indices into `rooms`/`centers` promoted to mezzanine plateaus */
+  mezzanineRoomIndices: number[];
+}
+
+function ringDoor(r: Rect, target: GridPos): GridPos {
+  const dLeft = Math.abs(target.x - (r.x0 - 1));
+  const dRight = Math.abs(target.x - (r.x1 + 1));
+  const dTop = Math.abs(target.z - (r.z0 - 1));
+  const dBottom = Math.abs(target.z - (r.z1 + 1));
+  const m = Math.min(dLeft, dRight, dTop, dBottom);
+  const clampX = Math.max(r.x0, Math.min(r.x1, target.x));
+  const clampZ = Math.max(r.z0, Math.min(r.z1, target.z));
+  if (m === dLeft) return { x: r.x0 - 1, z: clampZ };
+  if (m === dRight) return { x: r.x1 + 1, z: clampZ };
+  if (m === dTop) return { x: clampX, z: r.z0 - 1 };
+  return { x: clampX, z: r.z1 + 1 };
 }
 
 /**
- * One-call dungeon: auto rooms + networked tunnels + spurs + terrain.
+ * One-call dungeon: auto rooms + networked tunnels + spurs + terrain,
+ * with optional sealed boss room and mezzanine plateaus.
  * Use for procedural floors & expansions; authored levels can instead
  * drive Carver by hand and call buildTerrain directly.
  */
@@ -441,10 +497,30 @@ export function generateDungeon(cfg: DungeonGenConfig): GeneratedDungeon {
   const loops = cfg.loops ?? 3;
   const spurs = cfg.spurs ?? 8;
 
-  // ── rooms, spread with light rejection sampling ──
+  // ── carve the optional sealed boss room FIRST, on an empty grid.
+  // First placement never needs rejection sampling — the grid is empty —
+  // so it can never fail to fit. Spawning-path rooms later just avoid it.
+  let bossIdx = -1;
+  let bossRect: Rect | null = null;
+  let bossCenter: GridPos | null = null;
+  if (cfg.sealFinalRoom) {
+    const [frMin, frMax] = cfg.finalRoomRadius ?? [7, 9];
+    const rx = frMin + rng() * (frMax - frMin);
+    const rz = frMin + rng() * (frMax - frMin);
+    const cx = 6 + rx + rng() * (S - 12 - rx * 2);
+    const cz = 6 + rz + rng() * (S - 12 - rz * 2);
+    bossRect = {
+      x0: Math.round(cx - rx), z0: Math.round(cz - rz),
+      x1: Math.round(cx + rx), z1: Math.round(cz + rz),
+    };
+    bossCenter = { x: Math.round(cx), z: Math.round(cz) };
+    cav.blobRoom(bossRect, { clampRect: true, rough: 0.55 });
+  }
+
+  // ── rooms, spread with light rejection sampling — always avoid the boss area ──
   const rooms: Rect[] = [];
   let guard = 0;
-  while (rooms.length < nRooms && guard++ < 300) {
+  while (rooms.length < nRooms && guard++ < 3000) {
     const rx = rMin + rng() * (rMax - rMin);
     const rz = rMin + rng() * (rMax - rMin);
     const cx = 4 + rx + rng() * (S - 8 - rx * 2);
@@ -455,13 +531,25 @@ export function generateDungeon(cfg: DungeonGenConfig): GeneratedDungeon {
     };
     // keep a 2-tile gap between rooms so walls exist between them
     if (rooms.some((r) => rect.x0 < r.x1 + 2 && rect.x1 > r.x0 - 2 && rect.z0 < r.z1 + 2 && rect.z1 > r.z0 - 2)) continue;
+    // never overlap the boss area (3-tile wall band around it)
+    if (bossRect && rect.x0 < bossRect.x1 + 3 && rect.x1 > bossRect.x0 - 3 && rect.z0 < bossRect.z1 + 3 && rect.z1 > bossRect.z0 - 3) continue;
     rooms.push(rect);
     cav.blobRoom(rect);
   }
   const centers = rooms.map((r) => ({ x: (r.x0 + r.x1) >> 1, z: (r.z0 + r.z1) >> 1 }));
 
+  // ── THE PARTY SPAWN is the generated room whose centre is FARTHEST
+  // from the boss. With the boss carved first and the player's start at
+  // the opposite end of the map, the maze naturally funnels toward the boss.
+  const spawnIdx = bossCenter
+    ? rooms.reduce((best, r, i) => {
+        const d = Math.hypot((r.x0 + r.x1) / 2 - bossCenter!.x, (r.z0 + r.z1) / 2 - bossCenter!.z);
+        return d > best.d ? { i, d } : best;
+      }, { i: 0, d: -1 }).i
+    : 0;
+
   // ── spanning-tree links + loops ──
-  const linked = new Set<number>([0]);
+  const linked = new Set<number>([spawnIdx]);
   while (linked.size < rooms.length) {
     let best: [number, number, number] | null = null; // [from, to, dist]
     for (const i of linked) for (let j = 0; j < rooms.length; j++) {
@@ -493,7 +581,99 @@ export function generateDungeon(cfg: DungeonGenConfig): GeneratedDungeon {
   cav.fillPinholes();
   cav.borderRing();
 
-  const terrain = buildTerrain(cav.walk, cfg);
-  const partySpawn = centers[0] ?? { x: S >> 1, z: S >> 1 };
-  return { walk: cav.walk, rooms, centers, partySpawn, ...terrain };
+  // ── register the boss room as the LAST entry in `rooms` for downstream
+  // indexing consistency (bossRoomIndex points at it) ──
+  if (bossRect && bossCenter) {
+    rooms.push(bossRect);
+    centers.push(bossCenter);
+    bossIdx = rooms.length - 1;
+  }
+
+  // ── seal the boss room LAST. Draw a connector tunnel from the nearest
+  // non-boss room toward the boss centre, so the boss ring's neighbourhood
+  // gets reachable corridor tiles. Then flood-fill from the spawn's
+  // component, find the nearest ALREADY-CONNECTED walkable tile in a band
+  // around the (now walled) boss ring, punch the door facing it, and
+  // guarantee the link via sealRoom's straight-line connector. Robust to
+  // however the rest of the carved maze happened to route. ──
+  let bossDoor: GridPos | undefined;
+  let bossConnect: GridPos | undefined;
+  if (bossRect && bossCenter && rooms.length > 1) {
+    // (1) carve a tentative corridor: nearest non-boss room → boss centre
+    let nearestI = 0, nearestD = Infinity;
+    for (let i = 0; i < rooms.length; i++) {
+      if (i === bossIdx) continue;
+      const d = Math.hypot(centers[i].x - bossCenter.x, centers[i].z - bossCenter.z);
+      if (d < nearestD) { nearestD = d; nearestI = i; }
+    }
+    cav.tunnel(centers[nearestI], bossCenter, bMin + rng() * (bMax - bMin));
+
+    // (2) wall the boss ring solid + punch one door — temporarily, so the
+    // flood-fill below sees the boss as a sealed island. We'll re-seal at
+    // the end against the real nearest reachable corridor tile.
+    cav.sealRoom(bossRect, ringDoor(bossRect, centers[nearestI]), centers[nearestI]);
+
+    // (3) flood-fill the spawn's connected component; find the nearest
+    // reachable corridor tile in a band just outside the boss ring.
+    const reach = cav.reachableFrom(centers[spawnIdx]);
+    let closest: GridPos | null = null;
+    let closestD = Infinity;
+    const band = 2;
+    for (let x = bossRect.x0 - band - 1; x <= bossRect.x1 + band + 1; x++) {
+      for (let z = bossRect.z0 - band - 1; z <= bossRect.z1 + band + 1; z++) {
+        if (!cav.on(x, z)) continue;
+        // skip the boss room interior (it's part of a sealed island)
+        if (x >= bossRect.x0 && x <= bossRect.x1 && z >= bossRect.z0 && z <= bossRect.z1) continue;
+        if (reach && !reach.has(`${x},${z}`)) continue;
+        const d = Math.hypot(x - bossCenter.x, z - bossCenter.z);
+        if (d < closestD) { closestD = d; closest = { x, z }; }
+      }
+    }
+
+    if (closest) {
+      // (4) final re-seal with the door facing the real nearest reachable tile
+      bossConnect = closest;
+      bossDoor = ringDoor(bossRect, closest);
+      cav.sealRoom(bossRect, bossDoor, closest);
+    } else {
+      // (4-fallback) keep the tentative seal from step (2); the corridor
+      // from the nearest room still guarantees a connection.
+      bossConnect = centers[nearestI];
+      bossDoor = ringDoor(bossRect, centers[nearestI]);
+      cav.sealRoom(bossRect, bossDoor, centers[nearestI]);
+    }
+  }
+
+  // ── mezzanine plateaus: pick N rooms (never spawn or the boss room)
+  // and raise them; buildTerrain's relaxation auto-grades the ramp ──
+  const mezzCount = Math.max(0, cfg.mezzanines ?? 0);
+  const mezzanineRoomIndices: number[] = [];
+  if (mezzCount > 0) {
+    const candidates: number[] = [];
+    for (let i = 0; i < rooms.length; i++) if (i !== spawnIdx && i !== bossIdx) candidates.push(i);
+    // shuffle deterministically, then take the first N
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    mezzanineRoomIndices.push(...candidates.slice(0, Math.min(mezzCount, candidates.length)));
+  }
+  const mezzSteps = cfg.mezzanineSteps ?? 1;
+  const autoPlateaus = mezzanineRoomIndices.map((i) => ({
+    rect: { x0: rooms[i].x0 + 1, z0: rooms[i].z0 + 1, x1: rooms[i].x1 - 1, z1: rooms[i].z1 - 1 },
+    steps: mezzSteps,
+  })).filter((p) => p.rect.x0 <= p.rect.x1 && p.rect.z0 <= p.rect.z1);
+
+  const terrainCfg: TerrainConfig = {
+    ...cfg,
+    plateaus: [...(cfg.plateaus ?? []), ...autoPlateaus],
+  };
+  const terrain = buildTerrain(cav.walk, terrainCfg);
+  const partySpawn = centers[spawnIdx] ?? centers[0] ?? { x: S >> 1, z: S >> 1 };
+  return {
+    walk: cav.walk, rooms, centers, partySpawn, ...terrain,
+    bossRoomIndex: bossIdx >= 0 ? bossIdx : undefined,
+    bossDoor, bossConnect,
+    mezzanineRoomIndices,
+  };
 }
