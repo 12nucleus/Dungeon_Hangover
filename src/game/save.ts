@@ -1,0 +1,161 @@
+// ─────────────────────────────────────────────────────────────
+// Save / Load system — multi-slot persistence (localStorage) +
+// global settings persistence.
+//
+// Every piece of game state we persist is plain serializable data
+// (see `Unit`, `Item`, `QuestState` in types.ts / quest.ts), so a
+// save is just a JSON blob. The engine builds a `SaveData` from its
+// live state and `SaveManager` stores it under a slot id; loading
+// reverses the process.
+//
+// Slots are independent "playthroughs" — the user can keep several
+// different runs (different characters / progress) side by side.
+// ─────────────────────────────────────────────────────────────
+
+import type { Unit, GridPos, GamePhase } from './types';
+import type { Item } from './items';
+import type { QuestState } from './quest';
+
+/** Global audio / display settings (shared across all save slots). */
+export interface GameSettings {
+  /** master gain, 0..1 */
+  master: number;
+  /** sfx gain, 0..1 */
+  sfx: number;
+  /** music gain, 0..1 */
+  music: number;
+  /** master mute */
+  muted: boolean;
+}
+
+/** The full serializable game state captured at a bonfire. */
+export interface SaveData {
+  version: number;
+  slotId: string;
+  name: string;
+  /** epoch ms — used for "most recent" sorting + display */
+  timestamp: number;
+  /** dungeon floor (1-based); the game currently has a single level */
+  floor: number;
+  units: Unit[];
+  gold: number;
+  inventory: Item[];
+  questStates: QuestState[];
+  bonfirePos: GridPos | null;
+  bonfireLit: boolean;
+  defeatedSpecialMobs: string[];
+  /** fog-of-war explored grid (boolean[size][size]) */
+  explored: boolean[][];
+  combat: {
+    turnOrder: string[];
+    activeIdx: number;
+    round: number;
+    inCombat: boolean;
+    phase: GamePhase;
+  };
+  selectedId: string | null;
+  phase: GamePhase;
+}
+
+/** Lightweight metadata shown in the slot list (no full state). */
+export interface SaveSlotMeta {
+  slotId: string;
+  name: string;
+  timestamp: number;
+  floor: number;
+}
+
+const SAVES_KEY = 'dh_saves_v1';
+const SETTINGS_KEY = 'dh_settings_v1';
+const SAVE_VERSION = 1;
+
+type SaveStore = Record<string, { meta: SaveSlotMeta; data: SaveData }>;
+
+function readStore(): SaveStore {
+  try {
+    const raw = localStorage.getItem(SAVES_KEY);
+    return raw ? (JSON.parse(raw) as SaveStore) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStore(s: SaveStore) {
+  try {
+    localStorage.setItem(SAVES_KEY, JSON.stringify(s));
+  } catch {
+    /* storage full / disabled — fail silently, the game keeps running */
+  }
+}
+
+export const SaveManager = {
+  /** number of independent save slots offered in the Load / New-Game UI */
+  MAX_SLOTS: 4,
+
+  /** all occupied slots, newest first */
+  listSlots(): SaveSlotMeta[] {
+    const all = readStore();
+    return Object.values(all)
+      .map((s) => s.meta)
+      .sort((a, b) => b.timestamp - a.timestamp);
+  },
+
+  getMeta(slotId: string): SaveSlotMeta | null {
+    return readStore()[slotId]?.meta ?? null;
+  },
+
+  has(slotId: string): boolean {
+    return !!readStore()[slotId];
+  },
+
+  save(slotId: string, data: SaveData) {
+    const all = readStore();
+    all[slotId] = {
+      meta: { slotId, name: data.name, timestamp: data.timestamp, floor: data.floor },
+      data,
+    };
+    writeStore(all);
+  },
+
+  load(slotId: string): SaveData | null {
+    return readStore()[slotId]?.data ?? null;
+  },
+
+  delete(slotId: string) {
+    const all = readStore();
+    if (all[slotId]) {
+      delete all[slotId];
+      writeStore(all);
+    }
+  },
+};
+
+const DEFAULT_SETTINGS: GameSettings = { master: 0.9, sfx: 0.9, music: 0.42, muted: false };
+
+export const SettingsManager = {
+  load(): GameSettings {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) return { ...DEFAULT_SETTINGS };
+      const p = JSON.parse(raw) as Partial<GameSettings>;
+      return {
+        master: typeof p.master === 'number' ? p.master : DEFAULT_SETTINGS.master,
+        sfx: typeof p.sfx === 'number' ? p.sfx : DEFAULT_SETTINGS.sfx,
+        music: typeof p.music === 'number' ? p.music : DEFAULT_SETTINGS.music,
+        muted: !!p.muted,
+      };
+    } catch {
+      return { ...DEFAULT_SETTINGS };
+    }
+  },
+
+  save(s: GameSettings) {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    } catch {
+      /* ignore */
+    }
+  },
+};
+
+export const SAVE_VERSION_NUMBER = SAVE_VERSION;

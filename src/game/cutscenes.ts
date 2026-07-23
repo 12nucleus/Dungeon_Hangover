@@ -164,6 +164,8 @@ export interface CutsceneHost {
   setBonfireCheckpoint: (pos: GridPos) => void;
   /** signal "intro grace window" — engine suppresses proximity aggro for `secs` */
   armIntroGrace: (secs: number) => void;
+  /** called once the intro cutscene fully completes (engine drops an initial autosave) */
+  onIntroComplete: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -434,6 +436,7 @@ export function finishIntro(h: CutsceneHost) {
   h.iso.lerp = 7;
   h.busy = false;
   h.phase = 'explore';
+  h.onIntroComplete();
   h.pushLog('Floor 1 — The Warlord\'s Warren. (B) jumps to the boss cutscene. Light the bonfire to set your respawn.', 'system');
   h.emitSnapshot();
 }

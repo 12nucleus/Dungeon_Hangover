@@ -19,9 +19,20 @@ export function GameCanvas() {
     return () => { engine.dispose(); engineRef.current = null; };
   }, []);
 
-  const handleEnterDungeon = () => {
-    engineRef.current?.enterDungeon();
+  const handleNewGame = (slotId: string) => {
+    engineRef.current?.startNewGame(slotId);
     setSplashVisible(false);
+  };
+
+  const handleLoad = (slotId: string) => {
+    engineRef.current?.loadGame(slotId);
+    setSplashVisible(false);
+  };
+
+  const handleExit = () => {
+    // best-effort: browsers only allow script-close for script-opened
+    // windows, so this is a no-op in most cases and the menu simply stays.
+    window.close();
   };
 
   return (
@@ -29,7 +40,13 @@ export function GameCanvas() {
       <div ref={hostRef} className="game-canvas" />
       <div ref={overlayRef} className="fx-layer" />
       <HUD snap={snap} engine={engineRef.current} />
-      <SplashScreen visible={splashVisible} onEnter={handleEnterDungeon} />
+      <SplashScreen
+        visible={splashVisible}
+        onNewGame={handleNewGame}
+        onLoad={handleLoad}
+        onExit={handleExit}
+        engineRef={engineRef}
+      />
     </div>
   );
 }

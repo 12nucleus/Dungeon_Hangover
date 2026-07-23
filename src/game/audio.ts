@@ -12,6 +12,8 @@ const SFX_FILES = [
 
 export type SfxName = (typeof SFX_FILES)[number];
 
+import type { GameSettings } from './save';
+
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
@@ -361,5 +363,15 @@ export class AudioManager {
   setMusicDucked(ducked: boolean) {
     if (!this.ctx) return;
     this.musicGain.gain.linearRampToValueAtTime(ducked ? 0.2 : 0.42, this.ctx.currentTime + 0.4);
+  }
+
+  /** apply the global settings (volumes + mute). Safe to call before init()
+   *  (the values are stored and applied once the AudioContext exists). */
+  applySettings(s: GameSettings) {
+    this.muted = s.muted;
+    if (!this.ctx) return;
+    this.master.gain.value = s.muted ? 0 : s.master;
+    this.sfxGain.gain.value = s.sfx;
+    this.musicGain.gain.value = s.music;
   }
 }

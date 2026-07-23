@@ -22,6 +22,7 @@ import { DestructibleManager, type Destructible } from './destructibles';
 import { makeItem, rollLootTable, type Item } from './items';
 import type { LevelStructures } from '../levels/levelTypes';
 import { effMaxHp } from './stats';
+import { SaveManager, SettingsManager, type GameSettings, type SaveData, type SaveSlotMeta } from './save';
 import { canUnlock, treeFor } from './skilltree';
 import { TrapManager } from './traps';
 import { rollDice } from './dice';
@@ -243,6 +244,13 @@ export class GameEngine {
   private pendingSmash: { unitId: string; propId: string } | null = null;
   private bigMessage: string | null = null;
   private cinematic = false;
+
+  // ── save / load ──
+  /** global audio settings (persisted, shared across all slots) */
+  private settings: GameSettings = SettingsManager.load();
+  /** the slot the current playthrough is being saved into (null until a
+   *  new game is started or a save is loaded) */
+  private currentSlotId: string | null = null;
 
   /** show a subtitle styled for cutscenes (small, readable, lingers) */
   private showCine(text: string) { this.bigMessage = text; this.cinematic = true; this.emitSnapshot(); }
@@ -549,6 +557,7 @@ export class GameEngine {
       }
       if (!this.titleExt) return;            // already entered the dungeon
       void this.audio.init();
+      this.applyAudioSettings();
       this.audio.playTavernMusic({ muffled: true, volume: 0.10 });
       this.audio.setMusicDucked(true);
     };
@@ -675,6 +684,7 @@ export class GameEngine {
       // ── engine lifecycle hooks ──
       setBonfireCheckpoint: (pos) => { self.bonfireLit = true; self.bonfirePos = { ...pos }; },
       armIntroGrace: (secs) => { self.introGraceUntil = (performance.now() / 1000) + secs; },
+      onIntroComplete: () => self.onIntroComplete(),
     };
   }
 
@@ -2062,8 +2072,9 @@ export class GameEngine {
 
     // ── normal key bindings (console is closed) ──
     this.keys.add(k);
-    if (k === 'q') this.iso.rotate(1);
-    if (k === 'e') this.iso.rotate(-1);
+    const cutscene = this.busy && (this.introActive || this.bossCineActive);
+    if (k === 'q' && !cutscene) this.iso.rotate(1);
+    if (k === 'e' && !cutscene) this.iso.rotate(-1);
     if (k === 'i' && this.phase !== 'menu') { this.toggleInventory(); return; }
     if (k === 'k' && this.phase !== 'menu') { this.toggleSkillTree(); return; }
     if (k === 'c' && this.phase === 'explore' && !this.combat.inCombat) { this.toggleSneak(); return; }
@@ -2528,7 +2539,8 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
   // ══ HUD API (called from React) ════════════════════════════
   startGame() {
     void this.audio.init();
-    if (!this.introPlayed) {
+    this.applyAudioSettings();
+  if (!this.introPlayed) {
       this.phase = 'menu';     // gated while the intro plays
       this.busy = true;
       void this.playTitleSequence();
@@ -2546,6 +2558,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
    *  tavern cutscene. The React splash fades out at the same time. */
   enterDungeon() {
     void this.audio.init();
+    this.applyAudioSettings();
     if (!this.titleExt || !this.cutsceneHost) return;
     const ext = this.titleExt;
     const prevBg = this.titlePrevBg;
@@ -2593,7 +2606,217 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     this.emitSnapshot();
   }
 
-  toggleMute() { const m = this.audio.toggleMute(); this.emitSnapshot(); return m; }
+  toggleMute() {
+    const m = this.audio.toggleMute();
+    this.settings.muted = m;
+    SettingsManager.save(this.settings);
+    this.emitSnapshot();
+    return m;
+  }
+
+  // ══ save / load (multi-slot) ═════════════════════════════
+  getSettings(): GameSettings { return { ...this.settings }; }
+
+  setSettings(s: GameSettings) {
+    this.settings = { ...s };
+    SettingsManager.save(this.settings);
+    this.applyAudioSettings();
+    this.emitSnapshot();
+  }
+
+  private applyAudioSettings() {
+    this.audio.applySettings(this.settings);
+  }
+
+  /** list occupied slots (newest first) for the Load / New-Game UI */
+  listSlots(): SaveSlotMeta[] { return SaveManager.listSlots(); }
+
+  /** metadata for a specific slot (or null if empty) */
+  getSlotMeta(slotId: string): SaveSlotMeta | null { return SaveManager.getMeta(slotId); }
+
+  /** number of independent save slots */
+  get maxSlots(): number { return SaveManager.MAX_SLOTS; }
+
+  hasSave(slotId: string): boolean { return SaveManager.has(slotId); }
+
+  deleteSlot(slotId: string) {
+    SaveManager.delete(slotId);
+    if (this.currentSlotId === slotId) this.currentSlotId = null;
+  }
+
+  /** start a brand-new playthrough in the given slot, then play the intro */
+  startNewGame(slotId: string) {
+    this.currentSlotId = slotId;
+    this.enterDungeon();
+  }
+
+  /** capture the current state into the active (or given) slot */
+  saveGame(slotId?: string, label?: string) {
+    const id = slotId ?? this.currentSlotId;
+    if (!id) return;
+    const data: SaveData = {
+      version: 1,
+      slotId: id,
+      name: label ?? this.partyName(),
+      timestamp: Date.now(),
+      floor: 1,
+      units: this.combat.units.map((u) => this.clone(u)),
+      gold: this.gold,
+      inventory: this.inventory.map((i) => this.clone(i)),
+      questStates: this.questLog.statesEntries(),
+      bonfirePos: this.bonfirePos ? { ...this.bonfirePos } : null,
+      bonfireLit: this.bonfireLit,
+      defeatedSpecialMobs: [...this.defeatedSpecialMobs],
+      explored: this.explored.map((r) => [...r]),
+      combat: {
+        turnOrder: [...this.combat.turnOrder],
+        activeIdx: this.combat.activeIdx,
+        round: this.combat.round,
+        inCombat: this.combat.inCombat,
+        phase: this.combat.phase,
+      },
+      selectedId: this.selectedId,
+      phase: this.phase,
+    };
+    SaveManager.save(id, data);
+    this.pushLog('💾 Game saved.', 'system');
+    this.bigMessage = 'Game Saved';
+    this.emitSnapshot();
+    setTimeout(() => {
+      if (this.bigMessage === 'Game Saved') { this.bigMessage = null; this.emitSnapshot(); }
+    }, 1500);
+  }
+
+  /** restore a playthrough from a slot and drop straight into explore */
+  loadGame(slotId: string): boolean {
+    const data = SaveManager.load(slotId);
+    if (!data) return false;
+    this.currentSlotId = slotId;
+
+    // ── tear down the title backdrop if it's still up ──
+    if (this.titleExt) { this.scene.remove(this.titleExt); this.titleExt = null; }
+    if (this.titlePrevBg) { this.scene.background = this.titlePrevBg; this.titlePrevBg = null; }
+    if (this.tavern) { this.scene.remove(this.tavern); this.tavern = null; }
+    this.titleIdle = false;
+
+    // ── restore state ──
+    this.combat.units = data.units.map((u) => this.clone(u));
+    this.gold = data.gold;
+    this.inventory = data.inventory.map((i) => this.clone(i));
+    this.questLog.load(data.questStates);
+    this.bonfirePos = data.bonfirePos ? { ...data.bonfirePos } : null;
+    this.bonfireLit = data.bonfireLit;
+    this.defeatedSpecialMobs = new Set(data.defeatedSpecialMobs);
+    this.explored = data.explored.map((r) => [...r]);
+    this.combat.turnOrder = [...data.combat.turnOrder];
+    this.combat.activeIdx = data.combat.activeIdx;
+    this.combat.round = data.combat.round;
+    this.combat.inCombat = data.combat.inCombat;
+    this.combat.phase = data.combat.phase;
+    this.selectedId = data.selectedId;
+    this.phase = data.phase;
+
+    // ── reveal the dungeon + reposition every rig ──
+    this.world.group.visible = true;
+    this.props.group.visible = true;
+    this.repositionAllVisuals();
+    if (this.bonfireLit) this.spawnBonfireFlame();
+
+    // ── camera / audio / flags ──
+    this.introPlayed = true;
+    this.introActive = false;
+    this.introSkipped = false;
+    this.inTavern = false;
+    this.busy = false;
+    this.cinematic = false;
+    this.clearCine();
+    this.fadeTo(0);
+    this.iso.lerp = 7;
+    void this.audio.init();
+    this.applyAudioSettings();
+    this.audio.stopTavernMusic();
+    this.audio.playMusic('music_ambient');
+
+    // ── hero rig + camera focus ──
+    const hero = this.combat.living('party')[0];
+    if (hero) {
+      const hv = this.visuals.get(hero.id);
+      if (hv) {
+        hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 0;
+        hv.rig.group.rotation.set(0, Math.PI, 0);
+        hv.yaw = hv.targetYaw = Math.PI;
+        if (hero.weapon) setWeapon(hv.rig, hero.weapon, hero.scheme.accent);
+        if (!this.heroLight) this.attachHeroTorch(hv.rig);
+      }
+      this.iso.focus(this.unitWorld(hero.pos));
+    }
+    this.selectedId = this.selectedId ?? hero?.id ?? null;
+
+    this.pushLog('Save loaded — welcome back, adventurer.', 'system');
+    this.emitSnapshot();
+    return true;
+  }
+
+  /** deep-clone plain serializable data (units/items are JSON-safe) */
+  private clone<T>(x: T): T {
+    return JSON.parse(JSON.stringify(x)) as T;
+  }
+
+  private partyName(): string {
+    const leader = this.combat.living('party')[0];
+    return leader ? leader.name : 'Adventurer';
+  }
+
+  /** snap every rig to its unit's saved tile + visibility/anim state */
+  private repositionAllVisuals() {
+    for (const [id, v] of this.visuals) {
+      const u = this.byId(id);
+      if (!u) continue;
+      const wp = this.unitWorld(u.pos);
+      v.rig.group.position.copy(wp);
+      v.rig.group.userData.baseY = wp.y;
+      v.rig.group.visible = true;
+      v.rig.anim.mode = u.alive ? 'idle' : 'dead';
+      v.rig.anim.t = 0;
+      v.yaw = v.targetYaw = u.team === 'party' ? Math.PI : 0;
+      v.rig.group.rotation.y = v.yaw;
+      v.bar.style.display = u.alive ? 'block' : 'none';
+    }
+  }
+
+  /** (re)create the bonfire flame + glow light (idempotent) */
+  private spawnBonfireFlame() {
+    if (!this.bonfireGroup) return;
+    if (this.bonfireGroup.getObjectByName('bf_light')) return; // already lit
+    this.bonfireGroup.userData.lit = true;
+    const flameMat = new THREE.MeshLambertMaterial({ color: 0xffb545, emissive: 0xff7a1f, emissiveIntensity: 0.9 });
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const sc = new THREE.Vector3();
+    const e = new THREE.Euler();
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI * 2 + 0.3;
+      const sx = Math.cos(angle) * 0.12;
+      const sz = Math.sin(angle) * 0.12;
+      e.set(i * 0.2, angle, 0);
+      m4.compose(new THREE.Vector3(sx, 0.42, sz), q.setFromEuler(e), sc.set(0.20, 0.36, 0.10));
+      const im = new THREE.InstancedMesh(geo, flameMat, 1);
+      im.setMatrixAt(0, m4);
+      im.name = 'bf_flame';
+      this.bonfireGroup.add(im);
+    }
+    const light = new THREE.PointLight(0xff9540, 26, 16, 1.7);
+    light.position.set(0, 0.7, 0);
+    light.name = 'bf_light';
+    this.bonfireGroup.add(light);
+  }
+
+  /** called by the intro cutscene once it finishes — drops an initial
+   *  autosave into the active slot so "Continue" works immediately */
+  onIntroComplete() {
+    if (this.currentSlotId) this.saveGame(this.currentSlotId, 'New Game');
+  }
 
   // ══ sneak (called from React HUD) ══════════════════════════
   toggleSneak() {
@@ -2617,37 +2840,16 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
   lightBonfire() {
     if (!this.bonfireGroup || this.bonfireLit) return;
     this.bonfireLit = true;
-    this.bonfireGroup.userData.lit = true;
     this.bonfirePos = this.structures?.checkpoint ? { ...this.structures.checkpoint } : { x: 10, z: 10 };
-    // flame cubes
-    const flameMat = new THREE.MeshLambertMaterial({ color: 0xffb545, emissive: 0xff7a1f, emissiveIntensity: 0.9 });
-    const geo = new THREE.BoxGeometry(1, 1, 1);
-    const m4 = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const sc = new THREE.Vector3();
-    const e = new THREE.Euler();
-    for (let i = 0; i < 4; i++) {
-      const angle = (i / 4) * Math.PI * 2 + 0.3;
-      const sx = Math.cos(angle) * 0.12;
-      const sz = Math.sin(angle) * 0.12;
-      e.set(i * 0.2, angle, 0);
-      m4.compose(new THREE.Vector3(sx, 0.42, sz), q.setFromEuler(e), sc.set(0.20, 0.36, 0.10));
-      const im = new THREE.InstancedMesh(geo, flameMat, 1);
-      im.setMatrixAt(0, m4);
-      im.name = 'bf_flame';
-      this.bonfireGroup.add(im);
-    }
-    // glow light (relative to bonfire group position)
-    const light = new THREE.PointLight(0xff9540, 26, 16, 1.7);
-    light.position.set(0, 0.7, 0);
-    light.name = 'bf_light';
-    this.bonfireGroup.add(light);
+    this.spawnBonfireFlame();
     this.pushLog('The bonfire roars to life. This place feels safer now...', 'system');
     this.audio.play('ui_click', 0.6);
     this.audio.play('bonfire_lit', 1.0); // placeholder: add lit_bonfire.wav to public/audio/
     this.bigMessage = 'Bonfire Lit!';
     this.emitSnapshot();
     setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2500);
+    // auto-save to the active slot the moment a checkpoint is established
+    this.saveGame(this.currentSlotId ?? undefined, 'Bonfire Lit');
   }
 
   restAtBonfire() {
@@ -2686,6 +2888,8 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     this.bigMessage = 'Bonfire Rest';
     this.emitSnapshot();
     setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2000);
+    // resting re-establishes the checkpoint — keep the slot current
+    this.saveGame(this.currentSlotId ?? undefined, 'Rested');
   }
 
   closeBonfireUI() {
@@ -3405,12 +3609,14 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
 
   // ══ main update ═══════════════════════════════════════════
   private update(dt: number) {
-    // keyboard pan
-    const pan = dt * 9;
-    if (this.keys.has('w') || this.keys.has('arrowup')) this.iso.pan(0, -pan);
-    if (this.keys.has('s') || this.keys.has('arrowdown')) this.iso.pan(0, pan);
-    if (this.keys.has('a') || this.keys.has('arrowleft')) this.iso.pan(-pan, 0);
-    if (this.keys.has('d') || this.keys.has('arrowright')) this.iso.pan(pan, 0);
+    // keyboard pan — suspended while a cutscene is driving the camera
+    if (!(this.busy && (this.introActive || this.bossCineActive))) {
+      const pan = dt * 9;
+      if (this.keys.has('w') || this.keys.has('arrowup')) this.iso.pan(0, -pan);
+      if (this.keys.has('s') || this.keys.has('arrowdown')) this.iso.pan(0, pan);
+      if (this.keys.has('a') || this.keys.has('arrowleft')) this.iso.pan(-pan, 0);
+      if (this.keys.has('d') || this.keys.has('arrowright')) this.iso.pan(pan, 0);
+    }
 
     // follow camera: the camera stays where the player left it (WASD pan
     // works freely). It only re-centers on the leader when the player

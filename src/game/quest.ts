@@ -87,6 +87,17 @@ export class QuestLog {
     return !!qs && (qs.stage === 'accepted' || qs.stage === 'in_progress');
   }
 
+  /** restore the full quest state from a save (replaces current state) */
+  load(states: QuestState[]) {
+    this.states.clear();
+    for (const s of states) this.states.set(s.id, { id: s.id, stage: s.stage });
+  }
+
+  /** serialize all current quest states (for saving) */
+  statesEntries(): QuestState[] {
+    return [...this.states.values()].map((s) => ({ id: s.id, stage: s.stage }));
+  }
+
   isCompleted(questId: string): boolean {
     const qs = this.states.get(questId);
     return !!qs && qs.stage === 'completed';
