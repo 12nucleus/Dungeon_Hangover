@@ -55,7 +55,10 @@ export class AudioManager {
       } catch { /* missing file → silently skip */ }
     };
     await Promise.all([...SFX_FILES.map(load), load('music_ambient'), load('tavern_music')]);
-    this.playMusic('music_ambient');
+    // NOTE: the dungeon ambient loop is intentionally NOT started here. Autoplay
+    // policy blocks audio before a gesture, and we don't want the dungeon theme
+    // bleeding into the tavern title screen. It is started later, when the intro
+    // cutscene hands control to the player (see finishIntro / playIntroCutscene).
     if (this.tavernPending) { this.tavernPending = false; this.playTavernMusic(this._pendingOpts ?? {}); this._pendingOpts = undefined; }
   }
 
@@ -152,6 +155,12 @@ export class AudioManager {
     const src = this.tavernSource;
     this.tavernSource = null;
     if (src) setTimeout(() => { try { src.stop(); } catch { /* already stopped */ } }, 1700);
+  }
+
+  /** true while the tavern theme is actively playing — used so the title
+   *  narration doesn't restart it after a splash gesture already started it. */
+  isTavernMusicPlaying(): boolean {
+    return this.tavernSource !== null;
   }
 
   /** hard-stop the looping dungeon/ambient track (e.g. when swapping to tavern) */

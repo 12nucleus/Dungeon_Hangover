@@ -92,6 +92,9 @@ export interface CutsceneHost {
   introPlayed: boolean;
   introSkipped: boolean;
   inTavern: boolean;
+  /** true while the splash backdrop is idling (slow camera orbit) — flipped
+   *  off by runTitleNarration so the title camera moves take over cleanly */
+  titleIdle: boolean;
 
   // ── audio utilities (bound, with the engine's options baked in) ──
   setMusicDucked: (b: boolean) => void;
@@ -230,8 +233,9 @@ export async function playIntroCutscene(h: CutsceneHost) {
   hv.yaw = hv.targetYaw = Math.PI;
   hv.rig.anim.mode = 'sit'; hv.rig.anim.crouch = 0; hv.rig.anim.lunge = 0; hv.rig.anim.flinch = 0;
   const mug = new THREE.Group();
-  const mugBody = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.1, 0.24, 8), new THREE.MeshLambertMaterial({ color: 0x8a5a2e }));
-  const mugFoam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 8), new THREE.MeshLambertMaterial({ color: 0xf2ead2 }));
+  // voxel mug (replaces CylinderGeometry)
+  const mugBody = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.24, 0.20), new THREE.MeshLambertMaterial({ color: 0x8a5a2e }));
+  const mugFoam = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.22), new THREE.MeshLambertMaterial({ color: 0xf2ead2 }));
   mugFoam.position.y = 0.14; mug.add(mugBody, mugFoam);
   (mugBody.geometry as THREE.BufferGeometry).computeBoundingSphere();
   const hand = hv.rig.parts.handL ?? hv.rig.parts.armL;
@@ -437,7 +441,15 @@ export function finishIntro(h: CutsceneHost) {
 // ═════════════════════════════════════════════════════════════
 // 2. TITLE card sequence — exterior tavern establishing shot
 // ═════════════════════════════════════════════════════════════
-export async function playTitleSequence(h: CutsceneHost) {
+/**
+ * Builds the tavern exterior as a static, animated splash backdrop.
+ * No narration or music is started here — those require a user gesture
+ * (the "Enter the Dungeon" click) and are handled by runTitleNarration,
+ * so the cutscene continues seamlessly from this exact framing.
+ * Returns the exterior group + the previous scene background so the caller
+ * can later transition into the interior tavern cutscene.
+ */
+export function setupTitleScene(h: CutsceneHost): { ext: THREE.Group; prevBg: any } {
   h.busy = true;
   h.introActive = true;
   h.introSkipped = false;
@@ -456,9 +468,16 @@ export async function playTitleSequence(h: CutsceneHost) {
   h.scene.add(ext);
 
   const chimTop = ext.userData.chimneyTop as THREE.Vector3;
-  let smokeT = 0;
+  h.titleIdle = true;
+  let smokeT = 0, idleT = 0;
   h.propAnims.push((dt: number) => {
     if (!ext.parent) return true;
+    // gentle idle orbit while the splash is up (stopped once the title
+    // narration takes over the camera)
+    if (h.titleIdle) {
+      idleT += dt;
+      h.iso.desiredYaw = 0.24 + Math.sin(idleT * 0.16) * 0.14;
+    }
     smokeT += dt;
     if (smokeT > 0.10) {
       smokeT = 0;
@@ -478,11 +497,28 @@ export async function playTitleSequence(h: CutsceneHost) {
   h.iso.desiredYaw = 0.24; h.iso.desiredPitch = 0.42; h.iso.desiredDist = 11.5;
   h.iso.focus(new THREE.Vector3(0, 3.0, 0));
 
-  h.fadeTo(1); await h.cineDelay(700);
-  h.fadeTo(0); h.audio.stopMusic();
-  h.audio.playTavernMusic({ muffled: true, volume: 0.10 });
-  h.audio.setMusicDucked(true);
-  await h.cineDelay(700);
+  // ensure the scene is fully revealed (not black) behind the splash overlay
+  h.fadeTo(0);
+
+  return { ext, prevBg };
+}
+
+/**
+ * Runs the title-card narration + camera moves, then transitions into the
+ * interior tavern cutscene. Designed to be called after setupTitleScene so
+ * the front-of-tavern view the player has been looking at continues
+ * seamlessly into the "inside the tavern" act.
+ */
+export async function runTitleNarration(h: CutsceneHost, ext: THREE.Group, prevBg: any) {
+  h.titleIdle = false;
+  // Only (re)start the tavern theme if the splash gesture hasn't already
+  // kicked it off — avoids a jarring restart when the player enters.
+  if (!h.audio.isTavernMusicPlaying()) {
+    h.audio.stopMusic();
+    h.audio.playTavernMusic({ muffled: true, volume: 0.10 });
+    h.audio.setMusicDucked(true);
+  }
+  await h.cineDelay(500);
   if (h.introSkipped) { endTitleSequence(h, ext, prevBg); return; }
 
   await h.narrate('title_1', 'In a tavern far, far away…', 3400);
@@ -497,6 +533,17 @@ export async function playTitleSequence(h: CutsceneHost) {
 
   h.fadeTo(1); await h.cineDelay(700);
   endTitleSequence(h, ext, prevBg);
+}
+
+/**
+ * Full title sequence (setup + narration) — fallback entry point used when
+ * the splash overlay is bypassed. The splash flow calls setupTitleScene then
+ * runTitleNarration separately so the HTML title can fade out in between.
+ */
+export async function playTitleSequence(h: CutsceneHost) {
+  const { ext, prevBg } = setupTitleScene(h);
+  h.fadeTo(1); await h.cineDelay(500); h.fadeTo(0);
+  await runTitleNarration(h, ext, prevBg);
 }
 
 export function endTitleSequence(h: CutsceneHost, ext: THREE.Group, prevBg: any) {

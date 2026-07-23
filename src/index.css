@@ -435,3 +435,56 @@ html, body, #root {
 .bonfire-rest-desc { color: #b9a888; font-size: 13px; font-style: italic; margin-bottom: 16px; }
 .bonfire-rest-actions { display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .bonfire-rest-hint { color: #8a7a5a; font-size: 11px; margin-top: 4px; }
+
+/* ── SPLASH (animated tavern-exterior title screen) ──
+   Sits on top of the engine's already-running title cutscene. The centre is
+   left transparent so the voxel tavern shows through; only the edges are
+   darkened for title readability. Fades out (opacity) when the player enters,
+   revealing the cutscene continuing seamlessly underneath. */
+.splash {
+  position: absolute; inset: 0; z-index: 40;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 24px;
+  background: radial-gradient(ellipse at center, rgba(4,6,14,0) 28%, rgba(4,6,14,0.6) 100%);
+  transition: opacity 1.1s ease;
+  pointer-events: auto;
+}
+.splash--hide { opacity: 0; pointer-events: none; }
+.splash__vignette {
+  position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 240px 70px rgba(0,0,0,0.72);
+}
+.splash__content { position: relative; max-width: 700px; }
+.splash__rune {
+  color: #c9a227; letter-spacing: 18px; font-size: 14px; margin-bottom: 10px; opacity: 0.85;
+  text-shadow: 0 0 18px rgba(201,162,39,0.6);
+}
+.splash__title {
+  font-size: 72px; margin: 0; letter-spacing: 12px; color: #f3e9c8;
+  text-shadow: 0 0 40px rgba(201,162,39,0.55), 0 4px 0 #2a2410, 0 8px 30px #000;
+}
+.splash__subtitle {
+  font-weight: 400; font-size: 20px; color: #c9b98a; margin: 8px 0 0; letter-spacing: 4px;
+  text-shadow: 0 2px 12px #000;
+}
+.splash__tag {
+  color: #aeb6c8; font-size: 14px; margin: 18px auto 30px; font-style: italic; max-width: 560px;
+  text-shadow: 0 2px 8px #000;
+}
+.splash__enter {
+  font-family: inherit; font-size: 22px; letter-spacing: 3px; cursor: pointer;
+  color: #1a1408; background: linear-gradient(180deg, #f3d27a, #c9a227);
+  border: 1px solid #f6e6a8; border-radius: 10px; padding: 14px 34px;
+  box-shadow: 0 0 30px rgba(201,162,39,0.5), inset 0 1px 0 #fff8;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.splash__enter:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 44px rgba(201,162,39,0.75), inset 0 1px 0 #fff8;
+}
+.splash__hint { margin-top: 16px; color: #6d7688; font-size: 12px; letter-spacing: 2px; text-shadow: 0 1px 4px #000; }
+
+@media (max-width: 900px) {
+  .splash__title { font-size: 46px; letter-spacing: 8px; }
+  .splash__subtitle { font-size: 16px; }
+}

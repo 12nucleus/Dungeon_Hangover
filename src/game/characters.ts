@@ -958,7 +958,8 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
     const tray = new THREE.Group();
     const tm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.5), new THREE.MeshLambertMaterial({ color: WHITE }));
     tray.add(tm);
-    const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.13, 8), new THREE.MeshLambertMaterial({ color: 0x8a5a2a }));
+    // voxel mug (replaces CylinderGeometry)
+    const mug = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 0.1), new THREE.MeshLambertMaterial({ color: 0x8a5a2a }));
     mug.position.set(0.1, 0.09, 0.1); tray.add(mug);
     const handR = parts.handR as THREE.Mesh | undefined;
     if (handR) handR.add(tray); else group.add(tray);

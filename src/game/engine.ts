@@ -29,7 +29,7 @@ import { Vox, type Voxel } from './voxelModels.mjs';
 import type { CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit } from './types';
 import { NPCS, type NPCDef } from './npc';
 import { QuestLog, QUESTS } from './quest';
-import { CutsceneDirector, type CutsceneHost } from './cutscenes';
+import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes';
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -324,6 +324,7 @@ export class GameEngine {
   private bossCutscenePlayed = false;
   private introPlayed = false;
   private introActive = false;
+  private titleIdle = false;
   private introSkipped = false;
   private bossCineActive = false;
   private cutsceneSkip = false;
@@ -367,6 +368,15 @@ export class GameEngine {
   /** the single object that routes/dispatches every cinematic, kept in
    *  src/game/cutscenes.ts so engine.ts doesn't bloat as scenes multiply. */
   private cutsceneDirector: CutsceneDirector | null = null;
+  /** stable CutsceneHost adapter — kept so the splash can drive the title
+   *  sequence in two phases (setup backdrop, then run narration on enter). */
+  private cutsceneHost!: CutsceneHost;
+  /** the tavern-exterior group + previous background while the splash is up */
+  private titleExt: THREE.Group | null = null;
+  private titlePrevBg: any = null;
+  /** one-time window listener that resumes audio + starts the tavern theme on
+   *  the first interaction anywhere on the splash (autoplay needs a gesture) */
+  private splashAudioHandler: (() => void) | null = null;
 
   private container: HTMLDivElement;
   private overlay: HTMLDivElement;
@@ -516,7 +526,34 @@ export class GameEngine {
     // wire the cutscene director — every cinematic runs through this one
     // object (the engine only implements the CutsceneHost API; all scene
     // scripts live in src/game/cutscenes.ts)
-    this.cutsceneDirector = new CutsceneDirector(this.buildCutsceneHost());
+    this.cutsceneHost = this.buildCutsceneHost();
+    this.cutsceneDirector = new CutsceneDirector(this.cutsceneHost);
+
+    // ── splash: build the animated tavern-exterior backdrop immediately so it
+    //    sits behind the HTML splash overlay (title + "Enter the Dungeon").
+    //    The narration + interior cutscene run later, on enterDungeon(), so the
+    //    front-of-tavern view continues seamlessly once the title fades.
+    const title = setupTitleScene(this.cutsceneHost);
+    this.titleExt = title.ext;
+    this.titlePrevBg = title.prevBg;
+
+    // ── splash audio: start the tavern theme on the FIRST user interaction
+    //    anywhere on the title screen. Browser/webview autoplay policy blocks
+    //    audio until a gesture, so we wait for one (the "Enter the Dungeon"
+    //    click also counts). The title narration then continues seamlessly.
+    this.splashAudioHandler = () => {
+      if (this.splashAudioHandler) {
+        window.removeEventListener('pointerdown', this.splashAudioHandler);
+        window.removeEventListener('keydown', this.splashAudioHandler);
+        this.splashAudioHandler = null;
+      }
+      if (!this.titleExt) return;            // already entered the dungeon
+      void this.audio.init();
+      this.audio.playTavernMusic({ muffled: true, volume: 0.10 });
+      this.audio.setMusicDucked(true);
+    };
+    window.addEventListener('pointerdown', this.splashAudioHandler);
+    window.addEventListener('keydown', this.splashAudioHandler);
 
     // composer (bloom makes fireballs & torchlight pop)
     this.composer = new EffectComposer(this.renderer);
@@ -585,6 +622,7 @@ export class GameEngine {
       get introPlayed() { return self.introPlayed; }, set introPlayed(v: boolean) { self.introPlayed = v; },
       get introSkipped() { return self.introSkipped; }, set introSkipped(v: boolean) { self.introSkipped = v; },
       get inTavern() { return self.inTavern; }, set inTavern(v: boolean) { self.inTavern = v; },
+      get titleIdle() { return self.titleIdle; }, set titleIdle(v: boolean) { self.titleIdle = v; },
 
       // ── audio utilities (bound) ──
       setMusicDucked: (b) => self.audio.setMusicDucked(b),
@@ -625,7 +663,7 @@ export class GameEngine {
       // ── attachables / build helpers ──
       attachHeroTorch: (rig) => self.attachHeroTorch(rig),
       buildSheep: () => self.buildSheep(),
-      buildTavern: () => self.buildTavern(),
+      buildTavern: () => self._buildTavern(),
       buildTavernExterior: () => self.buildTavernExterior(),
       barmaidServe: (bar) => self.barmaidServe(bar),
 
@@ -729,23 +767,27 @@ export class GameEngine {
     const hand = rig.parts.handL ?? rig.parts.armL;
     if (!hand) return;
     const torch = new THREE.Group();
+    // voxel torch stick (replaces CylinderGeometry)
     const stick = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.03, 0.045, 0.5, 6),
+      new THREE.BoxGeometry(0.04, 0.5, 0.04),
       new THREE.MeshLambertMaterial({ color: 0x5a3a1e }),
     );
     stick.position.y = 0.22; torch.add(stick);
+    // voxel wrap (replaces CylinderGeometry)
     const wrap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08, 0.06, 0.13, 6),
+      new THREE.BoxGeometry(0.10, 0.13, 0.10),
       new THREE.MeshLambertMaterial({ color: 0x2a1a0e }),
     );
     wrap.position.y = 0.48; torch.add(wrap);
+    // voxel flame (replaces ConeGeometry)
     const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(0.1, 0.34, 7),
+      new THREE.BoxGeometry(0.16, 0.34, 0.16),
       new THREE.MeshBasicMaterial({ color: 0xffb545 }),
     );
     flame.position.y = 0.68; flame.name = 'hero_flame'; torch.add(flame);
+    // voxel flame core (replaces ConeGeometry)
     const core = new THREE.Mesh(
-      new THREE.ConeGeometry(0.055, 0.2, 6),
+      new THREE.BoxGeometry(0.09, 0.2, 0.09),
       new THREE.MeshBasicMaterial({ color: 0xffe9a8 }),
     );
     core.position.y = 0.7; torch.add(core);
@@ -1052,9 +1094,10 @@ export class GameEngine {
   }
 
   // ══ tavern flashback set (intro cutscene) ═════════════════════
-  private buildTavern(): THREE.Group {
+  private _buildTavern(): THREE.Group {
     const g = new THREE.Group();
     let fireT = 0;
+    const TAV_C = 0.055;
     // weathered, dingy palette — old tavern wood long past its prime
     const wood = 0x5a3e26, woodD = 0x3a2818, woodL = 0x6e4e30, woodGrain = 0x2e1d10, woodStain = 0x2a1c10;
     const stone = 0x4a4540, stoneD = 0x2e2a26, stoneSoot = 0x1a1612, iron = 0x232020, grime = 0x2a2620;
@@ -1069,9 +1112,33 @@ export class GameEngine {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(jit(c)));
       m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; g.add(m); return m;
     };
-    const cyl = (rT: number, rB: number, h: number, c: number, x: number, y: number, z: number, seg = 12) => {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(rT, rB, h, seg), mat(c));
-      m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; g.add(m); return m;
+    // Build a voxel-approximated "cylinder" (barrel/tankard) from cubes
+    const voxCyl = (r: number, h: number, c: number, x: number, y: number, z: number, ry = 0) => {
+      const geos: THREE.BoxGeometry[] = [];
+      const col = new THREE.Color(c);
+      const stepsR = Math.max(1, Math.round(r / TAV_C));
+      const stepsH = Math.max(1, Math.round(h / TAV_C));
+      for (let iy = 0; iy < stepsH; iy++)
+        for (let ix = -stepsR; ix <= stepsR; ix++)
+          for (let iz = -stepsR; iz <= stepsR; iz++) {
+            const dx = (ix + 0.5) / stepsR, dz = (iz + 0.5) / stepsR;
+            if (dx * dx + dz * dz <= 1.05) {
+              const g = new THREE.BoxGeometry(TAV_C, TAV_C, TAV_C);
+              g.translate(x + (ix + 0.5) * TAV_C, y + (iy + 0.5) * TAV_C - h / 2, z + (iz + 0.5) * TAV_C);
+              const n = g.attributes.position.count;
+              const arr = new Float32Array(n * 3);
+              for (let i = 0; i < n; i++) { arr[i * 3] = col.r; arr[i * 3 + 1] = col.g; arr[i * 3 + 2] = col.b; }
+              g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+              geos.push(g);
+            }
+          }
+      if (!geos.length) return;
+      const merged = mergeGeometries(geos, false)!;
+      geos.forEach((g) => g.dispose());
+      const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true }));
+      m.castShadow = true; m.receiveShadow = true;
+      m.rotation.y = ry;
+      g.add(m);
     };
 
     // ── floor (planked, with per-board colour variation + wood-grain fibers) + walls ──
@@ -1118,11 +1185,12 @@ export class GameEngine {
     // ── wall torches + a couple of hanging mugs ──
     for (const x of [-4.5, 4.5]) {
       box(0.2, 0.5, 0.2, iron, x, 2.6, -5);
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.4, 7), new THREE.MeshBasicMaterial({ color: 0xffb545 }));
-      flame.position.set(x, 3.0, -4.95); g.add(flame);
+      // voxel flame (replaces ConeGeometry)
+      const flameVox = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.4, 0.16), new THREE.MeshBasicMaterial({ color: 0xffb545 }));
+      flameVox.position.set(x, 3.0, -4.95); g.add(flameVox);
       const l = new THREE.PointLight(0xffb060, 9, 11, 1.6); l.position.set(x, 3.0, -4.6); g.add(l);
     }
-    for (const x of [-5, -3, 3, 5]) cyl(0.07, 0.06, 0.18, 0x8a5a2a, x, 3.1, -4.9);   // hanging tankards
+    for (const x of [-5, -3, 3, 5]) voxCyl(0.07, 0.18, 0x8a5a2a, x, 3.1, -4.9);   // hanging tankards
 
     // tavern banners
     box(1.2, 2.6, 0.1, 0x7a2230, -1.5, 3.0, -5.05); box(1.2, 2.6, 0.1, 0x2e5a7a, 1.5, 3.0, -5.05);
@@ -1136,7 +1204,8 @@ export class GameEngine {
     box(2.2, 0.8, 0.12, stoneSoot, 3.6, 4.0, -5.13);
     box(1.4, 0.5, 0.12, stoneSoot, 3.6, 4.4, -5.14);
     for (const fy of [0.7, 1.0]) {
-      const fire = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.9, 7), new THREE.MeshBasicMaterial({ color: fy < 0.9 ? 0xff8a2a : 0xffd24a }));
+      // voxel fireplace flame (replaces ConeGeometry)
+      const fire = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.9, 0.55), new THREE.MeshBasicMaterial({ color: fy < 0.9 ? 0xff8a2a : 0xffd24a }));
       fire.position.set(3.6, fy, -4.8); g.add(fire);
     }
     const fireLight = new THREE.PointLight(0xffa040, 14, 14, 1.7); fireLight.position.set(3.6, 1.4, -4.4); g.add(fireLight);
@@ -1175,11 +1244,11 @@ export class GameEngine {
     const bottleCols = [0x3a6b2a, 0x6b3a2a, 0x2a4a6b, 0x6b2a55, 0x8a7a2a, 0x2a6b5a];
     for (let i = 0; i < 7; i++) {
       const bx = barCx - 0.9 + i * 0.3;
-      cyl(0.08, 0.09, 0.5, bottleCols[i % bottleCols.length], bx, 2.66, -5.0, 8);
-      cyl(0.07, 0.08, 0.36, bottleCols[(i + 3) % bottleCols.length], bx, 1.92, -5.0, 8);
+      voxCyl(0.08, 0.5, bottleCols[i % bottleCols.length], bx, 2.66, -5.0);
+      voxCyl(0.07, 0.36, bottleCols[(i + 3) % bottleCols.length], bx, 1.92, -5.0);
     }
     // glasses on the counter (kept clear of the barkeep's notch)
-    for (const gz of [-3.0, -2.0, 2.2, 3.2]) cyl(0.1, 0.08, 0.22, 0xbfae8a, barCx + 0.5, 1.18, gz, 8);
+    for (const gz of [-3.0, -2.0, 2.2, 3.2]) voxCyl(0.08, 0.22, 0xbfae8a, barCx + 0.5, 1.18, gz);
 
     // ── the hero's table (with wood-grain on the top + ring stains) ──
     const table = new THREE.Group();
@@ -1221,7 +1290,7 @@ export class GameEngine {
 
     // barrels in corners
     for (const [bx, bz] of [[5.4, -4.2], [-5.6, 4.4], [5.6, 3.6]] as const) {
-      cyl(0.6, 0.6, 1.3, wood, bx, 0.65, bz, 14);
+      voxCyl(0.6, 1.3, wood, bx, 0.65, bz);
       box(1.3, 0.12, 1.3, iron, bx, 1.25, bz); box(1.3, 0.12, 1.3, iron, bx, 0.13, bz);   // base band above the floor/rugs
     }
 
@@ -1275,16 +1344,29 @@ export class GameEngine {
     // ── chandelier: a hanging fixture that lights the whole room (ambient fill) ──
     const chand = new THREE.Group();
     const cmat = new THREE.MeshLambertMaterial({ color: 0x2a2018 });
-    for (let i = 0; i < 4; i++) { const r = 0.5 + i * 0.35; const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.04, 6, 20), cmat); ring.rotation.x = Math.PI / 2; ring.position.y = -i * 0.12; chand.add(ring); }
+    // voxel ring approximations (replaces TorusGeometry)
+    for (let i = 0; i < 4; i++) {
+      const r = 0.5 + i * 0.35;
+      const ringSegs = 12;
+      const ringGeo = new THREE.BoxGeometry(0.04, 0.04, 0.04);
+      for (let j = 0; j < ringSegs; j++) {
+        const a = (j / ringSegs) * Math.PI * 2;
+        const seg = new THREE.Mesh(ringGeo, cmat);
+        seg.position.set(Math.cos(a) * r, -i * 0.12, Math.sin(a) * r);
+        chand.add(seg);
+      }
+    }
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2;
       const cx = Math.cos(a) * 1.0, cz = Math.sin(a) * 1.0;
-      const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 6), new THREE.MeshLambertMaterial({ color: 0xe8e0c8 }));
+      // voxel candle (replaces CylinderGeometry) + voxel flame (replaces ConeGeometry)
+      const candle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.06), new THREE.MeshLambertMaterial({ color: 0xe8e0c8 }));
       candle.position.set(cx, -0.1, cz); chand.add(candle);
-      const fl = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 6), new THREE.MeshBasicMaterial({ color: 0xffb545 }));
+      const fl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.06), new THREE.MeshBasicMaterial({ color: 0xffb545 }));
       fl.position.set(cx, 0.04, cz); chand.add(fl);
     }
-    const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 6), cmat);
+    // voxel chain (replaces CylinderGeometry)
+    const chain = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.7, 0.04), cmat);
     chain.position.y = 0.55; chand.add(chain);
     chand.position.set(0, 3.7, 0); g.add(chand);
     const chandLight = new THREE.PointLight(0xffd9a0, 26, 24, 1.4);
@@ -1294,24 +1376,78 @@ export class GameEngine {
     return g;
   }
 
-  /** a small voxel-ish sheep, swapped in for Greg during the Polymorph gag */
+  /** a small fully-voxel sheep, swapped in for Greg during the Polymorph gag */
   private buildSheep(): THREE.Group {
     const g = new THREE.Group();
-    const wool = new THREE.MeshLambertMaterial({ color: 0xf2efe6 });
-    const dark = new THREE.MeshLambertMaterial({ color: 0x2a2622 });
-    const skin = new THREE.MeshLambertMaterial({ color: 0xc9b89a });
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.9, 14, 12), wool);
-    body.scale.set(1.3, 1.0, 1.7); body.position.y = 1.05; body.castShadow = true; g.add(body);
-    for (const [x, y, z] of [[0.7, 1.5, 0.6], [-0.7, 1.5, -0.4], [0.3, 1.7, -0.7], [-0.4, 1.6, 0.7], [0.5, 1.4, -0.6]] as const) {
-      const b = new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 6), wool); b.position.set(x, y, z); g.add(b);
+    const C = 0.11;
+    const woolMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const darkMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const skinMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const tmpCol = new THREE.Color();
+    const addVox = (cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, color: number) => {
+      const geos: THREE.BoxGeometry[] = [];
+      for (let x = Math.ceil(cx - rx); x <= Math.floor(cx + rx); x++)
+        for (let y = Math.ceil(cy - ry); y <= Math.floor(cy + ry); y++)
+          for (let z = Math.ceil(cz - rz); z <= Math.floor(cz + rz); z++) {
+            const dx = (x - cx) / rx, dy = (y - cy) / ry, dz = (z - cz) / rz;
+            if (dx * dx + dy * dy + dz * dz <= 1.05) {
+              const gg = new THREE.BoxGeometry(C, C, C);
+              gg.translate(x * C, y * C, z * C);
+              const f = 0.92 + Math.random() * 0.12;
+              tmpCol.setHex(color).multiplyScalar(f);
+              const n = gg.attributes.position.count;
+              const arr = new Float32Array(n * 3);
+              for (let i = 0; i < n; i++) { arr[i * 3] = tmpCol.r; arr[i * 3 + 1] = tmpCol.g; arr[i * 3 + 2] = tmpCol.b; }
+              gg.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+              geos.push(gg);
+            }
+          }
+      if (!geos.length) return;
+      const merged = mergeGeometries(geos, false)!;
+      geos.forEach((gg) => gg.dispose());
+      const m = new THREE.Mesh(merged, color === 0xf2efe6 ? woolMat : (color === 0xc9b89a ? skinMat : darkMat));
+      m.position.set(cx * C, cy * C, cz * C);
+      m.castShadow = true;
+      g.add(m);
+    };
+    // woolly body (scale 1.3, 1.0, 1.7 in voxel space → rx=11, ry=8, rz=14 approx)
+    addVox(0.5, 9.5, 0, 11, 8, 14, 0xf2efe6);
+    // wool tufts
+    for (const [dx, dy, dz] of [[6, 13, 5], [-6, 13, -3], [3, 15, -6], [-3, 14, 6], [4, 12, -5]] as const) {
+      addVox(dx, dy, dz, 3, 3, 3, 0xf2efe6);
     }
-    for (const [x, z] of [[0.6, 0.75], [-0.6, 0.75], [0.6, -0.75], [-0.6, -0.75]] as const) {
-      const l = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.0, 0.22), dark); l.position.set(x, 0.5, z); g.add(l);
+    // four legs (box voxels)
+    for (const [lx, lz] of [[5, 6], [-5, 6], [5, -6], [-5, -6]] as const) {
+      for (let ly = 0; ly < 9; ly++) {
+        const g2 = new THREE.BoxGeometry(C, C, C);
+        g2.translate(lx * C, ly * C, lz * C);
+        const n = g2.attributes.position.count;
+        const arr = new Float32Array(n * 3);
+        tmpCol.setHex(0x2a2622);
+        for (let i = 0; i < n; i++) { arr[i * 3] = tmpCol.r; arr[i * 3 + 1] = tmpCol.g; arr[i * 3 + 2] = tmpCol.b; }
+        g2.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+        const merged = mergeGeometries([g2], false)!;
+        const m = new THREE.Mesh(merged, darkMat);
+        m.castShadow = true; g.add(m);
+      }
     }
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), skin); head.position.set(0, 1.25, 1.35); g.add(head);
+    // head
+    addVox(0, 11, 12, 4, 4, 4, 0xc9b89a);
+    // ears + eyes
     for (const s of [-1, 1]) {
-      const e = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.32, 0.18), skin); e.position.set(s * 0.3, 1.5, 1.4); g.add(e);
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.05), dark); eye.position.set(s * 0.15, 1.3, 1.6); g.add(eye);
+      addVox(s * 3, 13, 12, 1, 2, 1, 0xc9b89a);
+      for (let ey = 11; ey <= 12; ey++) {
+        const g2 = new THREE.BoxGeometry(C * 0.8, C * 0.8, C * 0.8);
+        g2.translate(s * 1.5 * C, ey * C, 15 * C);
+        const n = g2.attributes.position.count;
+        const arr = new Float32Array(n * 3);
+        tmpCol.setHex(0x2a2622);
+        for (let i = 0; i < n; i++) { arr[i * 3] = tmpCol.r; arr[i * 3 + 1] = tmpCol.g; arr[i * 3 + 2] = tmpCol.b; }
+        g2.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+        const merged = mergeGeometries([g2], false)!;
+        const m = new THREE.Mesh(merged, darkMat);
+        g.add(m);
+      }
     }
     return g;
   }
@@ -1353,7 +1489,7 @@ export class GameEngine {
     const MOON_C = 0xf0e8c0;
     const SIGN = 0x4a2e16, SIGN_D = 0x2e1a0a, SIGN_G = 0xb88a2a, SIGN_LETTER = 0xe8c87a;
     const FENCE = 0x3a2818, FENCE_HI = 0x4a3320, FENCE_ROT = 0x2a1a0c;
-    const DIRT = 0x4a3a2e, COB = 0x6a5a48, COB_HI = 0x7a6a58, PUDDLE = 0x2a2a30;
+    const COB = 0x6a5a48, COB_HI = 0x7a6a58, PUDDLE = 0x2a2a30;
     const MOSS = 0x3a4a2a, MOSS_D = 0x2a3a1e;
 
     // ── building dims (voxels; C = 0.055) ──
@@ -1364,10 +1500,10 @@ export class GameEngine {
     const RH = 52;   // ridge height
 
     // ══ 1. GROUND + COBBLE PATH ══
-    v.box(-22, 0, -20, 22, 0, 26, DIRT);
-    v.box(-5, 1, HD + 1, 5, 1, 26, COB);
-    for (let z = HD + 3; z <= 25; z += 3)
-      for (const sx of [-2, 0, 2]) if ((sx + z) % 2 === 0) v.add(sx, 2, z, COB_HI);
+    // stone (cobble) path from the foreground up to the porch — stops at the doorstep
+    v.box(-6, 1, 11, 6, 1, 16, COB);
+    for (let z = 11; z <= 16; z++)              // cobble variation along the path
+      for (const sx of [-5, -3, -1, 1, 3, 5]) if ((sx + z) % 2 === 0) v.add(sx, 2, z, COB_HI);
     v.box(-3, 1, HD - 2, 3, 1, HD, COB_HI);   // doorstep
 
     // ══ 2. PLASTER WALLS (weathered, stained, grimy) ══
@@ -1430,7 +1566,7 @@ export class GameEngine {
     g.userData.chimneyTop = new THREE.Vector3((chimX + 2) * C, (RH - 1) * C, (HD - 4) * C);
 
     // ══ 6. WOODEN DOOR ══
-    const DW = 4, DH = 10;
+    const DW = 4, DH = 14;
     v.box(-DW, 1, HD + 1, DW, 1 + DH, HD + 1, DOOR);
     v.box(-DW - 1, 0, HD + 1, -DW - 1, 1 + DH, HD + 1, TIMBER);   // frame
     v.box(DW + 1, 0, HD + 1, DW + 1, 1 + DH, HD + 1, TIMBER);
@@ -1457,7 +1593,7 @@ export class GameEngine {
     // The pole is a fixed bracket jutting out from the wall above the door; the
     // board is a SEPARATE Group (built from its own voxels) parented to the pole
     // so it can rotate gently. The tavern name is painted on as emissive letters.
-    const signPoleY = 1 + DH + 4;          // just above the door frame
+    const signPoleY = 1 + DH + 16;         // keeps the bracket at world y≈31 while the door is taller
     const signPoleZ = HD + 1;
     // bracket: two diagonal struts + a horizontal beam anchored to the wall (widened for the board)
     v.box(-6, signPoleY, signPoleZ, 6, signPoleY, signPoleZ, TIMBER);          // wall anchor beam
@@ -1470,22 +1606,22 @@ export class GameEngine {
     // ── the swinging board (own Vox → own mesh → own Group so it can rotate) ──
     const sv = new Vox();
     const sgv = new Vox();
-    const BW = 13, BH = 5;                 // board half-extents (voxels) — wide enough for the name
-    sv.box(-BW, 0, 0, BW, BH, 1, SIGN);    // plank board
-    sv.box(-BW, 0, 0, -BW, BH, 1, SIGN_D); // frame edges
-    sv.box(BW, 0, 0, BW, BH, 1, SIGN_D);
-    sv.box(-BW, 0, 0, BW, 0, 1, SIGN_D);
+    const BW = 10, BH = 5;                 // board half-extents (voxels) — sized to the half-size letters, kept above the door
+    sv.box(-BW, -BH, 0, BW, BH, 1, SIGN);    // plank board (centred vertically)
+    sv.box(-BW, -BH, 0, -BW, BH, 1, SIGN_D); // frame edges
+    sv.box(BW, -BH, 0, BW, BH, 1, SIGN_D);
+    sv.box(-BW, -BH, 0, BW, -BH, 1, SIGN_D);
     sv.box(-BW, BH, 0, BW, BH, 1, SIGN_D);
     // weathering: cracks + a dark damp patch on the board
-    sv.add(-3, 1, 0, SIGN_D); sv.add(2, 3, 0, SIGN_D); sv.add(-1, 2, 0, SIGN_D);
-    sv.box(-6, 0, 0, -2, 1, 1, PLAS_STAIN);
-    // tavern name: "THE MUG" — blocky emissive letters, centred on the board
-    // (each letter is a small cluster of voxels; rows are y, columns are x)
+    sv.add(-3, 1, 0, SIGN_D); sv.add(2, 3, 0, SIGN_D); sv.add(-1, -2, 0, SIGN_D);
+    sv.box(-6, -1, 0, -2, 0, 1, PLAS_STAIN);
+    // tavern name on TWO lines — "THE DIRTY" / "MUG". Letters are built at full
+    // voxel size, then the mesh is scaled to ½ so they read smaller.
     const letter = (cx: number, cy: number, pattern: number[][]) => {
       for (let r = 0; r < pattern.length; r++) for (let c = 0; c < pattern[r].length; c++)
         if (pattern[r][c]) sgv.add(cx + c, cy + (pattern.length - 1 - r), 2, SIGN_LETTER);
     };
-    // 3x5 pixel font (rows top→bottom). 1 = lit pixel.
+    // 3x5 pixel font (rows top→bottom). 1 = lit pixel. M is 5 wide.
     const F: Record<string, number[][]> = {
       T: [[1,1,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0]],
       H: [[1,0,1],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
@@ -1493,21 +1629,36 @@ export class GameEngine {
       M: [[1,0,0,0,1],[1,1,0,1,1],[1,0,1,0,1],[1,0,0,0,1],[1,0,0,0,1]],
       U: [[1,0,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],
       G: [[1,1,1],[1,0,0],[1,0,1],[1,0,1],[1,1,1]],
+      D: [[1,1,0],[1,0,1],[1,0,1],[1,0,1],[1,1,0]],
+      I: [[1,1,1],[0,1,0],[0,1,0],[0,1,0],[1,1,1]],
+      R: [[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,0,1]],
+      Y: [[1,0,1],[1,0,1],[0,1,0],[0,1,0],[0,1,0]],
     };
-    // "THE MUG" centred: T H E (gap) M U G — 3+1+3+1+3+2+5+1+3+1+3 = 26 voxels → start at -13
-    const word = (text: string, startX: number, cy: number) => {
+    const charW = (ch: string) => (ch === 'M' ? 5 : 3);
+    const wordWidth = (text: string) => {
+      let w = 0;
+      for (const ch of text) { if (ch === ' ') { w += 3; continue; } w += charW(ch) + 1; }
+      return w - 1;   // no trailing spacing after the last letter
+    };
+    const drawWord = (text: string, startX: number, cy: number) => {
       let x = startX;
-      for (const ch of text) { if (F[ch]) letter(x, cy, F[ch]); x += (ch === 'M' ? 6 : 4); }
-      return x;
+      for (const ch of text) {
+        if (ch === ' ') { x += 3; continue; }
+        if (F[ch]) letter(x, cy, F[ch]);
+        x += charW(ch) + 1;
+      }
     };
-    let nx = word('THE', -BW + 1, 1);
-    nx = word('MUG', nx + 2, 1);   // 2-voxel gap for the space
-    // a little mug emblem under the name
-    sgv.add(-1, 0, 2, SIGN_G); sgv.add(0, 0, 2, SIGN_G); sgv.add(1, 0, 2, SIGN_G);
+    drawWord('THE DIRTY', Math.round(-wordWidth('THE DIRTY') / 2), 2);   // upper line
+    drawWord('MUG', Math.round(-wordWidth('MUG') / 2), -6);             // lower line
 
     const signBoard = new THREE.Group();
     signBoard.add(voxelMesh(sv.list()));
-    if (sgv.size > 0) signBoard.add(voxelMesh(sgv.list(), true));
+    if (sgv.size > 0) {
+      const lettersMesh = voxelMesh(sgv.list(), true);
+      lettersMesh.scale.setScalar(0.5);            // half-size letters
+      lettersMesh.position.set(0, 0, 0.5 * C);     // centred on the board, just in front
+      signBoard.add(lettersMesh);
+    }
     // pivot at the top of the board (where the hooks attach), so it swings from there
     const boardPivotY = (signPoleY + 2) * C;
     signBoard.position.set(0, boardPivotY, (signPoleZ + 3) * C);
@@ -1515,7 +1666,7 @@ export class GameEngine {
     signBoard.children.forEach((c) => { c.position.y -= BH * C; });
     g.add(signBoard);
     // expose the board's world position (for the camera close-up) + the group (for sway)
-    g.userData.signBoardWp = new THREE.Vector3(0, (signPoleY + 2 - BH * 0.5) * C, (signPoleZ + 3) * C);
+    g.userData.signBoardWp = new THREE.Vector3(0, (signPoleY + 2 - BH) * C, (signPoleZ + 3) * C);
     g.userData.signBoard = signBoard;
     // gentle wind sway: a slow, noisy sine on rotation.z, auto-stops when removed
     let swayT = Math.random() * 10;
@@ -1526,9 +1677,23 @@ export class GameEngine {
       return false;
     });
 
-    // ══ 9. TREES ══
-    voxTree(v, -30, 6, 1.0, TRUNK, TRUNK_D, LEAF, LEAF_HI);
-    voxTree(v, 30, -6, 0.85, TRUNK, TRUNK_D, LEAF, LEAF_HI);
+    // ══ 9. TREES — a few around the inn (modest; front approach kept clear) ══
+    // deterministic scatter (stable across reloads) so the treeline doesn't jump
+    const treeHash = (n: number) => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
+    const treeInBuilding = (x: number, z: number) =>
+      x > -HW - 6 && x < HW + 6 && z > -HD - 6 && z < HD + 4;
+    const treeOnRoad = (x: number, z: number) => x > -10 && x < 10 && z > 9 && z < 33;
+    for (let gx = -64; gx <= 64; gx += 18) {
+      for (let gz = -64; gz <= 40; gz += 18) {
+        const id = gx * 131 + gz * 17;
+        if (treeHash(id) > 0.55) continue;       // clearings / natural variation
+        const tx = gx + Math.round((treeHash(id + 1) - 0.5) * 4);
+        const tz = gz + Math.round((treeHash(id + 2) - 0.5) * 4);
+        if (treeInBuilding(tx, tz) || treeOnRoad(tx, tz)) continue;
+        const sc = 0.8 + treeHash(id + 3) * 0.5;  // 0.8..1.3
+        voxTree(v, tx, tz, sc, TRUNK, TRUNK_D, LEAF, LEAF_HI);
+      }
+    }
 
     // ══ 10. BUSHES (some dead/straggly — the tavern's grounds are neglected) ══
     voxBush(v, -20, 22, 3, BUSH, BUSH_HI);
@@ -1537,15 +1702,15 @@ export class GameEngine {
     voxBush(v, -28, -12, 2, BUSH, BUSH_HI);
     voxBush(v, 28, 16, 2, BUSH_DEAD, BUSH);           // straggly
     voxBush(v, -15, -22, 2, BUSH_DEAD, BUSH_DEAD);     // dead
-    // a muddy puddle in the path (old, neglected approach)
-    v.box(-2, 1, HD + 8, 2, 1, HD + 11, PUDDLE);
-    v.add(0, 1, HD + 9, COB_HI); v.add(-1, 1, HD + 10, COB);
+    // a muddy puddle on the approach (old, neglected)
+    v.box(-2, 1, 13, 2, 1, 16, PUDDLE);
+    v.add(0, 1, 14, COB_HI); v.add(-1, 1, 15, COB);
 
     // ══ 11. FENCE ALONG PATH (weathered — some posts rotten/shorter, rails missing) ══
     for (let side = -1; side <= 1; side += 2) {
       const fx = side * 8;
-      for (let i = 0; i < 4; i++) {
-        const fz = HD + 6 + i * 3;
+      for (let i = 0; i < 3; i++) {
+        const fz = 11 + i * 3;
         const rotten = (i + (side > 0 ? 1 : 0)) % 3 === 0;
         v.box(fx, 0, fz, fx + 1, rotten ? 4 : 6, fz + 1, rotten ? FENCE_ROT : FENCE);
         if (i < 3 && !rotten) {
@@ -1556,17 +1721,23 @@ export class GameEngine {
       }
     }
 
-    // ══ 12. CRESCENT MOON (emissive, high in sky) ══
-    const moonY = 100;
-    for (let a = 0; a < 360; a += 15) {
-      if (a > 80 && a < 280) continue;   // crescent cutout
-      const rad = a * Math.PI / 180;
-      gv.add(Math.round(Math.cos(rad) * 8), moonY + Math.round(Math.sin(rad) * 6), 0, MOON_C);
+    // ══ 12. CRESCENT MOON (emissive, high in the sky — casts moonlight) ══
+    // A filled crescent: the lune left where an offset "shadow" disc is
+    // subtracted from the lit disc. A little z-depth keeps it readable as the
+    // camera slowly orbits.
+    const moonX = -46, moonY = 118;        // upper-left of the night sky (voxel units)
+    const R = 9, r = 8, offX = 3.8;        // outer disc minus offset shadow disc = crescent
+    for (let z = -1; z <= 1; z++) {
+      for (let y = moonY - R - 1; y <= moonY + R + 1; y++) {
+        for (let x = moonX - R - 1; x <= moonX + R + 1; x++) {
+          const dO = Math.hypot(x - moonX, y - moonY);
+          const dI = Math.hypot(x - (moonX + offX), y - moonY);
+          if (dO <= R && dI > r) gv.add(x, y, z, MOON_C);
+        }
+      }
     }
-    for (let i = 0; i < 16; i++) {       // faint aura
-      const ang = (i / 16) * Math.PI * 2;
-      gv.add(Math.round(Math.cos(ang) * 12), moonY + Math.round(Math.sin(ang) * 8), 0, 0x1a1a3a);
-    }
+    // soft moonlit halo (visual only — lightI 0 so no extra point light)
+    extGlow(g, 0xf0e8c0, moonX * C, moonY * C, 0, 0, 10, 2.0);
 
     // ══ BUILD MESHES ══
     g.add(voxelMesh(v.list()));
@@ -1574,7 +1745,8 @@ export class GameEngine {
 
     // ══ LIGHTS ══
     for (const wx of [-15, 15]) extGlow(g, 0xffb060, wx * C, 24 * C, (HD + 2) * C, 2.5, 7, 1.0);
-    const moonDir = new THREE.DirectionalLight(0x8090c0, 0.35); moonDir.position.set(-6, 12, 7); g.add(moonDir);
+    // moonlight: a cool directional light shining FROM the moon's position
+    const moonDir = new THREE.DirectionalLight(0x9fb4e6, 0.5); moonDir.position.set(moonX * C, moonY * C, 0); g.add(moonDir);
     g.add(new THREE.AmbientLight(0x1a1a3a, 0.35));
 
     return g;
@@ -1630,7 +1802,7 @@ export class GameEngine {
   /** a glowing magic bolt that flies from `from` to `to`, trailing sparks */
   private launchMagicMissile(from: THREE.Vector3, to: THREE.Vector3) {
     const orb = new THREE.Mesh(
-      new THREE.SphereGeometry(0.2, 12, 10),
+      new THREE.BoxGeometry(0.4, 0.4, 0.4),
       new THREE.MeshBasicMaterial({ color: 0xc89bff }),
     );
     orb.position.copy(from); this.scene.add(orb);
@@ -2368,6 +2540,20 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     this.emitSnapshot();
   }
 
+  /** Called by the HTML splash overlay's "Enter the Dungeon" button.
+   *  Resumes audio on the user gesture, then runs the title narration which
+   *  continues seamlessly from the tavern-exterior splash into the interior
+   *  tavern cutscene. The React splash fades out at the same time. */
+  enterDungeon() {
+    void this.audio.init();
+    if (!this.titleExt || !this.cutsceneHost) return;
+    const ext = this.titleExt;
+    const prevBg = this.titlePrevBg;
+    this.titleExt = null;
+    this.titlePrevBg = null;
+    void runTitleNarration(this.cutsceneHost, ext, prevBg);
+  }
+
   selectSkill(skillId: string | null) {
     const active = this.combat.active;
     if (!active || active.team !== 'party' || this.busy) return;
@@ -3041,7 +3227,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     const to = this.unitWorld(ev.to).add(new THREE.Vector3(0, 0.6, 0));
     if (v) v.targetYaw = Math.atan2(to.x - v.rig.group.position.x, to.z - v.rig.group.position.z);
     const mat = new THREE.MeshBasicMaterial({ color: ev.color });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), mat);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), mat);
     this.scene.add(mesh);
     this.audio.play(ev.fx === 'arrow' ? 'arrow' : ev.fx === 'fire' ? 'fireball' : 'magic_missile', 0.7);
     const dur = ev.fx === 'arrow' ? 240 : 430;
@@ -3551,6 +3737,11 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    if (this.splashAudioHandler) {
+      window.removeEventListener('pointerdown', this.splashAudioHandler);
+      window.removeEventListener('keydown', this.splashAudioHandler);
+      this.splashAudioHandler = null;
+    }
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('resize', this.onResize);
