@@ -3,6 +3,7 @@ import { GameEngine } from '@/game/engine';
 import type { UISnapshot } from '@/game/types';
 import { HUD } from './HUD';
 import { SplashScreen } from './SplashScreen';
+import { PauseMenu } from './PauseMenu';
 
 export function GameCanvas() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -29,6 +30,21 @@ export function GameCanvas() {
     setSplashVisible(false);
   };
 
+  const handleResume = () => {
+    engineRef.current?.setPaused(false);
+  };
+
+  const handlePauseLoad = (slotId: string) => {
+    engineRef.current?.loadGame(slotId);
+    engineRef.current?.setPaused(false);
+  };
+
+  const handleQuitToTitle = () => {
+    // the title scene was torn down when the run started, so a full reload
+    // is the clean way back to a fresh splash
+    window.location.reload();
+  };
+
   const handleExit = () => {
     // best-effort: browsers only allow script-close for script-opened
     // windows, so this is a no-op in most cases and the menu simply stays.
@@ -45,6 +61,13 @@ export function GameCanvas() {
         onNewGame={handleNewGame}
         onLoad={handleLoad}
         onExit={handleExit}
+        engineRef={engineRef}
+      />
+      <PauseMenu
+        visible={!!snap?.paused}
+        onResume={handleResume}
+        onLoad={handlePauseLoad}
+        onQuitToTitle={handleQuitToTitle}
         engineRef={engineRef}
       />
     </div>

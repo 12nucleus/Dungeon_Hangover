@@ -251,6 +251,8 @@ export class GameEngine {
   /** the slot the current playthrough is being saved into (null until a
    *  new game is started or a save is loaded) */
   private currentSlotId: string | null = null;
+  /** true while the in-game pause menu is open — simulation is frozen */
+  private paused = false;
 
   /** show a subtitle styled for cutscenes (small, readable, lingers) */
   private showCine(text: string) { this.bigMessage = text; this.cinematic = true; this.emitSnapshot(); }
@@ -682,7 +684,9 @@ export class GameEngine {
       enqueue: (events) => self.enqueue(events),
 
       // ── engine lifecycle hooks ──
-      setBonfireCheckpoint: (pos) => { self.bonfireLit = true; self.bonfirePos = { ...pos }; },
+      // record the bonfire's location as the respawn checkpoint, but leave it
+      // UNLIT — the player must click it to light it (see clickExplore/lightBonfire)
+      setBonfireCheckpoint: (pos) => { self.bonfirePos = { ...pos }; },
       armIntroGrace: (secs) => { self.introGraceUntil = (performance.now() / 1000) + secs; },
       onIntroComplete: () => self.onIntroComplete(),
     };
@@ -2024,6 +2028,7 @@ export class GameEngine {
   };
 
   private onPointerDown = (e: PointerEvent) => {
+    if (this.paused) return;
     if (e.button === 2) { this.cancelTargeting(); return; }
     if (this.busy) return;
     this.ray.setFromCamera(this.pointer, this.iso.cam);
@@ -2071,6 +2076,8 @@ export class GameEngine {
     }
 
     // ── normal key bindings (console is closed) ──
+    // while paused, swallow every key except Esc (which toggles the menu)
+    if (this.paused && k !== 'escape') { e.preventDefault(); return; }
     this.keys.add(k);
     const cutscene = this.busy && (this.introActive || this.bossCineActive);
     if (k === 'q' && !cutscene) this.iso.rotate(1);
@@ -2083,12 +2090,20 @@ export class GameEngine {
     if (k === 'm') { this.showFullMap = !this.showFullMap; this.emitSnapshot(); return; }
     if (k === 'b') { this.debugWarpToBoss(); return; }   // TODO(debug): remove — jumps to boss cutscene
     if (k === 'escape') {
-      // skip an in-progress cutscene (intro or boss) — route through the
-      // director so it can resolve any in-flight await cleanly
-      if (this.busy && (this.introActive || this.bossCineActive)) { this.cutsceneDirector?.requestSkip(); return; }
-      if (this.showInventory) { this.showInventory = false; this.emitSnapshot(); }
-      else if (this.showSkillTree) { this.showSkillTree = false; this.emitSnapshot(); }
-      else this.cancelTargeting();
+      // skip an in-progress cutscene (intro or boss). The intro is played
+      // directly (not via the director), so set the skip flags ourselves to
+      // guarantee the cutscene scripts bail out cleanly.
+      if (this.busy && (this.introActive || this.bossCineActive)) {
+        this.introSkipped = true;
+        this.cutsceneSkip = true;
+        this.cutsceneDirector?.requestSkip();
+        return;
+      }
+      if (this.showInventory) { this.showInventory = false; this.emitSnapshot(); return; }
+      if (this.showSkillTree) { this.showSkillTree = false; this.emitSnapshot(); return; }
+      if (this.targeting) { this.cancelTargeting(); return; }
+      // otherwise toggle the pause menu (only while actually playing)
+      this.togglePause();
       return;
     }
     if (k === ' ' || k === 'enter') {
@@ -2628,6 +2643,21 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     this.audio.applySettings(this.settings);
   }
 
+  // ══ pause (in-game menu) ══════════════════════════════════
+  /** freeze / resume the simulation (the pause menu is rendered by React
+   *  from the `paused` flag in the UISnapshot) */
+  setPaused(b: boolean) {
+    if (this.paused === b) return;
+    this.paused = b;
+    if (b) this.keys.clear();   // release any held movement keys
+    this.emitSnapshot();
+  }
+
+  private togglePause() {
+    if (this.phase === 'menu') return;
+    this.setPaused(!this.paused);
+  }
+
   /** list occupied slots (newest first) for the Load / New-Game UI */
   listSlots(): SaveSlotMeta[] { return SaveManager.listSlots(); }
 
@@ -2748,7 +2778,13 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
         if (hero.weapon) setWeapon(hv.rig, hero.weapon, hero.scheme.accent);
         if (!this.heroLight) this.attachHeroTorch(hv.rig);
       }
-      this.iso.focus(this.unitWorld(hero.pos));
+      // clear the title-scene camera clamp (iso.box) and snap straight to the
+      // hero so the camera follows the player instead of sitting clamped in the
+      // tiny tavern region
+      this.iso.box = null;
+      const hp = this.unitWorld(hero.pos);
+      this.iso.focus(hp);
+      this.iso.target.copy(hp);
     }
     this.selectedId = this.selectedId ?? hero?.id ?? null;
 
@@ -3609,6 +3645,9 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
 
   // ══ main update ═══════════════════════════════════════════
   private update(dt: number) {
+    // pause — freeze all simulation while the in-game menu is open.
+    // The render loop (composer.render) still runs, so the frozen frame shows.
+    if (this.paused) return;
     // keyboard pan — suspended while a cutscene is driving the camera
     if (!(this.busy && (this.introActive || this.bossCineActive))) {
       const pan = dt * 9;
@@ -3930,6 +3969,7 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       torchEquipped: this.combat?.living('party')[0]?.weapon === 'torch',
       bigMessage: this.bigMessage,
       cinematic: this.cinematic,
+      paused: this.paused,
       minimapTiles: { walk: minimapWalk, heights: minimapHeights, units: minimapUnits },
       showBonfireUI: this.showBonfireUI,
       showFullMap: this.showFullMap,

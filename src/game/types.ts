@@ -135,6 +135,8 @@ export interface UISnapshot {
   torchEquipped: boolean;
   bigMessage: string | null;
   cinematic?: boolean;
+  /** true while the in-game pause menu is open (simulation frozen) */
+  paused?: boolean;
   minimapTiles?: { walk: boolean[][]; heights: number[][]; units: { x: number; z: number; team: 'party' | 'enemy'; }[] };
   showBonfireUI?: boolean;
   showFullMap?: boolean;
