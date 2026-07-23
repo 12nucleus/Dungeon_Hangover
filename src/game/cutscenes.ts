@@ -229,21 +229,24 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.scene.add(h.tavern);
   h.scene.fog = new THREE.Fog(0x140d08, 6, 26);
 
-  const seat = new THREE.Vector3(0, 0.78, 1.9);
+  const poi = (h.tavern!.userData as { poi: Record<string, THREE.Vector3> }).poi;
+
+  // -- seat Greg at his table: sitting, tankard in hand, facing into the room --
+  const seat = poi.gregSeat.clone();
   hv.rig.group.position.copy(seat);
   hv.rig.group.rotation.y = Math.PI;
   hv.yaw = hv.targetYaw = Math.PI;
   hv.rig.anim.mode = 'sit'; hv.rig.anim.crouch = 0; hv.rig.anim.lunge = 0; hv.rig.anim.flinch = 0;
+  hv.rig.group.scale.setScalar(1);
+
+  // voxel tankard in Greg's left hand
   const mug = new THREE.Group();
-  // voxel mug (replaces CylinderGeometry)
   const mugBody = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.24, 0.20), new THREE.MeshLambertMaterial({ color: 0x8a5a2e }));
   const mugFoam = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.22), new THREE.MeshLambertMaterial({ color: 0xf2ead2 }));
   mugFoam.position.y = 0.14; mug.add(mugBody, mugFoam);
-  (mugBody.geometry as THREE.BufferGeometry).computeBoundingSphere();
   const hand = hv.rig.parts.handL ?? hv.rig.parts.armL;
   let mugHand: THREE.Object3D | null = null;
   if (hand) { mug.position.set(0, 0.18, 0.12); hand.add(mug); mugHand = hand; }
-  hv.rig.group.scale.setScalar(1);
   if (mugHand) {
     const armL = hv.rig.parts.armL as THREE.Object3D | undefined;
     const foreL = hv.rig.parts.foreL as THREE.Object3D | undefined;
@@ -256,63 +259,96 @@ export async function playIntroCutscene(h: CutsceneHost) {
   }
   h.setWeapon(hv.rig, null, hero.scheme.accent);
 
-  // camera: cinematic slow ease
+  // -- camera: kept inside the little set (box clamp) with slow cinematic easing --
   h.iso.lerp = 2.0;
-  h.iso.box = { minX: -6, maxX: 6, minZ: -5, maxZ: 5, minY: 1, maxY: 14 };
-  const head = seat.clone().add(new THREE.Vector3(0, 1.5, 0));
-  h.iso.desiredYaw = -Math.PI * 0.22; h.iso.desiredPitch = 0.5; h.iso.desiredDist = 5.2;
-  h.iso.focus(head);
+  h.iso.box = { minX: -4.2, maxX: 4.2, minZ: -3.4, maxZ: 5.6, minY: 0.5, maxY: 3.2 };
+  h.iso.desiredYaw = -Math.PI * 0.22; h.iso.desiredPitch = 0.44; h.iso.desiredDist = 5.4;
+  h.iso.focus(poi.gregHead);
   h.fadeTo(0);
   h.audio.stopMusic(); h.audio.stopTavernMusic(); h.audio.playTavernMusic();
   await h.cineDelay(900);
   if (h.introSkipped) { finishIntro(h); return; }
 
-  // ── ACT 1: the belligerent drunk ──
-  for (let i = 0; i < 5; i++) { hv.rig.anim.mode = 'drink'; await h.cineDelay(280); hv.rig.anim.mode = 'sit'; await h.cineDelay(220); }
-  await h.narrate('greg_1', 'Last call! Last call! And if any o\' you lily-livered cowards got a problem with Greg the Grim, you best bring it to my face!', 5200);
+  // == BEAT 1: establishing - the warm, dingy room; Greg mid-bender ==
+  await h.narrate('t_open', 'The Dirty Mug. Last call came and went two hours ago. Nobody has found the courage to tell Greg.', 5200);
   if (h.introSkipped) { finishIntro(h); return; }
-  h.iso.desiredYaw = Math.PI * 0.5; h.iso.desiredDist = 7; h.iso.focus(new THREE.Vector3(0, 2, 1));
-  await h.cineDelay(1400);
-  await h.narrate('greg_2', 'Piss off, Norris, I paid for the whole table! The whole table is MINE! Bartender, another! The good stuff! The EXPENSIVE stuff!', 5800);
+  for (let i = 0; i < 3; i++) { hv.rig.anim.mode = 'drink'; await h.cineDelay(300); hv.rig.anim.mode = 'sit'; await h.cineDelay(240); }
+
+  // == BEAT 2: Greg holds court ==
+  h.iso.desiredYaw = Math.PI * 0.16; h.iso.desiredPitch = 0.36; h.iso.desiredDist = 3.6;
+  h.iso.focus(poi.gregHead);
+  await h.cineDelay(700);
+  hv.rig.anim.lunge = 0.7;
+  await h.narrate('greg_a', "Barkeep! Another! And one for me shadow - the big fella's had a hard night an' all!", 5000);
   if (h.introSkipped) { finishIntro(h); return; }
 
-  // ── the room reacts ──
-  const bc = h.tavernActors.bouncer;
-  h.iso.desiredYaw = -1.2; h.iso.desiredDist = 4.6; h.iso.focus(new THREE.Vector3(-3.8, 1.2, -1.5));
+  // == BEAT 3: slow pan across the unimpressed room ==
+  h.iso.desiredYaw = -Math.PI * 0.4; h.iso.desiredPitch = 0.5; h.iso.desiredDist = 6.6;
+  h.iso.focus(new THREE.Vector3(-1.0, 1.3, -1.4));
   await h.cineDelay(600);
-  const bar = h.tavernActors.barmaid;
-  if (bar) h.barmaidServe(bar);
-  await h.narrate('narr_tavern', 'The barmaid has seen this routine forty-seven times. She pours another and wanders it over. Greg takes it as encouragement. Nobody else in the room moves.', 7200);
+  await h.narrate('narr_room', 'There is no shadow. There is only Greg, a table he has declared a sovereign kingdom, and a room full of people quietly praying he leaves first.', 7400);
   if (h.introSkipped) { finishIntro(h); return; }
 
-  h.iso.desiredYaw = 0.4; h.iso.desiredDist = 4.6; h.iso.focus(new THREE.Vector3(4.5, 1.3, -3.3));
+  // == BEAT 4: Greg picks a fight with the furniture ==
+  h.iso.desiredYaw = Math.PI * 0.2; h.iso.desiredPitch = 0.34; h.iso.desiredDist = 4.2;
+  h.iso.focus(poi.gregHead);
   await h.cineDelay(500);
-  await h.narrate('narr_wizard', 'In the corner, a jumpy little wizard is scribbling something on a napkin. The kind of notes you take before casting Polymorph. He looks very, very ready to use them.', 7600);
+  hv.rig.anim.lunge = 1;
+  await h.narrate('greg_b', "I said the WHOLE table's mine, Norris! Every splinter of it! Come and take it, if yeh think yer hard enough!", 5600);
   if (h.introSkipped) { finishIntro(h); return; }
 
-  h.iso.desiredYaw = -0.5; h.iso.desiredDist = 5.4; h.iso.focus(new THREE.Vector3(3.4, 1.1, -4.0));
-  if (bc) bc.anim.mode = 'crack';
-  await h.narrate('narr_bouncer', 'The bouncer — a retired orc warlord who traded raiding for the quiet life — cracks his knuckles. Greg mistakes this for applause and stands on the table.', 7600);
-  if (bc) bc.anim.mode = 'idle';
-  h.iso.focus(head); h.iso.desiredDist = 5.5;
+  // == BEAT 5: the barmaid delivers yet another round ==
+  const bar = h.tavernActors.barmaid;
+  h.iso.desiredYaw = -0.6; h.iso.desiredDist = 4.8; h.iso.desiredPitch = 0.46;
+  h.iso.focus(poi.barmaid.clone());
+  if (bar) h.barmaidServe(bar);
+  await h.narrate('narr_maid', 'The barmaid has poured this exact drink for this exact man forty-seven times. She stopped making eye contact somewhere around the thirtieth. It is safer that way.', 7600);
   if (h.introSkipped) { finishIntro(h); return; }
-  hv.rig.group.position.y = 1.3;
-  hv.rig.anim.crouch = 0; hv.rig.anim.lunge = 1;
+
+  // == BEAT 6: the nervous wizard in the corner ==
+  h.iso.desiredYaw = 0.5; h.iso.desiredDist = 5.0; h.iso.desiredPitch = 0.44;
+  h.iso.focus(poi.wizard.clone());
+  await h.cineDelay(500);
+  await h.narrate('narr_wiz', 'Over in the corner, a very small wizard is doing a very large amount of nervous arithmetic. The kind you do right before you turn a problem into a farm animal.', 7400);
+  if (h.introSkipped) { finishIntro(h); return; }
+
+  // == BEAT 7: the bouncer cracks his knuckles; Greg mounts the table ==
+  const bc = h.tavernActors.bouncer;
+  h.iso.desiredYaw = -0.2; h.iso.desiredDist = 5.2; h.iso.desiredPitch = 0.42;
+  h.iso.focus(poi.bouncer.clone());
+  if (bc) bc.anim.mode = 'crack';
+  await h.narrate('narr_bounce', 'By the door, the bouncer cracks his knuckles - a retired warlord who took this job for the peace and quiet. Greg reads the room perfectly, and climbs onto the table.', 7400);
+  if (bc) bc.anim.mode = 'idle';
+  if (h.introSkipped) { finishIntro(h); return; }
+  h.iso.desiredYaw = -Math.PI * 0.15; h.iso.desiredDist = 5.8; h.iso.desiredPitch = 0.4;
+  h.iso.focus(poi.gregHead.clone().add(new THREE.Vector3(0, 0.7, 0)));
+  hv.rig.anim.mode = 'idle'; hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 0;
+  hv.rig.group.position.set(0, 0.99, 1.35);   // up on the tabletop (feet flush on the top)
+  hv.rig.anim.lunge = 1;
   await h.cineDelay(900);
 
-  // ── CHAOS: barstool flies, wizard casts Polymorph, SHEEP! ──
-  const stoolMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0x4a3320 }));
-  stoolMesh.position.set(0, 0.35, 1.9); h.scene.add(stoolMesh);
-  const stoolTarget = new THREE.Vector3(4.2, 1.0, -3.5);
-  h.animateTo(() => stoolMesh.position.x, (v) => { stoolMesh.position.x = v; }, stoolTarget.x, 0.5);
-  h.animateTo(() => stoolMesh.position.z, (v) => { stoolMesh.position.z = v; }, stoolTarget.z, 0.5);
-  h.animateTo(() => stoolMesh.position.y, (v) => { stoolMesh.position.y = v; }, stoolTarget.y, 0.5);
+  // == CHAOS: a voxel stool flies, the wizard casts Polymorph, SHEEP ==
+  const stool = new THREE.Group();
+  const stoolWood = new THREE.MeshLambertMaterial({ color: 0x5a3e26 });
+  const stoolWoodD = new THREE.MeshLambertMaterial({ color: 0x3a2818 });
+  const stoolSeat = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.34), stoolWood); stoolSeat.position.y = 0.2; stool.add(stoolSeat);
+  for (const [lx, lz] of [[-0.12, -0.12], [0.12, -0.12], [-0.12, 0.12], [0.12, 0.12]] as const) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.24, 0.06), stoolWoodD); leg.position.set(lx, 0.08, lz); stool.add(leg);
+  }
+  stool.position.set(0, 0.55, 1.9); h.scene.add(stool);
+  const stoolTarget = poi.wizard.clone().add(new THREE.Vector3(-0.2, 0.2, 0.3));
+  h.animateTo(() => stool.position.x, (val) => { stool.position.x = val; }, stoolTarget.x, 0.5);
+  h.animateTo(() => stool.position.y, (val) => { stool.position.y = val; }, stoolTarget.y, 0.5);
+  h.animateTo(() => stool.position.z, (val) => { stool.position.z = val; }, stoolTarget.z, 0.5);
+  const spinStart = performance.now();
+  h.propAnims.push(() => { stool.rotation.x += 0.3; stool.rotation.z += 0.24; return performance.now() - spinStart > 520; });
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.15);
-  await h.cineDelay(250);
+  await h.cineDelay(260);
+
   const wiz = h.tavernActors.wizard;
-  const from = new THREE.Vector3(4.4, 1.35, -2.3);
+  const from = poi.wizard.clone().add(new THREE.Vector3(-0.2, 0.15, 0.4));
   const to2 = hv.rig.group.position.clone().add(new THREE.Vector3(0, 1.0, 0));
-  h.iso.desiredYaw = -1.3; h.iso.desiredDist = 5.0; h.iso.focus(new THREE.Vector3(4.5, 1.4, -3.3));
+  h.iso.desiredYaw = 0.5; h.iso.desiredDist = 5.2; h.iso.focus(poi.wizard.clone());
   if (wiz) wiz.anim.lunge = -0.6;
   h.audio.play('magic_missile', 0.9);
   await h.cineDelay(160);
@@ -320,43 +356,46 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.launchMagicMissile(from, to2);
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.12);
   await h.cineDelay(220);
-  h.iso.focus(head); h.iso.desiredDist = 5.5;
+  h.iso.focus(hv.rig.group.position.clone().add(new THREE.Vector3(0, 0.8, 0))); h.iso.desiredDist = 5.6;
   await h.cineDelay(220);
   if (wiz) wiz.anim.lunge = 0;
   h.fx.explosion(h.particles, to2, 1.2);
   h.particles.burst({ pos: to2, count: 30, color: [0x8a4af0, 0xb06af0, 0xffffff, 0xdaa0ff], speed: [1, 4], life: [0.4, 0.9], size: [0.3, 0.8], gravity: -1.5, up: 2.5, endScale: 0.1 });
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.22);
   if (h.heroLight) h.heroLight.color.setHex(0x8a4af0);
-  const gregWp = hv.rig.group.position.clone();
   const sheep = h.buildSheep();
-  sheep.position.copy(gregWp); sheep.rotation.y = hv.rig.group.rotation.y;
+  sheep.position.copy(hv.rig.group.position); sheep.rotation.y = hv.rig.group.rotation.y;
   sheep.scale.setScalar(0.5);
   h.tavern!.add(sheep);
   hv.rig.group.visible = false;
-  await h.narrate('narr_sheep', 'A barstool flies. The wizard shrieks. There is a flash of purple light. And for approximately three seconds, Greg the Grim is a very, very loud sheep.', 7600);
+  await h.narrate('narr_baa', "A stool takes flight. The wizard squeaks a word he'll regret. Purple light - and for four glorious seconds, Greg the Grim is the loudest sheep the Dirty Mug has ever heard.", 7400);
   hv.rig.group.visible = true;
   h.tavern!.remove(sheep);
   if (h.heroLight) h.heroLight.color.setHex(0xffb060);
-  h.scene.remove(stoolMesh); stoolMesh.geometry.dispose();
+  h.scene.remove(stool);
+  stool.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
   if (h.introSkipped) { finishIntro(h); return; }
-  hv.rig.group.position.y = 0;
-  hv.rig.anim.crouch = 0.8; hv.rig.anim.flinch = 0.7;
+
+  // -- Greg, human again and thoroughly rattled, drops back onto his stool --
+  hv.rig.group.position.copy(seat);
+  hv.rig.anim.mode = 'sit'; hv.rig.anim.crouch = 0.6; hv.rig.anim.flinch = 0.7;
   await h.cineDelay(600);
 
-  // ── ACT 3: one last drink, then the long faint ──
-  hv.rig.anim.lunge = 0.7; await h.cineDelay(500); hv.rig.anim.lunge = 0;
+  // == FINALE: one last drink, then the long faint ==
+  h.iso.desiredDist = 3.4; h.iso.desiredYaw = -Math.PI * 0.1; h.iso.desiredPitch = 0.34;
+  h.iso.focus(poi.gregHead);
+  hv.rig.anim.crouch = 0;
+  hv.rig.anim.mode = 'drink'; await h.cineDelay(700); hv.rig.anim.mode = 'sit';
+  hv.rig.anim.lunge = 0.7;
   h.audio.play('dice', 0.5);
-  h.iso.desiredDist = 3.6; h.iso.focus(head);
-  await h.cineDelay(900);
-  hv.rig.anim.flinch = 1; h.iso.shake = Math.max(h.iso.shake ?? 0, 0.18);
-  hv.rig.group.rotation.x = -0.5;
-  await h.cineDelay(900);
-  await h.narrate('narr_faint', 'Greg the Grim drains the last of it, declares the stool defeated, and pitches forward into the sawdust. The room tilts… and goes dark.', 7000);
+  await h.cineDelay(600);
+  hv.rig.anim.flinch = 1; h.iso.shake = Math.max(h.iso.shake ?? 0, 0.16);
+  await h.narrate('narr_thud', 'The magic wears off. The ale, sadly, does not. Greg salutes a chair, mistakes the floor for the chair, and meets both at considerable speed.', 6800);
   if (h.introSkipped) { finishIntro(h); return; }
   h.passOut(1.6);
   h.audio.stopTavernMusic(); h.audio.playMusic('music_ambient');
   await h.cineDelay(1800);
-  await h.narrate('narr_bridge', 'Greg the Grim drank the tavern dry, insulted a man with a sword, challenged a polymorph wizard to a fistfight, and briefly became livestock. None of those ended well.', 6800);
+  await h.narrate('narr_bridge', 'He drank the tavern dry, insulted a man with a sword, challenged a wizard to a fistfight, and spent four seconds as livestock. Then the floor rose up to introduce itself.', 6800);
   if (h.introSkipped) { finishIntro(h); return; }
 
   // ── wake at the bottom of the dungeon ──

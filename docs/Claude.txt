@@ -1,0 +1,395 @@
+# DUNGEON HANGOVER: 50 FLOORS OF REGRET
+### Story & Content Design Document
+
+**Numbering convention:** Greg wakes at the bottom, **Floor 50**, and climbs toward the exit, **Floor 1**, at street level. "Up" always means "lower floor number." This doc uses that convention throughout.
+
+---
+
+## PART 1 — THE OVERARCHING STORYLINE
+
+### The Hook
+Greg passed out mid-bar-fight after his tenth (or was it eleventh?) shot of something called "Regret." He wakes up at the bottom of a dungeon that, as he descends deeper into memory and climbs higher toward the exit, turns out to be a physical manifestation of *the worst night of his life*, built and enforced by a cosmic bureaucracy of hangover management: **The Tabkeeper's Ledger**, an afterlife-adjacent office that processes drunks who did something stupid enough to warrant "processing" before they're allowed to either wake up or move on. Greg isn't dead. He's *overdue*.
+
+The dungeon is called **The Last Call**, and every floor down represents an earlier, worse decision of the night; every floor up is Greg sobering up, literally and narratively, one skill point at a time.
+
+### The Five Acts
+
+| Act | Floors | Name | Theme | Antagonist Faction |
+|---|---|---|---|---|
+| I | 50–41 | **The Bilge** | Sewers, cellars, rat-infested storage beneath the bar. Filth, vermin, goblins squatting in the wreckage. | The Goblin King's court (goblins who've made a slum kingdom in the flooded sub-basements) |
+| II | 40–31 | **The Tap Room Wars** | A frozen-in-time recreation of the bar itself, mid-brawl, looping the fight that got Greg thrown down here in the first place. | Rival bar patrons turned undead brawlers, led by **Knuckles McGraw**, the bouncer Greg supposedly sucker-punched |
+| III | 30–21 | **The Hazy Mezzanine** | Upper floor of the bar, warped into a hallucinatory funhouse of mirrors, karaoke stages, and repeating hours. Reality gets unreliable. | The **Chorus of Last Calls**, spectral karaoke hosts who trap patrons in encore loops |
+| IV | 20–11 | **Management** | Corporate-purgatory floor: the Ledger's actual back office, all filing cabinets, tab contracts, and debt collectors. | **The Auditors**, bureaucratic demons who want Greg to sign over his liver (literally, as collateral) |
+| V | 10–1 | **Last Call** | The street outside the bar, dawn breaking, reality re-stabilizing. Final confrontation with the Tabkeeper. | **The Tabkeeper** themself |
+
+### Major Beats (boss floors and turning points)
+
+- **Floor 50 (start):** Wake up in the flooded sub-basement. Recruit the Hermit. Learn the Goblin King has taken over the old bath-house cellar. *(Full breakdown in Part 4.)*
+- **Floor 46:** First bonfire hub with a proper vendor — a drowned bartender ghost named **Gill** who only trades in gossip and bottle caps.
+- **Floor 44:** Companion questline resolves (or doesn't) — see **Sister Mercy**, below.
+- **Floor 41 (Act I boss):** **The Goblin King, Bloathelm III** — reintroduced properly if the player only fought his bath-guard stand-in on Floor 50; here he returns for real with his court, having fled floor 50 with Greg's stolen boots.
+- **Floor 31 (Act II boss):** **Knuckles McGraw**, the undead bouncer, in a bar-brawl arena where the whole room is a weapon.
+- **Floor 21 (Act III boss):** **The Encore**, a hallucinated fusion of every karaoke host Greg embarrassed himself in front of, fought across a stage that keeps replaying his cringiest moments as literal hazards.
+- **Floor 11 (Act IV boss):** **The Head Auditor**, a demon in a cheap suit who fights with paperwork given form (contracts as whips, staple-gun crossbows).
+- **Floor 1 (final):** **The Tabkeeper**, revealed as the bartender who served Greg his last drink. No health bar in the traditional sense — the fight is a dialogue-and-combat hybrid where Greg's choices (skills leveled, companions kept, quests resolved) determine which of three endings triggers.
+
+### The Ending(s)
+At Floor 1, dawn is breaking over the street outside the bar. The Tabkeeper offers Greg the actual tab for the night — and how Greg "pays" depends on the run:
+
+1. **Sober Ending — "Closing Time":** If Greg resolved most companion arcs and kept his Blessed uptime high, the Tabkeeper simply lets him walk out. Cut to Greg blinking in the sunlight, hungover but alive, dagger still tucked in his waistband as a souvenir. Roll credits over a montage of every ridiculous item he's still, inexplicably, carrying.
+2. **Regular Ending — "One For the Road":** A middle outcome — Greg is allowed to leave but the Tabkeeper keeps something of his (a memory, a name, a companion's number scrawled on a napkin that mysteriously blurs). Bittersweet, implies a sequel hook.
+3. **Relapse Ending — "Last Call, Again":** If the player burned every companion and racked up Cursed stacks instead of Blessed, the Tabkeeper pours Greg one more drink "on the house," and the last shot of the game is Greg, tempted, reaching for the glass as the screen fades — dungeon reset teased for New Game+.
+
+---
+
+## PART 2 — THE 15 CLASSES
+
+There is no class-select screen. These are the emergent archetype pools skills are drawn from at level-up. A "class" is just what a player's build looks like after the fact.
+
+| # | Archetype | Pool | Fantasy / Playstyle | Signature Mechanic |
+|---|---|---|---|---|
+| 1 | **Bar Bouncer** | Martial | Frontline tank, crowd control, throws people (and things) | Grapple + shove combos |
+| 2 | **Gutter Rogue** | Trickery | Backstab, pickpocket, dirty fighting | Bonus damage from filth/mud terrain |
+| 3 | **Karaoke Bard** | Social | Sonic buffs/debuffs, party support | Damage/buffs scale with a "Hype" meter |
+| 4 | **Sommelier** | Arcane | Potion and poison mastery, buff-stacking via drinks | Can carry and pre-mix drink effects |
+| 5 | **Line Cook** | Martial | Improvised weapons, fire, thrown tools | Any thrown item gets a damage bonus |
+| 6 | **Bathroom Mystic** | Arcane | Prophecy through vomiting, bile magic | Skills triggered by taking damage ("purge" mechanic) |
+| 7 | **Designated Driver** | Social | Party shielding, sober auras, revives | Best stats while player has zero negative statuses |
+| 8 | **Pub Quiz Master** | Trickery | Debuffs via riddles/trivia, confusion effects | Enemies "answer wrong" = free crit window |
+| 9 | **Bar Back** | Survivalist | Environment specialist, hauls/throws heavy objects | Reduced stamina cost on Environment actions |
+| 10 | **Tab Runner** | Trickery | Gold-fueled abilities, loan-shark debuffs | Can spend gold directly as a resource in combat |
+| 11 | **Streaker** | Survivalist | High mobility, low armor, chaos | Bonus evasion the less armor worn |
+| 12 | **Pool Shark** | Martial | Ranged trick shots, bank-shot geometry | Attacks can ricochet off environment objects |
+| 13 | **Jukebox DJ** | Arcane | Area sonic control, crowd stuns | Skills have a "track" that loops/escalates each turn sustained |
+| 14 | **Fry Cook Pyromancer** | Arcane | Grease-fire AOE, cooking-oil hazards | Fire skills spread through oil/grease terrain |
+| 15 | **Runaway Bride/Groom** | Social/Trickery hybrid | Chaotic wedding-trauma magic, bouquet/veil throws | Random beneficial *and* detrimental side-effect each cast |
+
+### Ability Trees
+
+Each class gets one signature ability at 5 milestone levels. All abilities marked **(Stacks)** can combine freely with other classes' abilities per Pillar 4 — the design goal is that a "fire-throwing coward" (Line Cook + Streaker + Fry Cook) should just *work*.
+
+**1. Bar Bouncer**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Bounce* | Shove target 1 tile, chance to knock into hazard/other enemy | Stacks with any Environment skill; shove distance +1 per Bar Back level |
+| 5 | *Cut You Off* | Melee hit also applies a 1-turn Silence (no Skill actions) | Stacks with Pub Quiz Master's Confuse for a full lockout combo |
+| 10 | *House Rules* | While Defending, redirect 50% of blocked damage to an adjacent enemy | Does not stack with itself; stacks with Designated Driver's shield |
+| 15 | *86'd* | Instantly ends one enemy's turn and shoves them out of the room (removes weaker enemies entirely) | Single-use per combat; stacks with any finisher |
+| 20 | *Last Man Standing* | Below 25% HP, all Martial pool skills cost 1 less action point | Stacks additively with Designated Driver's sober-bonus |
+
+**2. Gutter Rogue**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Low Blow* | Sneak attack from mud/filth terrain deals +50% dmg | Stacks with Line Cook's thrown-item bonus |
+| 5 | *Five-Finger Discount* | On hit, steal one consumable from enemy inventory | — |
+| 10 | *Slippery* | Gain a free Dodge once per combat when standing in liquid terrain | Stacks with Streaker's evasion |
+| 15 | *Gutterball* | Throw any small object to guarantee a Trip (skip enemy's next turn) | Stacks with Pool Shark's ricochet geometry |
+| 20 | *Nobody Saw Anything* | Full stealth re-entry after any kill (reset aggro) | — |
+
+**3. Karaoke Bard**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Warm Up* | Party gains +Hype (buff meter) at combat start | Base resource for whole tree |
+| 5 | *Power Ballad* | Heal party scaling with current Hype | Stacks with Sommelier drink-heals |
+| 10 | *Mic Drop* | Big single-target dmg, consumes all Hype | — |
+| 15 | *Encore* | Repeat your last-used Skill for free once per combat | Stacks with literally anything — recommended combo skill |
+| 20 | *Off-Key Scream* | AOE stun, but also confuses self for 1 turn (Pillar-consistent risk/reward) | Stacks with Pub Quiz's confuse for double-CC rooms |
+
+**4. Sommelier**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Pairing* | Drinking any potion also grants a small random buff | Foundation for the whole drink-stacking build |
+| 5 | *Decant* | Split one potion's effect across the whole party | Stacks with Karaoke heals |
+| 10 | *Vintage* | Potions age (get stronger) the longer they're carried unused | — |
+| 15 | *Poison Sommelier* | Apply Poisoned as a *buff* to allies (damage-over-time redirected to their next attack) | Unique interaction with Poisoned status |
+| 20 | *Bottomless Glass* | Once per floor, an Item action doesn't consume the item | Stacks with any Item-based build |
+
+**5. Line Cook**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Thrown Cutlery* | Any thrown improvised weapon +25% dmg | Base for thrown-build combos |
+| 5 | *Hot Pan* | Melee weapon swaps to Fire damage type for 3 turns | Stacks with Fry Cook grease ignition |
+| 10 | *Mise en Place* | Free Item swap mid-turn, no action cost | — |
+| 15 | *Flambé* | Thrown weapon ignites terrain on impact | Stacks with Fry Cook's oil-spread |
+| 20 | *Chef's Special* | Once per combat, "cook" any thrown junk item into a temporary high-tier weapon | — |
+
+**6. Bathroom Mystic**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Prophetic Heave* | Taking damage has a chance to reveal an enemy's next action | — |
+| 5 | *Exorcise* | Purge one negative status from self, deal minor AOE dmg | Stacks with Designated Driver's cleanse |
+| 10 | *Bile Bolt* | Ranged acid attack, applies Poisoned | — |
+| 15 | *Divine Nausea* | When Cursed, convert it into a damage buff instead | Direct counter-synergy with Curse mechanics |
+| 20 | *The Big One* | Ultimate purge — clears all self-debuffs, heals fully, but ends your turn immediately | — |
+
+**7. Designated Driver**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Sober Aura* | Passive: while status-free, +10% all resistances | Foundation buff |
+| 5 | *Buckle Up* | Shield an ally, absorbs next hit | Stacks with Bouncer's House Rules redirect |
+| 10 | *I'll Drive* | Revive a downed companion once per floor | — |
+| 15 | *No More For You* | Remove a *buff* from an enemy (reverse-debuff) | Unique anti-buff tool |
+| 20 | *Straight Home* | Party-wide teleport back to last bonfire mid-combat (emergency escape) | — |
+
+**8. Pub Quiz Master**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Pop Quiz* | Enemy has a chance to "answer wrong," skipping their turn | Base CC skill |
+| 5 | *Trivia Trap* | Place a rigged question mark trap; triggers Confuse | Stacks with any trap/Environment build |
+| 10 | *Well, Actually* | Interrupt an enemy's Skill action, canceling it | — |
+| 15 | *Double Jeopardy* | Confuse now also redirects one enemy attack to another enemy | Stacks with Karaoke's Off-Key Scream |
+| 20 | *Final Answer* | Guaranteed crit if target is already Confused | — |
+
+**9. Bar Back**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Haul* | -50% stamina cost on all Environment actions | Foundation for Environment-heavy builds |
+| 5 | *Keg Toss* | Throw heavy environment objects further and harder | Stacks with Line Cook thrown bonus |
+| 10 | *Restock* | Free extra Item action once per combat | — |
+| 15 | *Load Bearing* | Environment actions have a chance to collapse structures (bonus AOE) | Stacks with Fry Cook fire-spread for chain reactions |
+| 20 | *One Man Crew* | Can perform two Environment actions in a single turn | — |
+| |
+
+**10. Tab Runner**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *On Credit* | Spend gold instead of an action point once per combat | Foundation resource-swap |
+| 5 | *Shakedown* | Threaten enemy for bonus loot drop on kill | — |
+| 10 | *Collections* | Deal bonus dmg proportional to gold carried | Stacks with any high-gold hoarder build |
+| 15 | *Loan Shark* | Enemy takes a debuff that increases their damage taken, "interest," each turn it's not cured | — |
+| 20 | *Called In* | Spend all gold for a massive one-time nuke | — |
+
+**11. Streaker**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Skin in the Game* | +Evasion scaling inversely with armor worn | Foundation for no-armor builds |
+| 5 | *Nothing to Lose* | Free dodge of the first hit each combat | Stacks with Gutter Rogue's Slippery |
+| 10 | *Full Sprint* | Extra movement, can move through one enemy tile (draws no attack of opportunity) | — |
+| 15 | *Streak Show* | Enemies adjacent have a chance to be Confused from sheer secondhand embarrassment | Stacks with Pub Quiz Confuse chains |
+| 20 | *Naked and Unafraid* | Immune to Fear/Confuse while wearing zero armor pieces | — |
+
+**12. Pool Shark**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Bank Shot* | Ranged attacks can ricochet off walls/objects for +dmg | Foundation for geometry builds |
+| 5 | *Called Shot* | Guarantee a hit location (target a specific status-inflicting body part) | — |
+| 10 | *Combo Shot* | Ricochet can hit up to 2 additional enemies | Stacks with Gutter Rogue's Gutterball |
+| 15 | *Hustle* | First attack each combat is secretly a guaranteed crit | — |
+| 20 | *Eight Ball, Corner Pocket* | Ricochet shots can now knock enemies into hazards for bonus environmental dmg | Stacks with all Environment-hazard skills |
+
+**13. Jukebox DJ**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Drop the Beat* | AOE skill that "loops": deals more dmg each consecutive turn it's re-cast | Foundation escalation mechanic |
+| 5 | *Remix* | Change an active status effect into a different one | Unique status-conversion tool |
+| 10 | *Bass Boost* | Environment objects hit by your skills get knocked further | Stacks with Bar Back/Line Cook throws |
+| 15 | *Skip Track* | Cancel an enemy's charged/telegraphed attack | — |
+| 20 | *Set The Night On Fire* | Ultimate: looped track detonates for AOE dmg equal to turns sustained | — |
+
+**14. Fry Cook Pyromancer**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Grease Fire* | Fire dmg spreads across any oil/grease terrain tile | Foundation for terrain-fire builds |
+| 5 | *Deep Fry* | Melee attacks apply Burning | Stacks with Hot Pan (Line Cook) |
+| 10 | *Flashover* | Detonate all currently Burning targets in the room simultaneously | — |
+| 15 | *Oil Slick* | Create a grease hazard tile from nothing, no Environment object required | Stacks with Streaker (slip-and-evade combo) |
+| 20 | *Kitchen Nightmare* | Ultimate room-wide firestorm, damages self slightly (risk/reward, Pillar-consistent) | — |
+
+**15. Runaway Bride/Groom**
+| Lvl | Name | Effect | Stacking |
+|---|---|---|---|
+| 1 | *Bouquet Toss* | Thrown attack, random ally gets a random buff | Foundation chaos mechanic |
+| 5 | *Something Borrowed* | Temporarily "borrow" a stat from an enemy (steal a buff) | — |
+| 10 | *Runaway* | Free repositioning move that also removes one random status (good or bad) | Stacks with any mobility skill |
+| 15 | *Veil of Tears* | AOE debuff that's randomly Blind *or* accidentally heals enemies (true chaos, telegraphed clearly to the player) | Unique high-risk skill |
+| 20 | *Til Death* | Ultimate: bind self and one enemy together, both take 50% of all dmg the other takes | — |
+
+---
+
+## PART 3 — SIDE QUESTS BY FLOOR (all 50)
+
+*(Titles + one-line hooks; full dialogue trees are hand-authored in production per Pillar 1, not generated at line-level — these are the writers'-room hooks.)*
+
+| Floor | Side Quest | Hook |
+|---|---|---|
+| 50 | *The Hermit's Finger* | Retrieve his gnawed-off wedding-ring finger from the Boss Rat. (Full writeup Part 4.) |
+| 49 | *Missing Trousers* | Greg's pants are somewhere on this floor — purely cosmetic reward, narrator mocks you until found. |
+| 48 | *The Drowned Bartender's Tab* | Ghost bartender Gill wants his unpaid tab settled with a specific rare coin. |
+| 47 | *Sister Mercy's Cage* | Free a captured Karaoke Bard from a goblin cage — start of the companion arc. |
+| 46 | *Rat King's Ransom* | Negotiate (or fight) for a hostage held by rat cultists. |
+| 45 | *The Loofah Black Market* | A goblin fence sells "authentic" royal soap — obviously fake, comic dead end/red herring. |
+| 44 | *Sister Mercy's Encore* | Companion arc resolves: help her face the crowd that booed her off once before. |
+| 43 | *Barnacle'd Jukebox* | Repair a waterlogged jukebox for a reward; unlocks a Jukebox DJ skill orb early. |
+| 42 | *Grabknuckle's Nest, Revisited* | The Boss Rat's cousin has taken up residence; optional grudge match. |
+| 41 | *Bloathelm's Court (Boss Floor)* | Side objective: spare the goblin court instead of slaughtering it, for a different loot table. |
+| 40 | *Knuckles' First Warning* | A brawler ghost offers Greg a chance to apologize instead of fight — dialogue-only resolution path. |
+| 39 | *The Jukebox Feud* | Two undead patrons argue over the last song ever played; pick a side. |
+| 38 | *Spilled Pitcher Puzzle* | Environmental puzzle: recreate a spilled-beer pattern to open a hidden vault. |
+| 37 | *Darts Champion* | Mini-game side boss: beat the ghost darts champ, no combat, pure skill-check. |
+| 36 | *The Bar Napkin Will* | Find and honor a deceased patron's scrawled napkin "will." |
+| 35 | *Pool Shark's Grudge* | Rival Pool Shark NPC wants a rematch on a trick-shot table. |
+| 34 | *Last Orders* | Timed quest: serve three ghost patrons before "closing" or lose the reward. |
+| 33 | *Knuckles' Second Warning* | Escalation of Floor 40's thread; consequences shift depending on earlier choice. |
+| 32 | *The Bathroom Line* | Absurd side dungeon: an infinite bathroom line, solved via Bathroom Mystic dialogue options. |
+| 31 | *Knuckles McGraw (Boss Floor)* | Side objective: use the whole bar as a weapon for a unique finisher cutscene. |
+| 30 | *Mirror, Mirror* | A hallucinated double of Greg needs to be talked down, not fought. |
+| 29 | *The Encore's First Victim* | Free a trapped patron from a karaoke loop. |
+| 28 | *Wrong Lyrics* | Comedic puzzle: sing (menu choice) the objectively worst lyrics to break a curse. |
+| 27 | *The Bard's Rivalry* | Karaoke Bard companion (if kept) gets a rival cameo, can duet or feud. |
+| 26 | *Funhouse Mirror Maze* | Optional maze room, rewards a mirror-themed trinket. |
+| 25 | *The DJ Booth Heist* | Steal back stolen equipment from a hallucinated rival DJ. |
+| 24 | *Spotlight Anxiety* | Stealth-lite quest: cross a stage without triggering spotlight "aggro." |
+| 23 | *The Sommelier's Cellar* | Recruit-adjacent quest: a drink-mixing NPC teaches a rare recipe. |
+| 22 | *Last Song Standing* | Optional musical boss-lite fight against a hallucinated rival band. |
+| 21 | *The Encore (Boss Floor)* | Side objective: skip the final chorus entirely via a Pub Quiz Master trivia shortcut. |
+| 20 | *Orientation Packet* | Comedic tutorial-esque quest re-explaining "the rules" now that things are serious. |
+| 19 | *The Auditor's Assistant* | A junior demon wants to defect; recruit them as a vendor, not companion. |
+| 18 | *Signed in Blood (Ink)* | Retrieve a stolen contract before the Auditors weaponize it. |
+| 17 | *The Filing Cabinet Labyrinth* | Environmental puzzle dungeon: navigate cabinets that rearrange each turn. |
+| 16 | *Overtime* | Timed floor: escape before a shift-change spawns reinforcements. |
+| 15 | *The Shredder* | Destroy incriminating paperwork about an NPC met earlier, for their sake. |
+| 14 | *Expense Report* | Comedic fetch quest: submit receipts (items) for a reward, denied on a technicality first. |
+| 13 | *The Break Room* | Optional rest/vendor room with demon coworkers gossiping (lore dump). |
+| 12 | *Termination Notice* | Help a demon get "fired" (freed from servitude) instead of fighting them. |
+| 11 | *The Head Auditor (Boss Floor)* | Side objective: find Greg's actual tab beforehand to reduce the fight's difficulty. |
+| 10 | *First Light* | Optional quest: help a fellow "patron" find their own way out; mirrors Greg's arc. |
+| 9 | *The Alley Cat* | A stray animal companion (non-combat pet) can be adopted here. |
+| 8 | *Last Text Message* | Poignant optional quest: send a message via a magic phone booth to someone Greg wronged. |
+| 7 | *The Bouncer's Redemption* | If spared on Floor 41/31 threads, Knuckles' ghost appears to help here. |
+| 6 | *Sobering Up* | Mechanical quest: a final skill-pool choice becomes available regardless of level. |
+| 5 | *Old Debts* | Tab Runner-flavored quest: settle or forgive a debt from early-game NPC. |
+| 4 | *The Last Companion's Goodbye* | Whichever companion is still active gets a proper farewell scene here. |
+| 3 | *Dawn Patrol* | Optional fight against street-cleaner constructs, comedic "reality reasserting itself." |
+| 2 | *One Last Drink* | Foreshadowing quest for the final choice — talk to a mysterious figure at the bar's back door. |
+| 1 | *Last Call (Finale)* | Not a side quest — the ending. See Part 1. |
+
+---
+
+## PART 4 — FLOOR 50 DETAILED BUILD (Player's First Floor)
+
+### Overview
+Floor 50 is the flooded sub-basement beneath the bar — a wrecked storage cellar the Goblin King's court has half-claimed as slum territory, complete with a stolen bath-house fixture they use as a throne room. 25 rooms, one bonfire at the start, a second emergency bonfire near the midpoint, ending in a boss fight against a goblin sentry-turned-encounter and the Goblin King himself.
+
+### Opening Sequence
+Greg wakes face-down on wet stone, in his underwear, next to a guttering bonfire. A torch and starter bag (rusty dagger, health potion) sit beside him. Standing triggers the "hangover stand-up" animation — a few star-particle effects circling his head.
+
+> **NARRATOR (text bark):** "And there he is. Ladies and gentlemen, Greg. Last night he punched a man named Knuckles, tried to marry a bar stool, and — this part's my favorite — is now waking up fifty floors underground in his boxers. Let's see how far pride carries a man with no pants."
+
+---
+
+### Room-by-Room Breakdown
+
+**R1 — Bonfire Landing (start).** The bonfire checkpoint. A cracked mirror shard on the wall lets the player see Greg's underwear-clad reflection (comedic beat, optional narrator line). Exit north to R2.
+
+**R2 — The Hermit's Alcove.** A grizzled old drunk, **Hermit Alvin**, squats amid candle stubs and empty bottles. He gives the opening quest.
+
+> **ALVIN:** "You're new. Or you're dead. Either way — you got hands? Good, I need 'em. That damn rat took my finger. My *whole* finger. Wedding ring still on it, if you can believe the nerve."
+>
+> **GREG (dialogue option):** "Why don't you just... get a new ring?"
+>
+> **ALVIN:** "It's not about the ring, boy, it's about the *principle*. Also yes the ring, it's worth a fortune, my late wife had taste. Bring it back and I'll set you straight on where the hell you are."
+
+Quest: **The Hermit's Finger.** Objective updates once the Boss Rat is found (R17). Reward on completion: starter gear pack (see loot table) + full storyline exposition (Alvin explains the Tabkeeper's Ledger, the bar-fight, why Greg's here).
+
+**R3 — Rat Warren Entrance.** Narrow tunnel, 2 basic rat enemies, introduces Bleeding status via rat-bite attacks.
+
+**R4 — Gnawed Bone Pile.** Environmental room: a pile of debris can be shoved to reveal a shortcut to R16. Minor loot cache.
+
+**R5 — Boss Rat's Larder.** Empty food stash guarded by 3 rats; narrator comments on the smell. Clue item here (a chewed ring box) confirms the Boss Rat's lair is further in.
+
+**R6 — Collapsed Cellar.** Puzzle room: a barrel of oil can be shoved down a slope to clear rubble blocking R7, or ignited later for a Fry Cook shortcut once that skill is unlocked (replay-value nod).
+
+**R7 — Sewage Grate Junction.** Hub room, three exits (R8, R9, R10). Ankle-deep water — first taste of "Slippery" terrain interactions.
+
+**R8 — Drowned Barkeep's Corpse.** Lore room. A dead patron floats here with a journal (world-building flavor text) and a small gold cache.
+
+**R9 — Fungus Grove.** Glowing fungus enemies introduce the **Poisoned** status effect. 2–3 fungal enemies.
+
+**R10 — Old Wash Room.** Broken soap dispensers, dry fountains. First hint of the soap subplot — a faded sign: *"Property of the Royal Bath — Do Not Remove Suds."* Empty soap dish. Narrator mocks the very concept of a goblin king with a skincare routine.
+
+**R11 — Goblin Laundry Den.** 3–4 goblin enemies guarding a locked chest. Killing them or sneaking past (Gutter Rogue-friendly room) gets the chest key.
+
+**R12 — Soap Vault.** The locked chest room. Contains **The King's Own Bar of Suds** (quest item) plus a floor trap (tripwire dumps a bucket — slapstick, minor Slippery debuff on the player, purely comedic).
+
+**R13 — Bathhouse Antechamber.** Companion recruitment room. **Sister Mercy**, the disgraced Karaoke Bard, is chained here awaiting "processing" by the goblins. Freeing her (fight or persuade) recruits her for the rest of Phase 1's slice.
+
+> **SISTER MERCY:** "Don't just stand there gawking, prop — either cut me loose or hand me a mic, one of the two is getting me out of this chair."
+
+**R14 — Flooded Cistern.** Set-piece encounter: a reanimated fish-skeleton enemy. This is the tone-reference slapstick fight — narrator explicitly comments if the player kills it using the starter dagger vs. improvising with an actual fish object floating in the water.
+
+> **NARRATOR:** "A skeleton. Made of fish bones. Fighting you with what appears to be... another fish. This is the loneliest sentence I've ever had to narrate."
+
+**R15 — The Gambler's Nook.** Optional side room: a goblin gambler runs a dice mini-game for bonus gold, unconnected to main critical path.
+
+**R16 — Broken Stairs Landing.** Second bonfire (mid-floor checkpoint). Shortcut back to R4 via the shoved debris pile.
+
+**R17 — Rat King's Shrine.** **Boss Rat (Grabknuckle)** mini-boss fight — a larger rat wearing the Hermit's ring like a crude crown-nose-piercing. On defeat, drops the ring; completes *The Hermit's Finger* when returned to Alvin.
+
+**R18 — Trophy Hall.** Goblin King's trophy room — stolen bar stools, a dartboard, Greg's missing pants (Floor 49 quest tease, technically found one floor early as an easter egg). Lore flavor text on the Goblin King's rise to power.
+
+**R19 — Steam Tunnels.** Environmental hazard room: scalding steam vents that can be shoved/ignited to hit enemies; introduces the idea that combat and exploration share physics (Pillar 4).
+
+**R20 — Guard Barracks.** 4-goblin patrol fight, harder than R11's den. Best cleared with the Sister Mercy companion active.
+
+**R21 — Locked Door Foyer.** The door to the Royal Bath. A **Goblin Guard** stands post.
+
+> **GOBLIN GUARD:** "Oi. Nobody sees His Grace mid-soak without proper hygiene clearance. You got soap?"
+>
+> *(If player lacks The King's Own Bar of Suds:)*
+>
+> **GOBLIN GUARD:** "Then get bent. Ain't nobody tracking dungeon-filth into His Grace's bathwater. Go find some soap, you absolute swamp creature."
+>
+> *(If player has the soap:)*
+>
+> **GOBLIN GUARD:** "...Huh. Real soap. Fancy. Alright, go on then — and wipe your feet, for the love of the Ledger."
+
+**R22 — Bath Supply Closet.** Backup soap room in case R12 was skipped/missed — a lesser-quality "Off-Brand Suds" bar sits here as a fallback (works for the guard, but has a worse item-effect if equipped/used as a throwable).
+
+**R23 — The Boiler Room.** Optional side room housing a captive Sommelier NPC still-brewer, teaching the player their first Sommelier recipe.
+
+**R24 — Antechamber to the Bath.** Final save/prep room — a bonfire-adjacent respawn anchor specifically for the boss attempt, plus a vendor-goblin (defected, comedic) selling last-minute items.
+
+**R25 — The Royal Bath (Boss Room).** **Goblin King Bloathelm III**, mid-bath, is interrupted.
+
+> **BLOATHELM III:** *(sitting in a chipped claw-foot tub, wearing a rubber-duck crown)* "DO YOU KNOCK?! I am NAKED and RELAXING and — is that the Hermit's ring? You've been in MY warren?! GUARDS! ...oh right, you killed the guards. Fine. FINE. We do this the wet way."
+
+Boss fight: Bloathelm fights from and around the tub — splashing AOE water attacks (can extinguish player fire effects, notably countering Fry Cook builds — a deliberate environmental gimmick), throws bath toys as projectiles, and can shove the tub itself as a heavy Environment object. On defeat, he flees (setting up his Floor 41 return) but drops his signature club.
+
+---
+
+## PART 5 — FLOOR 50 LOOT TABLE
+
+| Item | Type | Effect(s) | Level/Req | Source |
+|---|---|---|---|---|
+| Rusty Dagger | Weapon (starter) | Base melee dmg, no bonuses ("it's seen things") | Lvl 1 | Starting kit |
+| Guttering Torch | Light source | Fuel ticks down; can be thrown to ignite terrain | Lvl 1 | Starting kit |
+| Hangover Health Potion | Consumable | Restores HP; 10% chance to also cure one status ("hair of the dog") | Lvl 1 | Starting kit |
+| Hermit's Hand-Me-Downs | Armor (light) | +Defense / -5% Evasion / *Smells Faintly of Mothballs* | Lvl 1 | Alvin's quest reward |
+| Alvin's Old Boots | Boots | +Movement / *Squeaks Loudly (removes Stealth bonus)* | Lvl 1 | Alvin's quest reward |
+| Off-Brand Suds | Quest item / throwable | Satisfies the Goblin Guard; thrown, applies Slippery to target | Lvl 1 | Room 22 |
+| The King's Own Bar of Suds | Quest item / throwable | Satisfies the Goblin Guard (no penalty version); thrown, applies Slippery + Blessed (brief, "smells amazing") | Lvl 1 | Room 12 |
+| Chewed Ring Box | Lore/quest item | No combat effect, triggers Alvin dialogue | Lvl 1 | Room 5 |
+| Hermit's Band of Undying Devotion | Ring (accessory) | +Loot quality / -Max HP small amount / *Ring Finger Occasionally Twitches* | Lvl 1 | Alt. reward if player lets Alvin keep the ring instead of returning it (moral-choice branch) |
+| Fish Bone Shiv | Weapon (curiosity) | Low dmg / applies Bleeding / *You Are Now Fighting With a Fish* (visual only, narrator-flagged) | Lvl 1 | Room 14 |
+| Drowned Barkeep's Flask | Consumable | Minor buff cocktail, Sommelier synergy | Lvl 1 | Room 8 |
+| Fungal Poultice | Consumable | Cures Poisoned, 10% chance to inflict a *new*, weaker Poisoned (grim irony, narrator comments) | Lvl 1 | Room 9 |
+| Goblin Laundry Key | Key item | Opens Room 12's vault | Lvl 1 | Room 11 |
+| Trophy Hall Bar Stool | Furniture / throwable heavy object | High dmg thrown, breaks on impact (single use) | Lvl 1 | Room 18 |
+| Sister Mercy's Cracked Mic | Companion weapon | Companion-only; boosts her Hype generation | Lvl 1 | Auto-granted on recruiting Mercy |
+| **Scrubnuckle, the Royal Bath Cudgel** | Weapon (Great Club) — **Boss Drop** | See below | Lvl 3+ | Bloathelm III |
+
+### The Final Boss Weapon
+
+**Scrubnuckle, the Royal Bath Cudgel**
+*A dense, waterlogged oak club, still faintly bubbled with suds, with a rubber duck crudely nailed to the pommel as a counterweight. It has clearly been used to both crush skulls and scrub a very large royal back, sometimes in the same evening.*
+
+- **Type:** Two-handed Great Club (Martial pool, Bar Bouncer/Bar Back synergy)
+- **Base Effect:** High blunt damage, slow (reduced initiative)
+- **Passive — "Squeaky Clean":** 20% chance on hit to apply **Slippery** to the target (reduces their Accuracy and Evasion for 2 turns)
+- **Passive — "Royally Scented":** User gains a small resistance to Poisoned (goblin filth doesn't stick to something this clean) but is also permanently flagged with the flavor tag *Always Smells Like Lavender*, which the narrator will not let go of for the rest of the game
+- **Side Effect:** Occasionally "leaks" a trail of soap bubbles while running (visual only, zero mechanical effect, pure Pillar-4-approved absurdity)
+- **Flavor line (on pickup):** *"You have acquired Scrubnuckle. It is somehow both a warclub and a back-scratcher. You are unreasonably proud of this."*
+
+---
+
+*End of document — ready for handoff to whoever's building the vertical slice.*
