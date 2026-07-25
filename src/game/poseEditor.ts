@@ -48,7 +48,7 @@ export const POSE_PRESETS: { name: string; label: string; joints: PoseJoints }[]
   },
   {
     name: 'cross', label: 'cross — arms folded across chest',
-    joints: { ...blankPose(), torso: j(-0.006), head: j(-0.02), armL: j(-0.192, 0, 0.498), armR: j(-0.732, 0, -0.622), foreL: j(-1.622, 0, -3.002), foreR: j(-0.327, 0, 0.9), wristL: j(0.6), wristR: j(0.6) },
+    joints: { ...blankPose(), torso: j(-0.006), head: j(-0.02), armL: j(-1.032, 0, 0.128), armR: j(-1.192, 0, 0.088), foreL: j(-0.972, 0, 1.128), foreR: j(-1.162, 0, -1.682), wristL: j(-0.412), wristR: j(0.198) },
   },
   {
     name: 'crack', label: 'crack — knuckles pump at the chest',
@@ -160,69 +160,9 @@ function wrapPoseablePartJoints(rig: Rig): void {
   if (P.hood)   wrapMesh('hood',   CROWN_GY, HAIR_CY + 2);
   if (P.hoodTip) wrapMesh('hoodTip', CROWN_GY, HAIR_CY + 4);
 
-  // ── Step A2: fix the LIMB pivots (the actual detachment bug) ──
-  // buildLimb() places each limb's group origin on the body CENTRELINE (x = 0)
-  // and offsets the mesh to the side (x = cx*C).  So rotating a limb spins it
-  // around the spine, not the shoulder/hip — the limb appears to fly off the
-  // body.  Wrap each limb in a pivot Group placed at the TRUE joint (where the
-  // mesh actually sits) so rotation.set() pivots about the shoulder/hip.
-  // Object3D.attach() preserves the limb's world pose while re-parenting.
-  const wrapLimb = (name: string) => {
-    const upper = P[name] as THREE.Group | undefined;
-    if (!upper || (upper as THREE.Object3D).type !== 'Group') return;
-    group.updateMatrixWorld(true);
-    const up = new THREE.Vector3();
-    upper.getWorldPosition(up);                       // (0, cyUpper*C, 0)
-    // the joint x is where the limb mesh really is (cx*C), not the centreline 0
-    let jointX = up.x;
-    const um = upper.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
-    if (um) { const mp = new THREE.Vector3(); um.getWorldPosition(mp); jointX = mp.x; }
-    const pivot = new THREE.Group();
-    pivot.position.set(jointX, up.y, 0);              // pivot exactly at the joint
-    group.add(pivot);
-    pivot.attach(upper);                              // keeps the mesh exactly where it is
-    P[name] = pivot;                                  // future rotation hits the joint pivot
-  };
-  wrapLimb('armL'); wrapLimb('armR');
-  wrapLimb('legL'); wrapLimb('legR');
-
-  // ── Step A3: fix the NESTED joints (elbow/knee + wrist) ──
-  // The same centreline-vs-joint bug exists one level down: buildLimb puts the
-  // `lower` (forearm/shin) and `wrist` groups on the centreline (x = 0) while
-  // their meshes sit at x = cx*C.  So rotating the forearm/shin/wrist spins them
-  // around the spine, detaching them.  Wrap each nested joint in a pivot placed
-  // at the mesh (the true elbow/knee/wrist) and re-parent via attach().
-  const wrapNestedJoint = (parent: THREE.Object3D, child: THREE.Object3D, partKey: string) => {
-    parent.updateMatrixWorld(true);
-    const cm = child.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
-    const wp = new THREE.Vector3();
-    if (cm) cm.getWorldPosition(wp); else child.getWorldPosition(wp);   // joint = mesh world position
-    // parent is NOT at the world origin, so convert the world joint position into
-    // parent's LOCAL space before adding the pivot — otherwise the pivot lands far away.
-    const local = parent.worldToLocal(wp.clone());
-    const pivot = new THREE.Group();
-    pivot.position.copy(local);
-    parent.add(pivot);
-    pivot.attach(child);                              // preserves child's world pose
-    if (partKey) P[partKey] = pivot;                 // future rotation hits this joint
-  };
-  const fixLimbJoints = (upperKey: string, foreKey: string, wristKey?: string) => {
-    const pivot = P[upperKey] as THREE.Group | undefined;
-    if (!pivot) return;
-    const upper = pivot.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group | undefined;
-    if (!upper) return;
-    const lower = upper.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group | undefined;
-    if (!lower) return;
-    wrapNestedJoint(upper, lower, foreKey);
-    if (wristKey) {
-      const wrist = lower.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group | undefined;
-      if (wrist) wrapNestedJoint(lower, wrist, wristKey);
-    }
-  };
-  fixLimbJoints('armL', 'foreL', 'wristL');
-  fixLimbJoints('armR', 'foreR', 'wristR');
-  fixLimbJoints('legL', 'shinL');
-  fixLimbJoints('legR', 'shinR');
+  // NOTE: buildLimb in characters.ts now places limb group origins at the
+  // actual joint (cx*C, cyUpper*C) so rotation.set() naturally pivots about
+  // the shoulder/hip.  No extra limb-wrapping is needed here.
 
   // ── Step B: build the skeleton hierarchy ──
   // After Step A all parts are children of `group` again.  Using attach()

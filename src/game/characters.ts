@@ -150,13 +150,14 @@ function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, spl
     if (gy >= splitY) voU.add(gx - cx, gy - cyUpper, gz, c, JIT);
     else voL.add(gx - cx, gy - splitY, gz, c, JIT);   // lower bone pivots at the joint
   }
-  // upper-group origin sits at the hip/shoulder pivot; mesh hangs below it.
-  upper.position.set(0, cyUpper * C, 0);
-  const um = voU.mesh(); um.position.set(cx * C, 0, 0); upper.add(um);
-  // lower-group origin sits at the knee/elbow (relative to upper); mesh hangs below it.
-  // The joint is BELOW the hip/shoulder pivot, so this offset is negative.
+  // FIXED: group origin at the ACTUAL joint position (cx, cyUpper) instead of
+  // (0, cyUpper) — rotation.set() now pivots at the shoulder/hip joint,
+  // making the game rig and pose editor consistent.
+  upper.position.set(cx * C, cyUpper * C, 0);
+  const um = voU.mesh(); um.position.set(0, 0, 0); upper.add(um);
+  // lower-group origin sits at the knee/elbow, relative to the (now-offset) upper.
   lower.position.set(0, (splitY - cyUpper) * C, 0);
-  const lm = voL.mesh(); lm.position.set(cx * C, 0, 0); lower.add(lm);
+  const lm = voL.mesh(); lm.position.set(0, 0, 0); lower.add(lm);
   upper.add(lower);
   let hand: THREE.Mesh | undefined;
   let wrist: THREE.Group | undefined;
@@ -170,7 +171,7 @@ function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, spl
     // it so the hand can rotate independently of the forearm (e.g. keep a staff vertical).
     wrist = new THREE.Group();
     wrist.position.set(0, (handCy - splitY) * C, 0);
-    hand = vh.mesh(); hand.position.set(cx * C, 0, 0);
+    hand = vh.mesh(); hand.position.set(0, 0, 0);
     wrist.add(hand);
     lower.add(wrist);
   }
@@ -1272,11 +1273,11 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
     legLX = legRX = 0; torsoX = 0.06; headX = -0.05; hipY = HIP;
     elbowL = -1.3 - pump; elbowR = -1.3 + pump;
   } else if (a.mode === 'cross') {                         // arms folded across the chest
-    armLX = -0.192; armRX = -0.732;
-    armLZ = 0.498;  armRZ = -0.622;
-    elbowL = -1.622; elbowR = -0.327;
-    elbowLZ = -3.002; elbowRZ = 0.9;
-    wristL = 0.6; wristR = 0.6;
+    armLX = -1.032; armRX = -1.192;
+    armLZ = 0.128;  armRZ = 0.088;
+    elbowL = -0.972; elbowR = -1.162;
+    elbowLZ = 1.128; elbowRZ = -1.682;
+    wristL = -0.412; wristR = 0.198;
     torsoX = -0.006; headX = -0.02; hipY = HIP;
   }
   // idle: arms hang slightly forward (~10°) rather than straight down
