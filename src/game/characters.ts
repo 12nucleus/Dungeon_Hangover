@@ -26,19 +26,32 @@ export interface Rig {
   group: THREE.Group;
   parts: Record<string, THREE.Object3D>;
   anim: {
-    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'crack' | 'getup';
+    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'crack' | 'cross' | 'getup';
     t: number;
     lunge: number;
     flinch: number;
     lungeDir: THREE.Vector3;
     bob: number;
     crouch: number;
+    /** persistent vertical offset (world units) added to the whole head
+     *  assembly every frame — used by the editor to nudge a rig's head
+     *  without fighting the per-frame pose solver. 1 tavern voxel = 0.11. */
+    headYOffset?: number;
+    /** persistent vertical offset (world units) added to the `hair` part
+     *  every frame. For the wizard the `hair` part IS the star hat, so this
+     *  raises just the hat. 1 tavern voxel = 0.11. */
+    hairYOffset?: number;
+    /** persistent rotation (radians) added to a forearm every frame — used to
+     *  angle a character's lower arm (e.g. the wizard holding his staff). The
+     *  matching wrist is counter-rotated so a held staff stays vertical. */
+    forearmLOffset?: number;
+    forearmROffset?: number;
     death?: DeathState;
   };
   pivots?: {
     hip: number; torso: number; head: number; eye: number;
     hair: number; arm: number; hand: number; weapon: number;
-    hood?: number; hoodTip?: number; pad?: number; knee?: number; elbow?: number;
+    hood?: number; hoodTip?: number; pad?: number; knee?: number; elbow?: number; wrist?: number;
   };
 }
 
@@ -125,7 +138,7 @@ class Vox {
 // Returns { upper, lower, upperMesh, lowerMesh } where `lower` is parented to
 // `upper` at the correct local joint offset.
 interface Limb {
-  upper: THREE.Group; lower: THREE.Group; hand?: THREE.Mesh;
+  upper: THREE.Group; lower: THREE.Group; hand?: THREE.Mesh; wrist?: THREE.Group;
 }
 function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, splitY: number, C: number, handBucket?: Map<string, number>, handCy?: number, SUB: number = 1): Limb {
   const JIT = 0.035;
@@ -146,17 +159,22 @@ function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, spl
   const lm = voL.mesh(); lm.position.set(cx * C, 0, 0); lower.add(lm);
   upper.add(lower);
   let hand: THREE.Mesh | undefined;
+  let wrist: THREE.Group | undefined;
   if (handBucket && handCy !== undefined) {
     const vh = new Vox(C, SUB);
     for (const [k, c] of handBucket) {
       const [gx, gy, gz] = k.split(',').map(Number);
       vh.add(gx - cx, gy - handCy!, gz, c, JIT);
     }
-    // hand centre relative to the lower-group (elbow) origin
-    hand = vh.mesh(); hand.position.set(cx * C, (handCy - splitY) * C, 0);
-    lower.add(hand);
+    // wrist pivot sits at the wrist joint (hand centre); the hand mesh hangs from
+    // it so the hand can rotate independently of the forearm (e.g. keep a staff vertical).
+    wrist = new THREE.Group();
+    wrist.position.set(0, (handCy - splitY) * C, 0);
+    hand = vh.mesh(); hand.position.set(cx * C, 0, 0);
+    wrist.add(hand);
+    lower.add(wrist);
   }
-  return { upper, lower, hand };
+  return { upper, lower, hand, wrist };
 }
 
 function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 1): THREE.Group {
@@ -481,6 +499,7 @@ function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
     const am = buildLimb(s < 0 ? buckets.armL : buckets.armR, s * ARM_X, ARM_G, ELBOW_G, C, s < 0 ? buckets.handL : buckets.handR, HAND_G);
     parts[s < 0 ? 'armL' : 'armR'] = am.upper; parts[s < 0 ? 'foreL' : 'foreR'] = am.lower;
     if (am.hand) parts[s < 0 ? 'handL' : 'handR'] = am.hand;
+    if (am.wrist) parts[s < 0 ? 'wristL' : 'wristR'] = am.wrist;
     group.add(am.upper);
   }
 
@@ -517,7 +536,7 @@ function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
     pivots: {
       hip: HIP_G * C, torso: TORSO_G * C, head: HEAD_G * C, eye: EYE_G * C,
       hair: HAIR_G * C, arm: ARM_G * C, hand: HAND_G * C, weapon: WEAPON_Y * C,
-      pad: PAD_G * C, knee: KNEE_G * C, elbow: ELBOW_G * C,
+      pad: PAD_G * C, knee: KNEE_G * C, elbow: ELBOW_G * C, wrist: HAND_G * C,
     },
   };
 }
@@ -814,7 +833,7 @@ function buildOrcRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
 interface HumanoidFeat {
   robe?: boolean; dress?: boolean; beard?: boolean; hat?: boolean;
   bun?: boolean; bald?: boolean; apron?: boolean; vest?: boolean;
-  stars?: boolean; tray?: boolean;
+  stars?: boolean; tray?: boolean; leftHand?: boolean;
 }
 function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefined, feat: HumanoidFeat): Rig {
   const C = C_DETAIL;
@@ -877,14 +896,25 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
       if (feat.dress) { colf(cx, 0.5, 2, 44, 2.6, 2.8, skin); box(cx - 3, 44, -4, cx + 3, 46, 6, 0x3a2a1a); }
     }
   }
+  // robe fully encloses the legs — drop the hidden leg voxels so they don't
+  // coincide with the robe column (that overlap was z-fighting on the wizard).
+  if (feat.robe) { buckets.legL.clear(); buckets.legR.clear(); }
 
   // ── TORSO ──
   cur = buckets.torso;
   if (feat.robe || feat.dress) {
     const top = feat.robe ? 56 : 44;
     for (let y = 0; y <= top; y++) {
-      const rx = feat.robe ? 5.6 - y * 0.015 : 5.6 - y * 0.05;
-      const rz = feat.robe ? 4.6 : 4.0;
+      let rx: number, rz: number;
+      if (feat.robe && y <= 33) {
+        // skirt below the belt: flares from the waist out to a wide hem at the feet
+        const s = y / 33;                                       // 0 at feet, 1 at belt
+        rx = 6.5 + 5.0 * (1 - s);                               // 5.5 at belt → 8.5 at feet
+        rz = 6.5 + 5.7 * (1 - s);                               // 4.3 at belt → 6.0 at feet
+      } else {
+        rx = feat.robe ? 5.2 : 5.6 - y * 0.05;
+        rz = feat.robe ? 4.2 : 4.0;
+      }
       colf(0, 0, y, y, Math.max(2, rx), rz, y < 33 ? pant : cloth);
     }
   }
@@ -918,7 +948,11 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
   ell(0, 58, 1, 4.5, 3.5, 5, skin);
   for (const s of [-1, 1]) { const ex = s * 3; box(ex - 1, 62, 5, ex + 1, 63, 6, skinD); put(ex, 63, 6, 0xf5f2ec); put(ex, 62, 6, 0x6b4426); }
   put(0, 60, 6, skinD); box(-2, 59, 6, 2, 59, 6, 0xb05a4a);
-  if (feat.beard) for (let y = 57; y <= 63; y++) { const w = Math.max(0, Math.round((63 - y) * 0.8)); for (let x = -w; x <= w; x++) put(x, y, 5 + Math.round((63 - y) * 0.25), y > 60 ? WHITE : WHITED); }
+  if (feat.beard) for (let y = 54; y <= 58; y++) {
+    const w = Math.max(0, Math.round((y - 54) * 0.9));   // narrow at chin tip, wider at the jaw
+    const z = 6 + Math.round((58 - y) * 0.25);           // sits on the chin, in front of the face
+    for (let x = -w; x <= w; x++) put(x, y, z, y >= 57 ? WHITE : WHITED);
+  }
   // ── HAIR / HAT / BALD ──
   cur = buckets.hair;
   if (feat.bald) {
@@ -933,6 +967,26 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
     for (let y = 63; y <= 76; y++) { const w = Math.round(5 - (y - 63) * 0.2); for (let x = -w; x <= w; x++) for (let z = -5; z <= 1; z++) put(x, y, z, hairC); }
   } else {
     for (let y = 63; y <= 78; y++) { const w = Math.round(5 - (y - 63) * 0.2); for (let x = -w; x <= w; x++) for (let z = -5; z <= 1; z++) put(x, y, z, hairC); }
+  }
+
+  // ── de-dupe coincident voxels ──
+  // Every part is a SEPARATE voxel mesh placed in the same world space, so if a
+  // grid cell exists in two buckets the two coplanar cubes z-fight. The direction
+  // of the de-dupe depends on which part should stay solid:
+  if (feat.hat) {
+    // Trim the upper skull (grid-y >= 65) so nothing pokes above the hat rim.
+    // Keep the grid-y == 64 ring as a filler: with the hat raised 1 voxel
+    // (hairYOffset = 0.11) the brim sits one voxel above the skull, and this ring
+    // closes the seam — no gap below the brim, no coincident-cell z-fighting.
+    for (const k of [...buckets.head.keys()]) {
+      const gy = Number(k.split(',')[1]);
+      if (gy >= 70) buckets.head.delete(k);
+    }
+  } else {
+    // real hair is decorative and sits atop the skull, so drop the hair cell
+    // wherever the head already fills it (head/skin wins). This removes the
+    // barmaid/patron hair-head (and hair-face) flicker.
+    for (const k of [...buckets.hair.keys()]) if (buckets.head.has(k)) buckets.hair.delete(k);
   }
 
   // ── build part meshes ──
@@ -950,6 +1004,7 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
     const am = buildLimb(s < 0 ? buckets.armL : buckets.armR, s * ARM_X, ARM_G, ELBOW_G, C, s < 0 ? buckets.handL : buckets.handR, HAND_G);
     parts[s < 0 ? 'armL' : 'armR'] = am.upper; parts[s < 0 ? 'foreL' : 'foreR'] = am.lower;
     if (am.hand) parts[s < 0 ? 'handL' : 'handR'] = am.hand;
+    if (am.wrist) parts[s < 0 ? 'wristL' : 'wristR'] = am.wrist;
     group.add(am.upper);
   }
 
@@ -965,10 +1020,13 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
     if (handR) handR.add(tray); else group.add(tray);
   } else if (weapon) {
     const wg = buildWeapon(weapon, scheme.accent, WC);
-    wg.position.set(0.03, (34 - HAND_G) * C, 5 * C);
+    // staff grips through the palm: x nudged toward the body centre, z pulled back
+    // so the shaft runs down through the hand rather than floating in front of it.
+    const staffOffsetZ = feat.leftHand ? 1.5 * C : 5 * C;
+    wg.position.set(0.03, (34 - HAND_G) * C, staffOffsetZ);
     wg.rotation.x = weapon === 'staff' ? 0 : (weapon === 'bow' || weapon === 'torch' ? -0.12 : 1.35);
-    const handR = parts.handR as THREE.Mesh | undefined;
-    if (handR) handR.add(wg); else group.add(wg);
+    const hand = (feat.leftHand ? parts.handL : parts.handR) as THREE.Mesh | undefined;
+    if (hand) hand.add(wg); else group.add(wg);
     parts.weapon = wg as unknown as THREE.Mesh; (wg as any).userData.kind = weapon;
   }
 
@@ -976,7 +1034,7 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
   return {
     group, parts,
     anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
-    pivots: { hip: HIP_G * C, torso: TORSO_G * C, head: HEAD_G * C, eye: EYE_G * C, hair: HAIR_G * C, arm: ARM_G * C, hand: HAND_G * C, weapon: 34 * C, pad: PAD_G * C, knee: KNEE_G * C, elbow: ELBOW_G * C },
+    pivots: { hip: HIP_G * C, torso: TORSO_G * C, head: HEAD_G * C, eye: EYE_G * C, hair: HAIR_G * C, arm: ARM_G * C, hand: HAND_G * C, weapon: 34 * C, pad: PAD_G * C, knee: KNEE_G * C, elbow: ELBOW_G * C, wrist: HAND_G * C },
   };
 }
 
@@ -984,7 +1042,7 @@ export function buildCharacter(scheme: CharacterScheme, weapon?: WeaponKind): Ri
   if (scheme.monster === 'rat') return buildRatRig(scheme);
   if (scheme.monster === 'bat') return buildBatRig(scheme);
   if (scheme.monster === 'skeleton') return buildSkeletonRig(scheme, weapon);
-  if (scheme.kind === 'wizard') return buildHumanoidRig(scheme, weapon, { robe: true, beard: true, hat: true, stars: true });
+  if (scheme.kind === 'wizard') return buildHumanoidRig(scheme, weapon, { robe: true, beard: true, hat: true, stars: true, leftHand: true });
   if (scheme.kind === 'barmaid') return buildHumanoidRig(scheme, weapon, { dress: true, apron: true, bun: true, tray: true });
   if (scheme.kind === 'bouncer') return buildHumanoidRig(scheme, weapon, { bald: true, vest: true });
   if (scheme.kind === 'barkeep') return buildHumanoidRig(scheme, weapon, { apron: true, bald: true });
@@ -1188,13 +1246,19 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   let hipY = HIP - DROP;
   const hasKnee = !!P && !!p.shinL;                       // two-bone limbs (player / NPC)
   let kneeL = 0.15, kneeR = 0.15, elbowL = 0.2, elbowR = 0.2;   // bend at the joints
+  let armLZ = 0, armRZ = 0;                                     // upper-arm lateral rotation (swings arm across the body)
+  let elbowLZ = 0, elbowRZ = 0;                                 // elbow lateral (rotates the forearm across the chest)
+  let wristL = 0, wristR = 0;                                   // wrist rotation (crossed-arms pose)
 
   // ── pose presets ──
-    if (a.mode === 'sit') {                                 // seated: left arm rests forward on the table (mug in hand)
+    if (a.mode === 'sit') {                                 // left arm rests forward on the table (mug in hand)
       DROP += 0.20; legScaleY = Math.max(0.5, 1 - DROP / HIP);
-      legLX = legRX = -1.2; armLX = -1.35 + idle * 0.03; armRX = -0.25 + idle * 0.04;
+      armLX = -1.35; armRX = -0.25;
+      legLX = -1.582; legRX = -1.702;
       torsoX = 0.06; headX = -0.05; hipY = HIP - 0.22;
-      kneeL = kneeR = 1.45; elbowL = 0.15; elbowR = 0.5;
+      kneeL = 1.448; kneeR = 1.598;
+      elbowL = 0.15; elbowR = 0.128;
+      elbowRZ = 0.148;
     } else if (a.mode === 'drink') {                        // raise the tankard (left hand) to the mouth
       DROP += 0.20; legScaleY = Math.max(0.5, 1 - DROP / HIP);
       armLX = -2.35 + Math.sin(a.t * 6) * 0.12; armRX = -0.25 + idle * 0.04;
@@ -1203,10 +1267,20 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
       elbowL = -1.1; elbowR = 0.5;
     } else if (a.mode === 'crack') {                         // crack knuckles — fists meet at the chest, pumping
     const pump = Math.sin(a.t * 16) * 0.28;
-    armLX = -1.7 + pump; armRX = -1.7 - pump;
+    armLX = -0.8 + pump; armRX = -0.8 - pump;                // upper arms ~45° forward (fists at chest height)
+    armLZ = 0.3; armRZ = -0.3;                                // bring fists toward the centre line
     legLX = legRX = 0; torsoX = 0.06; headX = -0.05; hipY = HIP;
     elbowL = -1.3 - pump; elbowR = -1.3 + pump;
+  } else if (a.mode === 'cross') {                         // arms folded across the chest
+    armLX = -0.192; armRX = -0.732;
+    armLZ = 0.498;  armRZ = -0.622;
+    elbowL = -1.622; elbowR = -0.327;
+    elbowLZ = -3.002; elbowRZ = 0.9;
+    wristL = 0.6; wristR = 0.6;
+    torsoX = -0.006; headX = -0.02; hipY = HIP;
   }
+  // idle: arms hang slightly forward (~10°) rather than straight down
+  if (a.mode === 'idle') { armLX -= 0.1745; armRX -= 0.1745; }
   // attack swing (combat) — layered on top of the idle/pose
   if (a.lunge > 0) {
     const L = Math.sin(a.lunge * Math.PI);
@@ -1234,9 +1308,17 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
 
   // ── arms: swing the upper arm, then bend the elbow (relative) ──
   p.armL.rotation.x = armLX; p.armR.rotation.x = armRX;
+  p.armL.rotation.z = armLZ; p.armR.rotation.z = armRZ;
   if (hasKnee && p.foreL) {
-    p.foreL.rotation.x = elbowL; p.foreR.rotation.x = elbowR;
-    if (p.handL) p.handL.rotation.x = 0; if (p.handR) p.handR.rotation.x = 0;   // hands ride the forearm
+    p.foreL.rotation.x = elbowL + (a.forearmLOffset ?? 0);
+    p.foreR.rotation.x = elbowR + (a.forearmROffset ?? 0);
+    p.foreL.rotation.z = elbowLZ; p.foreR.rotation.z = elbowRZ;
+    // wizard: keep the held staff vertical by counter-rotating the wrist
+    const wizL = a.forearmLOffset ? -(armLX + elbowL + a.forearmLOffset) : 0;
+    const wizR = a.forearmROffset ? -(armRX + elbowR + a.forearmROffset) : 0;
+    if (p.wristL) p.wristL.rotation.x = wristL + wizL;
+    if (p.wristR) p.wristR.rotation.x = wristR + wizR;
+    if (p.handL) p.handL.rotation.x = 0; if (p.handR) p.handR.rotation.x = 0;   // hands ride the wrist
   } else {
     p.handL.rotation.x = armLX; p.handR.rotation.x = armRX;
   }
@@ -1278,11 +1360,12 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   p.torso.position.y = TO + bob - DROP;
   p.torso.scale.y = 1 + idle * 0.02;
   p.torso.rotation.x = torsoX;                            // hunch / lean
-  p.head.position.y = HO + bb - DROP;
+  const hy = a.headYOffset ?? 0;   // persistent head-nudge (editor)
+  p.head.position.y = HO + bb - DROP + hy;
   p.head.rotation.x = headX;                              // keep eyes forward
-  if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP; p.eyeR.position.y = EO + bb - DROP; }
-  if (p.hood) { p.hood.position.y = HUD + bb - DROP; p.hoodTip!.position.y = HT + bb - DROP; }
-  if (p.hair) { p.hair.position.y = HRO + bb - DROP; p.hair.rotation.x = headX; }
+  if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP + hy; p.eyeR.position.y = EO + bb - DROP + hy; }
+  if (p.hood) { p.hood.position.y = HUD + bb - DROP + hy; p.hoodTip!.position.y = HT + bb - DROP + hy; }
+  if (p.hair) { p.hair.position.y = HRO + bb - DROP + hy + (a.hairYOffset ?? 0); p.hair.rotation.x = headX; }
   p.armL.position.y = AR + bob - DROP; p.armR.position.y = AR + bob - DROP;
   if (!hasKnee) { p.handL.position.y = HA + bob - DROP; p.handR.position.y = HA + bob - DROP; }
   if (weapon && !hasKnee) weapon.position.y = WO + bob - DROP;

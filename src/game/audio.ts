@@ -366,10 +366,14 @@ export class AudioManager {
   }
 
   /** apply the global settings (volumes + mute). Safe to call before init()
-   *  (the values are stored and applied once the AudioContext exists). */
+   *  (the values are stored and applied once the AudioContext + gain graph
+   *  exist). NOTE: `init()` assigns `ctx` *before* the `await ctx.resume()`,
+   *  but the gain nodes are created *after* that await — so guard on the
+   *  gain graph, not just `ctx`, or a synchronous caller (e.g. the ?debug
+   *  editor entry) would deref an undefined gain node. */
   applySettings(s: GameSettings) {
     this.muted = s.muted;
-    if (!this.ctx) return;
+    if (!this.master || !this.sfxGain || !this.musicGain) return;
     this.master.gain.value = s.muted ? 0 : s.master;
     this.sfxGain.gain.value = s.sfx;
     this.musicGain.gain.value = s.music;

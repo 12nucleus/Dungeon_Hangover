@@ -1,4 +1,4 @@
-// ─────────────────────────────────────────────────────────────
+﻿// ─────────────────────────────────────────────────────────────
 // GameEngine — presentation & orchestration layer.
 //   combat.ts  → decides WHAT happens (events)
 //   engine.ts  → decides HOW it looks/sounds (this file)
@@ -1238,19 +1238,19 @@ export class GameEngine {
     rug(2, 12, 15, 12, 0x5a1f2c);
     rug(-24, 24, 10, 8, 0x243a44);
 
-    // == THE BAR - counter down the left wall, service gap for the barkeep ==
-    box(v, -RX, 8, -31, -33, 9, 7, WOOD_L);          // continuous bar top
-    box(v, -41, 0, -31, -34, 7, -19, WOOD);          // body segment A
-    box(v, -41, 0, -6, -34, 7, 7, WOOD);             // body segment B  (gap = barkeep notch)
-    box(v, -35, 1, -31, -34, 2, 7, IRON);            // brass foot-rail
-    box(v, -RX, 14, -31, -40, 14, 7, WOOD_D);        // back shelf (upper)
-    box(v, -RX, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower)
+ // == THE BAR - counter down the left wall, service gap for the barkeep ==
+box(v, -42+7, 8, -31, -33+7, 9, 7, WOOD_L);          // continuous bar top  -> -35 .. -26
+box(v, -41+7, 0, -31, -34+7, 7, -19, WOOD);          // body segment A     -> -34 .. -27
+box(v, -41+7, 0, -6,  -34+7, 7, 7, WOOD);            // body segment B     -> -34 .. -27
+box(v, -35+7, 1, -31, -34+7, 2, 7, IRON);           // brass foot-rail    -> -28 .. -27
+box(v, -42, 14, -31, -40, 14, 7, WOOD_D);        // back shelf (upper) -> -35 .. -33
+box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 .. -33
     // bottles on the shelves (bottoms flush on the shelf tops)
     let bi = 0;
     for (const z of [-29, -26, -23, -20, 1, 4]) { cyl(v, -41, z, 15, 18, 1.0, BOTTLE[bi % BOTTLE.length]); bi++; }
     for (const z of [-28, -24, 2, 5]) { cyl(v, -41, z, 22, 25, 1.0, BOTTLE[(bi + 2) % BOTTLE.length]); bi++; }
     // clean glasses lined up on the bar top
-    for (const z of [-30, -27, 3, 6]) cyl(v, -37, z, 9, 11, 0.9, GLASS);
+    for (const z of [-30, -27, 3, 6]) cyl(v, -37+7, z, 9, 11, 0.9, GLASS);
 
     // == FIREPLACE - back wall, right of centre (hearth glow behind Greg) ==
     box(v, 14, 0, ZB, 18, 22, ZB + 2, STONE);        // left jamb
@@ -1292,9 +1292,9 @@ export class GameEngine {
 
     // == FURNITURE - Greg's big table + stool, plus two occupied side tables ==
     mkTable(0, 10, 9, 5);     // Greg's table  (world centre ~ (0, ., 1.1))
-    mkStool(0, 17);           // Greg's stool  (world ~ (0, ., 1.9))
+    mkStool(0, 19);           // Greg's stool  (world ~ (0, ., 1.9))  +10 Z
     mkTable(24, 15, 6, 6);    // the snoozer's table (world ~ (2.6, ., 1.6))
-    mkStool(24, 23);          // the snoozer's stool
+    mkStool(24, 25);          // the snoozer's stool  +10 Z
     // barrels tucked against the right wall
     for (const [bx, bz] of [[38, -27], [39, 27]] as const) {
       cyl(v, bx, bz, 0, 8, 2.8, WOOD);
@@ -1320,22 +1320,29 @@ export class GameEngine {
     // barkeep behind the counter, facing out into the room
     addNpc(buildCharacter({ skin: 0xc98a5a, cloth: 0x2a2230, accent: 0x6b3a1a, hair: 0x20140c, hood: false, kind: 'barkeep' }),
       -4.1, -1.4, Math.PI / 2, 'idle', 'barkeep');
+    // nudge the barkeep's head up 1 voxel (0.11 world units) — see headYOffset in characters.ts
+    if (this.tavernActors['barkeep']) this.tavernActors['barkeep'].anim.headYOffset = 0.11;
     // barmaid mid-floor, ready to deliver the next round
-    addNpc(buildCharacter({ skin: 0xd9a066, cloth: 0xdfe4ea, accent: 0x8b7355, hair: 0xc48a44, hood: false, kind: 'barmaid' }),
+    addNpc(buildCharacter({ skin: 0xd9a066, cloth: 0xdfe4ea, accent: 0x8b7355, hair: 0x8b3a2a, hood: false, kind: 'barmaid' }),
       -2.2, 0.2, faceYaw(-2.2, 0.2), 'idle', 'barmaid');
     // jumpy wizard in the back-right corner (staff, star hat, white beard)
     addNpc(buildCharacter({ skin: 0xf0d9b5, cloth: 0x4a2a6a, accent: 0x8a4af0, hair: 0xd0d0d0, hood: false, kind: 'wizard' }, 'staff'),
       3.4, -2.8, faceYaw(3.4, -2.8), 'idle', 'wizard');
+    // wizard's hat raised 1 voxel (0.11) above its original height
+    if (this.tavernActors['wizard']) this.tavernActors['wizard'].anim.hairYOffset = 0.11;
+    // wizard holds his staff in the left hand; angle the left forearm 35° (0.61 rad)
+    // while the wrist counter-rotates so the staff stays vertical (see updateRig).
+    if (this.tavernActors['wizard']) this.tavernActors['wizard'].anim.forearmLOffset = -0.61;
     // retired-orc bouncer by the door
     addNpc(buildCharacter({ skin: 0x5f7a3a, cloth: 0x2a1f1a, accent: 0x1a0f0a, hair: 0x101010, hood: false, kind: 'bouncer', bulk: 1.4 }),
       3.4, 3.2, faceYaw(3.4, 3.2), 'idle', 'bouncer');
     // a patron nursing a drink by the fire
     addNpc(buildCharacter({ skin: 0x8a6a4a, cloth: 0x4a4a2a, accent: 0x2a2a2a, hair: 0x3a2a1a, hood: false, style: 'normal' }),
-      1.3, -2.5, faceYaw(1.3, -2.5), 'idle', 'patron');
+      1.3, -2.5, faceYaw(1.3, -2.5), 'cross', 'patron');
     // a patron already face-down asleep at the side table (comic background)
     addNpc(buildCharacter({ skin: 0x9a7a55, cloth: 0x3a4a5a, accent: 0x2a2a2a, hair: 0x140f0f, hood: false, style: 'normal' }),
-      2.6, 2.5, Math.PI, 'sit', 'snoozer', 0.8);
-    this.spawnDrunkStars(new THREE.Vector3(2.6, 1.95, 2.5));
+      3.1, 1.55, 3.142, 'lie', 'snoozer', 0.1);
+    this.spawnDrunkStars(new THREE.Vector3(3.1, 1, 3.1));
 
     // == LIGHTING - hearth (flickering), chandelier, sconces, soft fill ==
     const fireLight = new THREE.PointLight(0xffa040, 11, 11, 1.8); fireLight.position.set(2.6, 1.0, -3.4); g.add(fireLight);
@@ -1359,8 +1366,8 @@ export class GameEngine {
 
     // points of interest for the cutscene camera (world coords)
     g.userData.poi = {
-      gregSeat: new THREE.Vector3(0, 0.8, 1.9),
-      gregHead: new THREE.Vector3(0, 2.05, 1.9),
+      gregSeat: new THREE.Vector3(0, 0.8, 2.0),
+      gregHead: new THREE.Vector3(0, 2.05, 2.0),
       table: new THREE.Vector3(0, 0.95, 1.1),
       bar: new THREE.Vector3(-3.6, 1.2, -1.0),
       fire: new THREE.Vector3(2.6, 1.3, -3.5),
@@ -2563,7 +2570,71 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
     void runTitleNarration(this.cutsceneHost, ext, prevBg);
   }
 
-  selectSkill(skillId: string | null) {
+ // ══ EDITOR (cutscene / level tweaker — Tier 1) ══════════════════════════
+ // Builds the tavern set WITHOUT playing the intro director, leaving the
+ // IsoCamera + tavernActors idle so the React DebugPanel can drive them
+ // live and emit pasteable cutscene one-liners. Activated by `?debug`.
+ private editorFocusTarget: THREE.Vector3 | null = null;
+ enterEditorMode() {
+   void this.audio.init();
+   this.applyAudioSettings();
+   if (!this.cutsceneHost) return;
+   // drop the title-exterior backdrop (if any) so we build a clean tavern
+   if (this.titleExt) {
+     this.scene.remove(this.titleExt);
+     if (this.titlePrevBg) { this.scene.background = this.titlePrevBg; this.titlePrevBg = null; }
+     this.titleExt = null;
+     this.titleIdle = false;
+   }
+   // ambient tavern set — mirror the first lines of playIntroCutscene
+   this.inTavern = true;
+   this.world.group.visible = false;
+   this.props.group.visible = false;
+   for (const [, v] of this.visuals) v.rig.group.visible = false;
+   this.tavern = this._buildTavern();
+   this.scene.add(this.tavern);
+   this.scene.fog = new THREE.Fog(0x140d08, 6, 26);
+   // idle framing over Greg's table (poi is attached by _buildTavern)
+   const poi = (this.tavern.userData as { poi?: Record<string, THREE.Vector3> }).poi;
+   if (poi?.gregHead) {
+     this.iso.lerp = 2.0;
+     this.iso.desiredYaw = -Math.PI * 0.22;
+     this.iso.desiredPitch = 0.44;
+     this.iso.desiredDist = 5.4;
+     this.iso.focus(poi.gregHead);
+   } else {
+     // fallback framing if the tavern didn't expose a poi map
+     this.iso.lerp = 2.0;
+     this.iso.desiredYaw = -Math.PI * 0.22;
+     this.iso.desiredPitch = 0.44;
+     this.iso.desiredDist = 5.4;
+     this.iso.focus(new THREE.Vector3(0, 1, 1.1));
+   }
+   this.busy = false;             // never block input/aggro in editor mode
+   this.introActive = false;
+   this.emitSnapshot();
+ }
+
+ /** hand the React DebugPanel live references it can read/write. */
+ getEditorHandles() {
+   if (!this.editorFocusTarget) this.editorFocusTarget = new THREE.Vector3(0, 1, 0);
+   return {
+     iso: this.iso,
+     tavern: this.tavern,
+     tavernActors: this.tavernActors,
+     tavernRigs: this.tavernRigs,
+     focusTarget: this.editorFocusTarget,
+     buildTavern: () => this._buildTavern(),
+     swapTavern: (g: THREE.Group) => {
+       if (this.tavern) this.scene.remove(this.tavern);
+       this.tavern = g;
+       this.scene.add(g);
+       this.tavernRigs = (g.userData as { rigs?: Rig[] }).rigs ?? [];
+     },
+   };
+ }
+
+ selectSkill(skillId: string | null) {
     const active = this.combat.active;
     if (!active || active.team !== 'party' || this.busy) return;
     if (!skillId) { this.cancelTargeting(); return; }
