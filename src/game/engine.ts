@@ -15,6 +15,7 @@ import { dungeonLevel } from '../levels/dungeon';
 import { buildIronDoor, buildGoldenChest, buildLever, buildRubble, buildStoneBath, buildWeaponRack } from './dungeonProps';
 import { ParticleSystem, FX } from './particles';
 import { buildCharacter, updateRig, setWeapon, type Rig } from './characters';
+import { wrapPoseablePartJoints } from './poseEditor';
 import { Combat } from './combat';
 import { SKILLS, CONDITIONS, createRoster } from './skills';
 import { AudioManager } from './audio';
@@ -1335,14 +1336,40 @@ box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 ..
     if (this.tavernActors['wizard']) this.tavernActors['wizard'].anim.forearmLOffset = -0.61;
     // retired-orc bouncer by the door
     addNpc(buildCharacter({ skin: 0x5f7a3a, cloth: 0x2a1f1a, accent: 0x1a0f0a, hair: 0x101010, hood: false, kind: 'bouncer', bulk: 1.4 }),
-      3.4, 3.2, faceYaw(3.4, 3.2), 'idle', 'bouncer');
+      3.75, -0.1, -1.092, 'idle', 'bouncer');
     // a patron nursing a drink by the fire
     addNpc(buildCharacter({ skin: 0x8a6a4a, cloth: 0x4a4a2a, accent: 0x2a2a2a, hair: 0x3a2a1a, hood: false, style: 'normal' }),
       1.3, -2.5, faceYaw(1.3, -2.5), 'cross', 'patron');
-    // a patron already face-down asleep at the side table (comic background)
+    // a patron lying asleep at the side table (comic background)
     addNpc(buildCharacter({ skin: 0x9a7a55, cloth: 0x3a4a5a, accent: 0x2a2a2a, hair: 0x140f0f, hood: false, style: 'normal' }),
-      3.1, 1.55, 3.142, 'lie', 'snoozer', 0.1);
-    this.spawnDrunkStars(new THREE.Vector3(3.1, 1, 3.1));
+      -0.8, -2.35, 1.708, 'sleep', 'snoozer', -0.65);
+    const snoozer = this.tavernActors['snoozer'];
+if (snoozer) {
+      wrapPoseablePartJoints(snoozer);
+      const P = snoozer.parts;
+      // apply flat rotations — head & arms are children of torso, convert to local
+      P.torso.rotation.set(-1.442, 0, 0);
+      const tx = P.torso.rotation.x;
+      P.head.rotation.set(-1.274 - tx, 0, 0);
+      P.armL.rotation.set(-1.614 - tx, 0, -0.042);
+      P.armR.rotation.set(1.586 - tx, 0, -0.102);
+      P.foreL.rotation.set(-0.242, 0, 0.328);
+      P.foreR.rotation.set(0.428, 0, -0.452);
+      P.legL.rotation.set(-1.732, 0, 0);
+      P.legR.rotation.set(-1.662, 0, 0);
+      P.shinL.rotation.set(0.648, 0, 0);
+      P.shinR.rotation.set(0.308, 0, 0);
+      // squash legs to prevent floor clipping (matching the sleep-pose DROP=0.28)
+      const legScaleY = Math.max(0.5, 1 - 0.28 / snoozer.pivots!.hip);
+      for (const name of ['legL', 'legR']) {
+        const pivot = P[name] as THREE.Group;
+        if (!pivot) continue;
+        const upper = pivot.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group;
+        if (upper) upper.scale.y = legScaleY;
+      }
+      snoozer.group.userData.wrapped = true;
+      this.spawnDrunkStars(snoozer);
+    }
 
     // == LIGHTING - hearth (flickering), chandelier, sconces, soft fill ==
     const fireLight = new THREE.PointLight(0xffa040, 11, 11, 1.8); fireLight.position.set(2.6, 1.0, -3.4); g.add(fireLight);
@@ -1895,15 +1922,21 @@ box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 ..
   }
 
   /** persistent ring of "drunk" stars orbiting a passed-out patron's head */
-  private spawnDrunkStars(center: THREE.Vector3) {
+  private spawnDrunkStars(rig: { parts: Record<string, THREE.Object3D>, group: THREE.Object3D }) {
     let ang = 0;
+    const tmp = new THREE.Vector3();
     this.propAnims.push((dt: number) => {
       if (!this.tavern) return true;                 // stop once the tavern is gone
       ang += dt * 1.6;
+      const headPivot = rig.parts.head;
+      // after wrapPoseablePartJoints the head part is a pivot at the neck joint;
+      // grab the mesh child to get the actual head-centre world position
+      const headMesh = headPivot.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
+      (headMesh ?? headPivot).getWorldPosition(tmp);
       if (Math.random() < dt * 6) {
         const a = ang + Math.random() * 0.6;
         const r = 0.45 + Math.random() * 0.15;
-        const p = center.clone().add(new THREE.Vector3(Math.cos(a) * r, (Math.random() - 0.5) * 0.3, Math.sin(a) * r));
+        const p = tmp.clone().add(new THREE.Vector3(Math.cos(a) * r, (Math.random() - 0.5) * 0.3, Math.sin(a) * r));
         this.particles.burst({
           pos: p, count: 1, color: [0xffe066, 0xfff3b0, 0xffd23a], speed: [0.1, 0.3],
           life: [0.9, 1.4], size: [0.25, 0.5], gravity: -0.4, up: 0, drag: 0.9, endScale: 0.1,

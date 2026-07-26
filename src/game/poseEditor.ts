@@ -60,7 +60,7 @@ export const POSE_PRESETS: { name: string; label: string; joints: PoseJoints }[]
   },
   {
     name: 'sleep', label: 'sleep — lying on ground',
-    joints: { ...blankPose(), torso: j(-1.602), head: j(0.048), armL: j(-0.172, 0, -0.042), armR: j(3.028, 0, -0.102), foreL: j(-0.242, 0, 0.328), foreR: j(0.428, 0, -0.452), legL: j(-1.622), legR: j(-1.552), shinL: j(-0.042), shinR: j(0.308) },
+    joints: { ...blankPose(), torso: j(-1.442), head: j(-1.274), armL: j(-1.614, 0, -0.042), armR: j(1.586, 0, -0.102), foreL: j(-0.242, 0, 0.328), foreR: j(0.428, 0, -0.452), legL: j(-1.732), legR: j(-1.662), shinL: j(0.648), shinR: j(0.308) },
   },
   {
     name: 'point', label: 'point — pointing with right arm',
@@ -81,60 +81,42 @@ export function blankPose(): PoseJoints {
 function j(x = 0, y = 0, z = 0): JointEuler { return { x, y, z }; }
 
 /**
- * Write the live joint rotations onto the dummy's parts.
- *
- * The joint values in `joints` are LOCAL rotations to apply at each joint — the exact
- * numbers that appear in `updateRig`'s pose presets.  Because the editor builds a
- * parent→child skeleton, those flat values must be converted into *local* rotations
- * (relative to the parent) before they are stamped onto each part.
- *
- * Because wrapPoseablePartJoints already (a) placed each part's pivot at its
- * anatomical joint and (b) linked parts into a parent→child skeleton, simply
- * writing each part's LOCAL rotation keeps every limb attached: rotating the
- * torso swings the head and arms with it, and each part spins about its own
- * joint.  Parts without an entry in `joints` are left untouched.
+ * Write joint rotations to the dummy.  Joint values are in flat format
+ * (matching updateRig).  Head/hair are children of torso internally, so
+ * their values are converted from world→local before applying.
  */
 export function applyPose(rig: Rig, joints: PoseJoints): void {
   const P = rig.parts;
-  // The values in `joints` are LOCAL rotations to apply at each joint — exactly
-  // what updateRig does in the game (e.g. p.armL.rotation.x = armLX).
-  //
-  // wrapPoseablePartJoints has already:
-  //   (a) wrapped every rigid part in a pivot Group placed at its anatomical
-  //       joint (hip / neck / crown), so rotation.set() pivots about the joint;
-  //   (b) built a parent→child skeleton via Object3D.attach(), so rotating a
-  //       parent carries its children.
-  //
-  // Therefore we simply set each part's LOCAL rotation directly.  NO world→local
-  // quaternion math — that would force each part's WORLD rotation to equal the
-  // joint value, which actively prevents children from following their parents
-  // (the "limbs detach" bug).
+  // apply torso first so its rotation is available for head/hair conversion
+  if (joints.torso && P.torso) {
+    P.torso.rotation.set(joints.torso.x, joints.torso.y, joints.torso.z);
+  }
+  const tx = P.torso ? P.torso.rotation.x : 0;
   for (const name of Object.keys(joints)) {
+    if (name === 'torso') continue;
     const obj = P[name];
     if (!obj) continue;
-    const euler = joints[name];
-    obj.rotation.set(euler.x, euler.y, euler.z);
+    const j = joints[name];
+    // head/hair are children of torso: convert flat → local
+    const isTorsoChild = name === 'head' || name === 'hair' || name === 'hood' || name === 'hoodTip' || name === 'armL' || name === 'armR';
+    obj.rotation.set(isTorsoChild ? j.x - tx : j.x, j.y, j.z);
   }
 }
 
 /**
- * Fix the dummy's pivot points and build a TRUE parent→child joint skeleton.
+ * Fix the dummy's pivot points so rotations pivot at anatomical joints.
+ * Head/hair are reparented under torso for visual tracking; arms/legs stay
+ * independent.  Joint values are flat (compatible with updateRig) — conversion
+ * between world/local happens in fireJoint / applyPose.
  *
- * 1) Rigid parts (torso/head/hair) are bare Meshes — their rotation pivot
- *    is the mesh's geometric centre, not the anatomical joint.  Wrap each
- *    in a pivot Group at the joint (hip/neck/crown) so rotation.set() pivots
- *    at the joint.
- * 2) buildLimb puts each limb's group on the centreline.  Wrap each upper
- *    limb in a pivot at the actual joint so rotation spins about the
- *    shoulder/hip, and wrap each nested joint (forearm/shin, wrist) so it
- *    pivots at the elbow/knee/wrist.
- * 3) Reparent via attach() to build a skeleton: head→torso, hair→head,
- *    armL/armR→torso.  Rotating an ancestor propagates to descendants.
+ * 1) Wrap rigid meshes in pivot Groups at the joint (hip/neck/crown).
+ * 2) Wrap limb groups in pivots at actual shoulder/hip/elbow/knee/wrist.
+ * 3) Reparent head/hair under torso so they follow torso tilt.
  *
  * Grid-y reference (player rig, C_DETAIL = 0.0285):
  *   Hip  34   Torso centre 45   Neck 56   Head centre 64   Crown 70
  */
-function wrapPoseablePartJoints(rig: Rig): void {
+export function wrapPoseablePartJoints(rig: Rig): void {
   const group = rig.group;
   const P = rig.parts;
   const piv = rig.pivots;
@@ -169,11 +151,12 @@ function wrapPoseablePartJoints(rig: Rig): void {
     group.updateMatrixWorld(true);
     const up = new THREE.Vector3();
     upper.getWorldPosition(up);
-    let jointX = up.x;
+    const localJoint = group.worldToLocal(up.clone());
+    let jointX = localJoint.x;
     const um = upper.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
-    if (um) { const mp = new THREE.Vector3(); um.getWorldPosition(mp); jointX = mp.x; }
+    if (um) { const mp = new THREE.Vector3(); um.getWorldPosition(mp); jointX = group.worldToLocal(mp).x; }
     const pivot = new THREE.Group();
-    pivot.position.set(jointX, up.y, 0);
+    pivot.position.set(jointX, localJoint.y, 0);
     group.add(pivot);
     pivot.attach(upper);
     P[name] = pivot;
@@ -212,7 +195,9 @@ function wrapPoseablePartJoints(rig: Rig): void {
   fixLimbJoints('legL', 'shinL');
   fixLimbJoints('legR', 'shinR');
 
-  // ── Step B: build the skeleton hierarchy ──
+  // ── Step B: reparent head/hair/arms under torso so they follow torso tilt ──
+  // Joint values are flat (updateRig format). Conversion to local for children
+  // of torso happens in applyPose (on write) and fireJoint (on read via world quat).
   group.updateMatrixWorld(true);
   const rep = (childName: string, parentName: string) => {
     const child = P[childName] as THREE.Object3D | undefined;
@@ -222,12 +207,10 @@ function wrapPoseablePartJoints(rig: Rig): void {
   };
   rep('head', 'torso');
   rep('hair', 'head');
-  if (P.hood)   rep('hood',   'head');
-  if (P.hoodTip) rep('hoodTip', 'head');
-  if (P.padL) rep('padL', 'torso');
-  if (P.padR) rep('padR', 'torso');
   rep('armL', 'torso');
   rep('armR', 'torso');
+  if (P.hood)   rep('hood',   'head');
+  if (P.hoodTip) rep('hoodTip', 'head');
 
   group.updateMatrixWorld(true);
 }
@@ -358,14 +341,17 @@ export function createPoseStage(host: HTMLDivElement): PoseStageHandles {
   const onCamChange = new Set<(y: number, p: number, d: number) => void>();
   const fireCamChange = () => onCamChange.forEach((cb) => cb(cam.yaw, cam.pitch, cam.dist));
   const onJointChange = new Set<(joint: string, x: number, y: number, z: number) => void>();
-  // read the LOCAL rotation of a part and fan it out as euler x/y/z.
-  // We report the local rotation (not world) because the joint values in the
-  // pose are local rotations — this keeps the sliders and the click-drag in
-  // sync with what applyPose writes back.
+  // Report joint rotation — children of torso read world quaternion for flat display
   const fireJoint = (joint: string) => {
     const o = subject.parts[joint] as THREE.Object3D | undefined;
     if (!o) return;
-    onJointChange.forEach((cb) => cb(joint, o.rotation.x, o.rotation.y, o.rotation.z));
+    if (joint === 'head' || joint === 'hair' || joint === 'hood' || joint === 'hoodTip' || joint === 'armL' || joint === 'armR') {
+      const q = new THREE.Quaternion(); o.getWorldQuaternion(q);
+      const e = new THREE.Euler().setFromQuaternion(q, 'YXZ');
+      onJointChange.forEach((cb) => cb(joint, e.x, e.y, e.z));
+    } else {
+      onJointChange.forEach((cb) => cb(joint, o.rotation.x, o.rotation.y, o.rotation.z));
+    }
   };
 
   // ── click-to-grab a limb, drag to rotate it ──

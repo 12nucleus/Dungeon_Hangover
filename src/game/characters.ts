@@ -150,10 +150,10 @@ function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, spl
     if (gy >= splitY) voU.add(gx - cx, gy - cyUpper, gz, c, JIT);
     else voL.add(gx - cx, gy - splitY, gz, c, JIT);
   }
-  upper.position.set(0, cyUpper * C, 0);
-  const um = voU.mesh(); um.position.set(cx * C, 0, 0); upper.add(um);
+  upper.position.set(cx * C, cyUpper * C, 0);
+  const um = voU.mesh(); upper.add(um);
   lower.position.set(0, (splitY - cyUpper) * C, 0);
-  const lm = voL.mesh(); lm.position.set(cx * C, 0, 0); lower.add(lm);
+  const lm = voL.mesh(); lower.add(lm);
   upper.add(lower);
   let hand: THREE.Mesh | undefined;
   let wrist: THREE.Group | undefined;
@@ -165,7 +165,7 @@ function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, spl
     }
     wrist = new THREE.Group();
     wrist.position.set(0, (handCy - splitY) * C, 0);
-    hand = vh.mesh(); hand.position.set(cx * C, 0, 0);
+    hand = vh.mesh();
     wrist.add(hand);
     lower.add(wrist);
   }
@@ -1188,6 +1188,15 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const p = rig.parts;
   const P = rig.pivots;
 
+  // Wrapped rig (snoozer): hierarchy already matches the pose editor.
+  // Just apply gentle breathing wobble — no pose updates needed.
+  if ((rig.group.userData as { wrapped?: boolean }).wrapped) {
+    const wob = Math.sin(a.t * 1.6) * 0.05;
+    if (p.torso) p.torso.scale.set(1 + wob * 0.7, 1 - wob * 0.9, 1 + wob * 0.5);
+    if (p.head) p.head.scale.setScalar(1 + wob * 0.5);
+    return;
+  }
+
   if (a.mode === 'dead' || a.mode === 'floor' || a.mode === 'lie') {
     const d = a.death ?? (a.death = (a.mode === 'dead' ? initDeath(rig) : initCollapse(rig, a.mode === 'lie')));
     const g = rig.group;
@@ -1294,10 +1303,10 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
       hipY = HIP - 0.22;
     } else if (a.mode === 'sleep') {                       // sleeping / lying on the ground
       DROP += 0.28; legScaleY = Math.max(0.5, 1 - DROP / HIP);
-      torsoX = -1.602; headX = 0.048;
-      armLX = -0.172; armLZ = -0.042; armRX = 3.028; armRZ = -0.102;
+      torsoX = -1.442; headX = -1.274;
+      armLX = -1.614; armLZ = -0.042; armRX = 1.586; armRZ = -0.102;
       elbowL = -0.242; elbowLZ = 0.328; elbowR = 0.428; elbowRZ = -0.452;
-      legLX = -1.622; legRX = -1.552; kneeL = -0.042; kneeR = 0.308;
+      legLX = -1.732; legRX = -1.662; kneeL = 0.648; kneeR = 0.308;
       hipY = HIP - 0.30;
     } else if (a.mode === 'point') {                       // pointing with right arm
       armRX = -1.422; armRZ = -0.212;
