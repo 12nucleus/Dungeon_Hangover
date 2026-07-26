@@ -954,8 +954,11 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
   // ── HAIR / HAT / BALD ──
   cur = buckets.hair;
   if (feat.bald) {
-    // shiny bald dome — a faint highlight ring, nothing else
-    for (let y = 70; y <= 73; y++) for (let x = -3; x <= 3; x++) put(x, y, 3, skinHL);
+    // shiny bald dome — constrain to head ellipsoid surface so nothing floats above
+    for (let y = 70; y <= 72; y++) for (let x = -3; x <= 3; x++) {
+      const dx = x / 6, dy = (y - HEAD_G) / 8, dz = 3 / 6;
+      if (dx * dx + dy * dy + dz * dz <= 1.02) put(x, y, 3, skinHL);
+    }
   } else if (feat.hat) {
     box(-6, 64, -6, 6, 66, 6, clothD);                                   // brim
     for (let y = 66; y <= 82; y++) { const r = Math.max(1, Math.round(5 - (y - 66) * 0.28)); for (let x = -r; x <= r; x++) for (let z = -r; z <= r; z++) if (x * x + z * z <= r * r + 1) put(x, y, z, cloth); }
