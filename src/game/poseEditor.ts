@@ -40,19 +40,31 @@ export const POSE_PRESETS: { name: string; label: string; joints: PoseJoints }[]
   },
   {
     name: 'sit', label: 'sit — left arm rests on table',
-    joints: { ...blankPose(), torso: j(0.06), head: j(-0.05), armL: j(-1.35), armR: j(-0.25), legL: j(-1.582), legR: j(-1.702), foreL: j(0.15), foreR: j(0.128, 0, 0.148) },
+    joints: { ...blankPose(), torso: j(0.06), head: j(-0.05), armL: j(-1.35), armR: j(-0.452, 0, 0.048), legL: j(-1.492), legR: j(-1.702), foreL: j(0.15), foreR: j(0.128, 0, 0.148), shinL: j(1.368), shinR: j(1.688) },
   },
   {
-    name: 'drink', label: 'drink — tankard to the mouth',
-    joints: { ...blankPose(), torso: j(0.05), head: j(-0.16), armL: j(-2.35), armR: j(-0.25), legL: j(-1.2), legR: j(-1.2), foreL: j(-1.1), foreR: j(0.5) },
+    name: 'drink', label: 'drink — raise the tankard',
+    joints: { ...blankPose(), torso: j(0.06), head: j(-0.05), armL: j(-1.342, 0, -0.152), armR: j(-0.452, 0, 0.048), legL: j(-1.492), legR: j(-1.702), foreL: j(-1.192, 0, 0.998), foreR: j(0.128, 0, 0.148), shinL: j(1.368), shinR: j(1.688) },
+  },
+  {
+    name: 'crack', label: 'crack — knuckles pump at the chest',
+    joints: { ...blankPose(), torso: j(0.06), head: j(-0.05), armL: j(-0.732, 0, -0.192), armR: j(-1.552, 0, -0.212), foreL: j(-1.3), foreR: j(-0.842) },
   },
   {
     name: 'cross', label: 'cross — arms folded across chest',
     joints: { ...blankPose(), torso: j(-0.006), head: j(-0.02), armL: j(-1.032, 0, 0.128), armR: j(-1.192, 0, 0.088), foreL: j(-0.972, 0, 1.128), foreR: j(-1.162, 0, -1.682), wristL: j(-0.412), wristR: j(0.198) },
   },
   {
-    name: 'crack', label: 'crack — knuckles pump at the chest',
-    joints: { ...blankPose(), torso: j(0.06), head: j(-0.05), armL: j(-0.8, 0, 0.3), armR: j(-0.8, 0, -0.3), foreL: j(-1.3), foreR: j(-1.3) },
+    name: 'sit_cross', label: 'sit_cross — sitting crossed-legged on ground',
+    joints: { ...blankPose(), armL: j(-0.282, 0, -0.152), armR: j(-0.692, 0, 0.148), foreL: j(0.608, 0, 1.468), foreR: j(-0.082, 0, -1.232), legL: j(-1.532), legR: j(-1.442), shinL: j(1.258), shinR: j(0.648) },
+  },
+  {
+    name: 'sleep', label: 'sleep — lying on ground',
+    joints: { ...blankPose(), torso: j(-1.602), head: j(0.048), armL: j(-0.172, 0, -0.042), armR: j(3.028, 0, -0.102), foreL: j(-0.242, 0, 0.328), foreR: j(0.428, 0, -0.452), legL: j(-1.622), legR: j(-1.552), shinL: j(-0.042), shinR: j(0.308) },
+  },
+  {
+    name: 'point', label: 'point — pointing with right arm',
+    joints: { ...blankPose(), armR: j(-1.422, 0, -0.212), foreL: j(-0.732, 0, -0.062) },
   },
 ];
 
@@ -108,23 +120,16 @@ export function applyPose(rig: Rig, joints: PoseJoints): void {
 /**
  * Fix the dummy's pivot points and build a TRUE parent→child joint skeleton.
  *
- * The in-game rig has two problems for a standalone pose editor:
- * 1) Rigid parts (torso/head/hair) are bare Meshes.  Their rotation pivot is the
- *    mesh's geometric centre — not the anatomical joint.  Rotating the head, for
- *    example, spins it around its own centre instead of the neck.
- * 2) All parts are flat children of `group`.  Rotating the torso does NOT swing
- *    the head or arms — there is no scene-graph skeleton.
- *
- * This function does both:
- *   Step A — wrap each rigid part in a pivot Group placed at the part's
- *     *anatomical joint* (hip, neck, crown).  The mesh is reparented under the
- *     pivot with a compensating offset so it stays visually in place.  After this
- *     rotation.set() on parts[name] pivots at the joint.
- *   Step B — use THREE.Object3D.attach() to link the skeleton: head→torso,
- *     hair→head, armL→torso, armR→torso.  Rotating an ancestor now propagates.
- *
- * Limbs (armL/foreL/legL, etc.) are already correctly pivoted Groups from
- * buildLimb — they are left untouched by Step A.
+ * 1) Rigid parts (torso/head/hair) are bare Meshes — their rotation pivot
+ *    is the mesh's geometric centre, not the anatomical joint.  Wrap each
+ *    in a pivot Group at the joint (hip/neck/crown) so rotation.set() pivots
+ *    at the joint.
+ * 2) buildLimb puts each limb's group on the centreline.  Wrap each upper
+ *    limb in a pivot at the actual joint so rotation spins about the
+ *    shoulder/hip, and wrap each nested joint (forearm/shin, wrist) so it
+ *    pivots at the elbow/knee/wrist.
+ * 3) Reparent via attach() to build a skeleton: head→torso, hair→head,
+ *    armL/armR→torso.  Rotating an ancestor propagates to descendants.
  *
  * Grid-y reference (player rig, C_DETAIL = 0.0285):
  *   Hip  34   Torso centre 45   Neck 56   Head centre 64   Crown 70
@@ -135,10 +140,8 @@ function wrapPoseablePartJoints(rig: Rig): void {
   const piv = rig.pivots;
   if (!piv) return;
 
-  // get the cube size (C) from the rig's pivots
-  const C = piv.torso / 45;            // TORSO_G = 45
+  const C = piv.torso / 45;
   const HIP_GY = 34, NECK_GY = 56, CROWN_GY = 70;
-  // known grid centres (from partInfo in builds)
   const TORSO_CY = 45, HEAD_CY = 64, HAIR_CY = 66;
 
   // ── Step A: wrap rigid parts in pivot groups at anatomical joints ──
@@ -151,22 +154,65 @@ function wrapPoseablePartJoints(rig: Rig): void {
     mesh.parent?.remove(mesh);
     mesh.position.set(mesh.position.x, (meshGy - jointGy) * C, mesh.position.z);
     pivot.add(mesh);
-    P[name] = pivot;                   // future rotation calls hit the pivot
+    P[name] = pivot;
   };
-  wrapMesh('torso', HIP_GY, TORSO_CY);    // pivot at hips
-  wrapMesh('head',  NECK_GY, HEAD_CY);    // pivot at neck
-  wrapMesh('hair',  CROWN_GY, HAIR_CY);   // pivot at crown (NOTE: re-parented under head below)
-  // hood / hoodTip (if the dummy has them — player rig doesn't, but humanoid might)
+  wrapMesh('torso', HIP_GY, TORSO_CY);
+  wrapMesh('head',  NECK_GY, HEAD_CY);
+  wrapMesh('hair',  CROWN_GY, HAIR_CY);
   if (P.hood)   wrapMesh('hood',   CROWN_GY, HAIR_CY + 2);
   if (P.hoodTip) wrapMesh('hoodTip', CROWN_GY, HAIR_CY + 4);
 
-  // NOTE: buildLimb in characters.ts now places limb group origins at the
-  // actual joint (cx*C, cyUpper*C) so rotation.set() naturally pivots about
-  // the shoulder/hip.  No extra limb-wrapping is needed here.
+  // ── Step A2: fix the LIMB pivots (centreline → actual joint) ──
+  const wrapLimb = (name: string) => {
+    const upper = P[name] as THREE.Group | undefined;
+    if (!upper || (upper as THREE.Object3D).type !== 'Group') return;
+    group.updateMatrixWorld(true);
+    const up = new THREE.Vector3();
+    upper.getWorldPosition(up);
+    let jointX = up.x;
+    const um = upper.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
+    if (um) { const mp = new THREE.Vector3(); um.getWorldPosition(mp); jointX = mp.x; }
+    const pivot = new THREE.Group();
+    pivot.position.set(jointX, up.y, 0);
+    group.add(pivot);
+    pivot.attach(upper);
+    P[name] = pivot;
+  };
+  wrapLimb('armL'); wrapLimb('armR');
+  wrapLimb('legL'); wrapLimb('legR');
+
+  // ── Step A3: fix the NESTED joints (elbow/knee + wrist) ──
+  const wrapNestedJoint = (parent: THREE.Object3D, child: THREE.Object3D, partKey: string) => {
+    parent.updateMatrixWorld(true);
+    const cm = child.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
+    const wp = new THREE.Vector3();
+    if (cm) cm.getWorldPosition(wp); else child.getWorldPosition(wp);
+    const local = parent.worldToLocal(wp.clone());
+    const pivot = new THREE.Group();
+    pivot.position.copy(local);
+    parent.add(pivot);
+    pivot.attach(child);
+    if (partKey) P[partKey] = pivot;
+  };
+  const fixLimbJoints = (upperKey: string, foreKey: string, wristKey?: string) => {
+    const pivot = P[upperKey] as THREE.Group | undefined;
+    if (!pivot) return;
+    const upper = pivot.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group | undefined;
+    if (!upper) return;
+    const lower = upper.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group | undefined;
+    if (!lower) return;
+    wrapNestedJoint(upper, lower, foreKey);
+    if (wristKey) {
+      const wrist = lower.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group | undefined;
+      if (wrist) wrapNestedJoint(lower, wrist, wristKey);
+    }
+  };
+  fixLimbJoints('armL', 'foreL', 'wristL');
+  fixLimbJoints('armR', 'foreR', 'wristR');
+  fixLimbJoints('legL', 'shinL');
+  fixLimbJoints('legR', 'shinR');
 
   // ── Step B: build the skeleton hierarchy ──
-  // After Step A all parts are children of `group` again.  Using attach()
-  // preserves each child's world transform while moving it under the new parent.
   group.updateMatrixWorld(true);
   const rep = (childName: string, parentName: string) => {
     const child = P[childName] as THREE.Object3D | undefined;
@@ -175,13 +221,13 @@ function wrapPoseablePartJoints(rig: Rig): void {
     newParent.attach(child);
   };
   rep('head', 'torso');
-  rep('hair', 'head');                // hair now a child of *head*, so it follows the head
+  rep('hair', 'head');
   if (P.hood)   rep('hood',   'head');
   if (P.hoodTip) rep('hoodTip', 'head');
   if (P.padL) rep('padL', 'torso');
   if (P.padR) rep('padR', 'torso');
-  rep('armL', 'torso');              // carries foreL→wristL→handL
-  rep('armR', 'torso');              // carries foreR→wristR→handR
+  rep('armL', 'torso');
+  rep('armR', 'torso');
 
   group.updateMatrixWorld(true);
 }

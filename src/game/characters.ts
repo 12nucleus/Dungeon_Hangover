@@ -26,7 +26,7 @@ export interface Rig {
   group: THREE.Group;
   parts: Record<string, THREE.Object3D>;
   anim: {
-    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'crack' | 'cross' | 'getup';
+    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'crack' | 'cross' | 'getup' | 'sit_cross' | 'sleep' | 'point';
     t: number;
     lunge: number;
     flinch: number;
@@ -148,16 +148,12 @@ function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, spl
   for (const [k, c] of bucket) {
     const [gx, gy, gz] = k.split(',').map(Number);
     if (gy >= splitY) voU.add(gx - cx, gy - cyUpper, gz, c, JIT);
-    else voL.add(gx - cx, gy - splitY, gz, c, JIT);   // lower bone pivots at the joint
+    else voL.add(gx - cx, gy - splitY, gz, c, JIT);
   }
-  // FIXED: group origin at the ACTUAL joint position (cx, cyUpper) instead of
-  // (0, cyUpper) — rotation.set() now pivots at the shoulder/hip joint,
-  // making the game rig and pose editor consistent.
-  upper.position.set(cx * C, cyUpper * C, 0);
-  const um = voU.mesh(); um.position.set(0, 0, 0); upper.add(um);
-  // lower-group origin sits at the knee/elbow, relative to the (now-offset) upper.
+  upper.position.set(0, cyUpper * C, 0);
+  const um = voU.mesh(); um.position.set(cx * C, 0, 0); upper.add(um);
   lower.position.set(0, (splitY - cyUpper) * C, 0);
-  const lm = voL.mesh(); lm.position.set(0, 0, 0); lower.add(lm);
+  const lm = voL.mesh(); lm.position.set(cx * C, 0, 0); lower.add(lm);
   upper.add(lower);
   let hand: THREE.Mesh | undefined;
   let wrist: THREE.Group | undefined;
@@ -167,11 +163,9 @@ function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, spl
       const [gx, gy, gz] = k.split(',').map(Number);
       vh.add(gx - cx, gy - handCy!, gz, c, JIT);
     }
-    // wrist pivot sits at the wrist joint (hand centre); the hand mesh hangs from
-    // it so the hand can rotate independently of the forearm (e.g. keep a staff vertical).
     wrist = new THREE.Group();
     wrist.position.set(0, (handCy - splitY) * C, 0);
-    hand = vh.mesh(); hand.position.set(0, 0, 0);
+    hand = vh.mesh(); hand.position.set(cx * C, 0, 0);
     wrist.add(hand);
     lower.add(wrist);
   }
@@ -379,14 +373,14 @@ function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
   for (const s of [-1, 1] as const) {
     cur = s < 0 ? buckets.armL : buckets.armR;
     const cx = s * ARM_X;
-    colf(cx, 0, 48, 55, 2.6, 2.6, cloth);
-    colf(cx, 0, 48, 49, 2.8, 2.8, shirtD);
+    colf(cx, 0, 43, 55, 2.6, 2.6, cloth);
+    colf(cx, 0, 43, 44, 2.8, 2.8, shirtD);
     put(cx + s * 2, 52, 0, shirtHI);
     put(cx - s * 2, 51, 0, shirtD);
-    colf(cx, 0, 34, 47, 2.2, 2.3, skin);
-    for (let y = 35; y <= 46; y++) { put(cx, y, 2, skinHL); put(cx, y, -2, skinD); }
+    colf(cx, 0, 34, 42, 2.2, 2.3, skin);
+    for (let y = 35; y <= 41; y++) { put(cx, y, 2, skinHL); put(cx, y, -2, skinD); }
     put(cx + s * 2, 40, 1, skinD);
-    colf(cx, -1, 47, 48, 2.0, 1.6, skinD);
+    colf(cx, -1, 42, 43, 2.0, 1.6, skinD);
   }
 
   // ═══ HANDS ═══
@@ -479,6 +473,9 @@ function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
   }
   for (const s of [-1, 1]) { box(Math.min(s * 6, s * 7), 66, 3, Math.max(s * 6, s * 7), 68, 4, hair); put(s * 7, 67, 4, hairHI); }
 
+  // ═══ de-dupe hair/head (hair is decorative — skin wins) ═══
+  for (const k of [...buckets.hair.keys()]) if (buckets.head.has(k)) buckets.hair.delete(k);
+
   // ═══ BUILD PART MESHES ═══
   // torso / head / hair are rigid single meshes; legs & arms are two-bone
   // limbs (thigh+shin, upper+forearm) so they can bend at knee / elbow.
@@ -493,7 +490,7 @@ function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
     m.position.set(info.cx * C, info.cy * C, 0);
     parts[name] = m; group.add(m);
   }
-  const KNEE_G = 22, ELBOW_G = 48;
+  const KNEE_G = 22, ELBOW_G = 43;
   for (const s of [-1, 1] as const) {
     const lm = buildLimb(s < 0 ? buckets.legL : buckets.legR, s * LEG_X, HIP_G, KNEE_G, C);
     parts[s < 0 ? 'legL' : 'legR'] = lm.upper; parts[s < 0 ? 'shinL' : 'shinR'] = lm.lower; group.add(lm.upper);
@@ -932,9 +929,9 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
   for (const s of [-1, 1] as const) {
     cur = s < 0 ? buckets.armL : buckets.armR;
     const cx = s * ARM_X;
-    colf(cx, 0, 48, 55, 2.6, 2.6, feat.robe || feat.dress ? cloth : cloth);
-    colf(cx, 0, 34, 47, 2.2, 2.3, skin);
-    if (feat.vest) for (let y = 48; y <= 55; y++) for (let z = -2; z <= 2; z++) put(cx, y, z, VEST);
+    colf(cx, 0, 43, 55, 2.6, 2.6, feat.robe || feat.dress ? cloth : cloth);
+    colf(cx, 0, 34, 42, 2.2, 2.3, skin);
+    if (feat.vest) for (let y = 43; y <= 55; y++) for (let z = -2; z <= 2; z++) put(cx, y, z, VEST);
   }
   // ── HANDS ──
   for (const s of [-1, 1] as const) {
@@ -998,7 +995,7 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
     for (const [k, c] of buckets[name]) { const [gx, gy, gz] = k.split(',').map(Number); vo.add(gx - info.cx, gy - info.cy, gz, c, 0.035); }
     const m = vo.mesh(); m.position.set(info.cx * C, info.cy * C, 0); parts[name] = m; group.add(m);
   }
-  const KNEE_G = 22, ELBOW_G = 48;
+  const KNEE_G = 22, ELBOW_G = 43;
   for (const s of [-1, 1] as const) {
     const lm = buildLimb(s < 0 ? buckets.legL : buckets.legR, s * LEG_X, HIP_G, KNEE_G, C);
     parts[s < 0 ? 'legL' : 'legR'] = lm.upper; parts[s < 0 ? 'shinL' : 'shinR'] = lm.lower; group.add(lm.upper);
@@ -1252,34 +1249,57 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   let wristL = 0, wristR = 0;                                   // wrist rotation (crossed-arms pose)
 
   // ── pose presets ──
+    // Zero all pose-specific variables so unset ones don't keep stale defaults
+    // (elbow=0.2, knee=0.15).  This makes the game + pose editor consistent
+    // (both treat unset joints as zero).
+    armLZ = 0; armRZ = 0;
+    elbowL = 0; elbowR = 0;
+    elbowLZ = 0; elbowRZ = 0;
+    wristL = 0; wristR = 0;
+    kneeL = 0; kneeR = 0;
     if (a.mode === 'sit') {                                 // left arm rests forward on the table (mug in hand)
       DROP += 0.20; legScaleY = Math.max(0.5, 1 - DROP / HIP);
-      armLX = -1.35; armRX = -0.25;
-      legLX = -1.582; legRX = -1.702;
+      armLX = -1.35; armRX = -0.452;
+      armRZ = 0.048;
+      legLX = -1.492; legRX = -1.702;
       torsoX = 0.06; headX = -0.05; hipY = HIP - 0.22;
-      kneeL = 1.448; kneeR = 1.598;
+      kneeL = 1.368; kneeR = 1.688;
       elbowL = 0.15; elbowR = 0.128;
       elbowRZ = 0.148;
     } else if (a.mode === 'drink') {                        // raise the tankard (left hand) to the mouth
       DROP += 0.20; legScaleY = Math.max(0.5, 1 - DROP / HIP);
-      armLX = -2.35 + Math.sin(a.t * 6) * 0.12; armRX = -0.25 + idle * 0.04;
-      headX = -0.16; torsoX = 0.05; hipY = HIP - 0.22;
-      legLX = legRX = -1.2; kneeL = kneeR = 1.45;
-      elbowL = -1.1; elbowR = 0.5;
+      armLX = -1.342; armLZ = -0.152; armRX = -0.452; armRZ = 0.048;
+      headX = -0.05; torsoX = 0.06; hipY = HIP - 0.22;
+      legLX = -1.492; legRX = -1.702; kneeL = 1.368; kneeR = 1.688;
+      elbowL = -1.192; elbowLZ = 0.998; elbowR = 0.128; elbowRZ = 0.148;
     } else if (a.mode === 'crack') {                         // crack knuckles — fists meet at the chest, pumping
-    const pump = Math.sin(a.t * 16) * 0.28;
-    armLX = -0.8 + pump; armRX = -0.8 - pump;                // upper arms ~45° forward (fists at chest height)
-    armLZ = 0.3; armRZ = -0.3;                                // bring fists toward the centre line
-    legLX = legRX = 0; torsoX = 0.06; headX = -0.05; hipY = HIP;
-    elbowL = -1.3 - pump; elbowR = -1.3 + pump;
-  } else if (a.mode === 'cross') {                         // arms folded across the chest
+      torsoX = 0.06; headX = -0.05;
+      armLX = -0.732; armLZ = -0.192; armRX = -1.552; armRZ = -0.212;
+      elbowL = -1.3; elbowR = -0.842;
+    } else if (a.mode === 'cross') {                         // arms folded across the chest
     armLX = -1.032; armRX = -1.192;
     armLZ = 0.128;  armRZ = 0.088;
     elbowL = -0.972; elbowR = -1.162;
     elbowLZ = 1.128; elbowRZ = -1.682;
     wristL = -0.412; wristR = 0.198;
     torsoX = -0.006; headX = -0.02; hipY = HIP;
-  }
+    } else if (a.mode === 'sit_cross') {                   // sitting on ground, legs crossed
+      DROP += 0.20; legScaleY = Math.max(0.5, 1 - DROP / HIP);
+      armLX = -0.282; armLZ = -0.152; armRX = -0.692; armRZ = 0.148;
+      elbowL = 0.608; elbowLZ = 1.468; elbowR = -0.082; elbowRZ = -1.232;
+      legLX = -1.532; legRX = -1.442; kneeL = 1.258; kneeR = 0.648;
+      hipY = HIP - 0.22;
+    } else if (a.mode === 'sleep') {                       // sleeping / lying on the ground
+      DROP += 0.28; legScaleY = Math.max(0.5, 1 - DROP / HIP);
+      torsoX = -1.602; headX = 0.048;
+      armLX = -0.172; armLZ = -0.042; armRX = 3.028; armRZ = -0.102;
+      elbowL = -0.242; elbowLZ = 0.328; elbowR = 0.428; elbowRZ = -0.452;
+      legLX = -1.622; legRX = -1.552; kneeL = -0.042; kneeR = 0.308;
+      hipY = HIP - 0.30;
+    } else if (a.mode === 'point') {                       // pointing with right arm
+      armRX = -1.422; armRZ = -0.212;
+      elbowL = -0.732; elbowLZ = -0.062;
+    }
   // idle: arms hang slightly forward (~10°) rather than straight down
   if (a.mode === 'idle') { armLX -= 0.1745; armRX -= 0.1745; }
   // attack swing (combat) — layered on top of the idle/pose
@@ -1357,11 +1377,11 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const WO = P?.weapon ?? 0.5;
   const PA = P?.pad ?? 1.02;
   const bb = bob * 1.2;
+  const hy = a.headYOffset ?? 0;   // persistent head-nudge (editor)
 
   p.torso.position.y = TO + bob - DROP;
   p.torso.scale.y = 1 + idle * 0.02;
   p.torso.rotation.x = torsoX;                            // hunch / lean
-  const hy = a.headYOffset ?? 0;   // persistent head-nudge (editor)
   p.head.position.y = HO + bb - DROP + hy;
   p.head.rotation.x = headX;                              // keep eyes forward
   if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP + hy; p.eyeR.position.y = EO + bb - DROP + hy; }
