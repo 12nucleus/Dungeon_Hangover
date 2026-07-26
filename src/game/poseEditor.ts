@@ -117,6 +117,10 @@ export function applyPose(rig: Rig, joints: PoseJoints): void {
  *   Hip  34   Torso centre 45   Neck 56   Head centre 64   Crown 70
  */
 export function wrapPoseablePartJoints(rig: Rig): void {
+  // The unified hierarchy is now built inside the rig builders (buildHierarchy
+  // in characters.ts). If it has already run, this is a no-op — kept for
+  // backward compatibility with any caller that still invokes it.
+  if (rig.group.userData.hierarchyBuilt) return;
   const group = rig.group;
   const P = rig.parts;
   const piv = rig.pivots;

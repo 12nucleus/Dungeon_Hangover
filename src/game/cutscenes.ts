@@ -248,12 +248,17 @@ export async function playIntroCutscene(h: CutsceneHost) {
   let mugHand: THREE.Object3D | null = null;
   if (hand) { mug.position.set(0, 0.18, 0.12); hand.add(mug); mugHand = hand; }
   if (mugHand) {
-    const armL = hv.rig.parts.armL as THREE.Object3D | undefined;
-    const foreL = hv.rig.parts.foreL as THREE.Object3D | undefined;
+    // Keep the tankard level by counter-rotating it against the hand's world
+    // pitch. Reading world orientation (via quaternion) is hierarchy-agnostic:
+    // works for both the legacy flat rig and the unified hierarchical skeleton.
+    const handObj = hand;
+    const tmpQ = new THREE.Quaternion();
+    const tmpE = new THREE.Euler();
     h.propAnims.push(() => {
       if (!h.tavern) return true;
-      const ax = (armL?.rotation.x ?? 0) + (foreL?.rotation.x ?? 0);
-      mug.rotation.x = -ax;
+      handObj.getWorldQuaternion(tmpQ);
+      tmpE.setFromQuaternion(tmpQ, 'XYZ');
+      mug.rotation.x = -tmpE.x;
       return false;
     });
   }

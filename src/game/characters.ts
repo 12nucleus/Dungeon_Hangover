@@ -172,6 +172,143 @@ function buildLimb(bucket: Map<string, number>, cx: number, cyUpper: number, spl
   return { upper, lower, hand, wrist };
 }
 
+/**
+ * Build the unified hierarchical skeleton for a humanoid rig.
+ *
+ * Wraps the rigid torso/head/hair meshes in pivot Groups at their anatomical
+ * joints (hip / neck / crown), wraps the limb Groups in pivots at their actual
+ * shoulder / hip world positions, fixes the nested elbow / knee / wrist joints,
+ * and finally reparents head / hair / arms under the torso so they follow the
+ * torso's tilt. After this runs, `rig.parts[name]` always points at the rotation
+ * pivot (the Group that should be rotated to articulate that joint).
+ *
+ * Joint values stay in FLAT format (absolute world-space euler angles). The
+ * consumers (updateRig, poseEditor.applyPose, animationEditor.playClipOnRig)
+ * convert flat → local for torso-children by subtracting the parent's rotation.
+ *
+ * Only applies to "detailed" humanoid rigs (those whose `pivots.torso` matches
+ * the player grid convention). Chibi / bat / skeleton / sheep rigs are left
+ * flat — their animation paths use absolute rotation about the rig origin.
+ *
+ * Grid-y reference (player rig, C_DETAIL = 0.0285):
+ *   Hip 34   Torso centre 45   Neck 56   Head centre 64   Crown 70
+ *
+ * Idempotent: sets `rig.group.userData.hierarchyBuilt = true` and early-exits
+ * on subsequent calls.
+ */
+export function buildHierarchy(rig: Rig): void {
+  const group = rig.group;
+  if (group.userData.hierarchyBuilt) return;
+  const P = rig.parts;
+  const piv = rig.pivots;
+  if (!piv) return;
+
+  // Only the player / NPC detailed rig uses the grid-Y convention this function
+  // relies on (torso pivot ≈ 45 * C_DETAIL ≈ 1.28). Chibi/creature rigs use
+  // different scales and stay flat.
+  const C = piv.torso / 45;
+  if (Math.abs(C - 0.0285) > 0.01) return;   // not a detailed humanoid rig
+
+  const HIP_GY = 34, NECK_GY = 56, CROWN_GY = 70;
+  const TORSO_CY = 45, HEAD_CY = 64, HAIR_CY = 66;
+
+  // ── Step A: wrap rigid parts in pivot groups at anatomical joints ──
+  const wrapMesh = (name: string, jointGy: number, meshGy: number) => {
+    const mesh = P[name];
+    if (!mesh || (mesh as THREE.Object3D).type !== 'Mesh') return;
+    const pivot = new THREE.Group();
+    pivot.position.set(0, jointGy * C, 0);
+    pivot.userData.baseY = jointGy * C;   // remember the build-time local Y for per-frame nudges
+    group.add(pivot);
+    mesh.parent?.remove(mesh);
+    mesh.position.set(mesh.position.x, (meshGy - jointGy) * C, mesh.position.z);
+    pivot.add(mesh);
+    P[name] = pivot;
+  };
+  wrapMesh('torso', HIP_GY, TORSO_CY);
+  wrapMesh('head',  NECK_GY, HEAD_CY);
+  wrapMesh('hair',  CROWN_GY, HAIR_CY);
+  if (P.hood)   wrapMesh('hood',   CROWN_GY, HAIR_CY + 2);
+  if (P.hoodTip) wrapMesh('hoodTip', CROWN_GY, HAIR_CY + 4);
+
+  // ── Step A2: fix the LIMB pivots (centreline → actual joint) ──
+  const wrapLimb = (name: string) => {
+    const upper = P[name] as THREE.Group | undefined;
+    if (!upper || (upper as THREE.Object3D).type !== 'Group') return;
+    group.updateMatrixWorld(true);
+    const up = new THREE.Vector3();
+    upper.getWorldPosition(up);
+    const localJoint = group.worldToLocal(up.clone());
+    let jointX = localJoint.x;
+    const um = upper.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
+    if (um) { const mp = new THREE.Vector3(); um.getWorldPosition(mp); jointX = group.worldToLocal(mp).x; }
+    const pivot = new THREE.Group();
+    pivot.position.set(jointX, localJoint.y, 0);
+    group.add(pivot);
+    pivot.attach(upper);
+    P[name] = pivot;
+  };
+  wrapLimb('armL'); wrapLimb('armR');
+  wrapLimb('legL'); wrapLimb('legR');
+
+  // ── Step A3: fix the NESTED joints (elbow/knee + wrist) ──
+  const wrapNestedJoint = (parent: THREE.Object3D, child: THREE.Object3D, partKey: string) => {
+    parent.updateMatrixWorld(true);
+    const cm = child.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
+    const wp = new THREE.Vector3();
+    if (cm) cm.getWorldPosition(wp); else child.getWorldPosition(wp);
+    const local = parent.worldToLocal(wp.clone());
+    const pivot = new THREE.Group();
+    pivot.position.copy(local);
+    parent.add(pivot);
+    pivot.attach(child);
+    if (partKey) P[partKey] = pivot;
+  };
+  const fixLimbJoints = (upperKey: string, foreKey: string, wristKey?: string) => {
+    const pivot = P[upperKey] as THREE.Group | undefined;
+    if (!pivot) return;
+    const upper = pivot.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group | undefined;
+    if (!upper) return;
+    const lower = upper.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group | undefined;
+    if (!lower) return;
+    wrapNestedJoint(upper, lower, foreKey);
+    if (wristKey) {
+      const wrist = lower.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group | undefined;
+      if (wrist) wrapNestedJoint(lower, wrist, wristKey);
+    }
+  };
+  fixLimbJoints('armL', 'foreL', 'wristL');
+  fixLimbJoints('armR', 'foreR', 'wristR');
+  fixLimbJoints('legL', 'shinL');
+  fixLimbJoints('legR', 'shinR');
+
+  // ── Step B: reparent head/hair/arms under torso so they follow torso tilt ──
+  group.updateMatrixWorld(true);
+  const rep = (childName: string, parentName: string) => {
+    const child = P[childName] as THREE.Object3D | undefined;
+    const newParent = P[parentName] as THREE.Object3D | undefined;
+    if (!child || !newParent || child.parent === newParent) return;
+    newParent.attach(child);
+  };
+  rep('head', 'torso');
+  rep('hair', 'head');
+  rep('armL', 'torso');
+  rep('armR', 'torso');
+  if (P.hood)   rep('hood',   'head');
+  if (P.hoodTip) rep('hoodTip', 'head');
+
+  // After reparenting, the local position.y of each reparented pivot has
+  // changed (attach preserves world transform). Re-capture the true local Y
+  // so updateRig can reconstruct positions correctly when applying nudges.
+  group.updateMatrixWorld(true);
+  for (const n of ['torso', 'head', 'hair', 'hood', 'hoodTip', 'armL', 'armR']) {
+    const o = P[n];
+    if (o) o.userData.baseY = o.position.y;
+  }
+
+  group.userData.hierarchyBuilt = true;
+}
+
 function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 1): THREE.Group {
   const g = new THREE.Group();
   const v = new Vox(C, SUB);
@@ -528,7 +665,7 @@ function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
 
   group.scale.setScalar(scheme.bulk ?? 1);
 
-  return {
+  const rig: Rig = {
     group, parts,
     anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
     pivots: {
@@ -537,6 +674,8 @@ function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
       pad: PAD_G * C, knee: KNEE_G * C, elbow: ELBOW_G * C, wrist: HAND_G * C,
     },
   };
+  buildHierarchy(rig);
+  return rig;
 }
 
 // ────── CHIBI RIG (unchanged) ──────
@@ -885,17 +1024,18 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
   for (const s of [-1, 1] as const) {
     cur = s < 0 ? buckets.legL : buckets.legR;
     const cx = s * LEG_X;
-    if (feat.robe) {
-      colf(cx, 0, 0, 34, 3, 3, cloth);                 // hidden inside the robe
+    if (feat.robe || feat.dress) {
+      colf(cx, 0, 0, 34, 3, 3, cloth);                 // hidden inside the robe/dress
     } else {
       box(cx - 3, 0, -4, cx + 3, 2, 6, 0x3a2a1a);      // boot
       colf(cx, 0.5, 2, 34, 3.2, 3.4, pant);            // trouser leg
       for (let y = 4; y <= 33; y += 3) put(cx, y, 4, pantD);
-      if (feat.dress) { colf(cx, 0.5, 2, 44, 2.6, 2.8, skin); box(cx - 3, 44, -4, cx + 3, 46, 6, 0x3a2a1a); }
     }
   }
   // robe fully encloses the legs — drop the hidden leg voxels so they don't
   // coincide with the robe column (that overlap was z-fighting on the wizard).
+  // Dress keeps its leg voxels (filled with cloth above) so the skirt moves
+  // with the leg animation instead of being a rigid torso block.
   if (feat.robe) { buckets.legL.clear(); buckets.legR.clear(); }
 
   // ── TORSO ──
@@ -913,7 +1053,7 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
         rx = feat.robe ? 5.2 : 5.6 - y * 0.05;
         rz = feat.robe ? 4.2 : 4.0;
       }
-      colf(0, 0, y, y, Math.max(2, rx), rz, y < 33 ? pant : cloth);
+      colf(0, 0, y, y, Math.max(2, rx), rz, (feat.dress || y >= 33) ? cloth : pant);
     }
   }
   for (let y = 37; y <= 55; y++) { const t = (y - 37) / 18; const hx = Math.round(7 + t * 1.8); for (let x = -hx; x <= hx; x++) for (let z = -5; z <= 5; z++) put(x, y, z, cloth); }
@@ -1032,11 +1172,13 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
   }
 
   group.scale.setScalar(scheme.bulk ?? 1);
-  return {
+  const rig: Rig = {
     group, parts,
     anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
     pivots: { hip: HIP_G * C, torso: TORSO_G * C, head: HEAD_G * C, eye: EYE_G * C, hair: HAIR_G * C, arm: ARM_G * C, hand: HAND_G * C, weapon: 34 * C, pad: PAD_G * C, knee: KNEE_G * C, elbow: ELBOW_G * C, wrist: HAND_G * C },
   };
+  buildHierarchy(rig);
+  return rig;
 }
 
 export function buildCharacter(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
@@ -1188,15 +1330,6 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const p = rig.parts;
   const P = rig.pivots;
 
-  // Wrapped rig (snoozer): hierarchy already matches the pose editor.
-  // Just apply gentle breathing wobble — no pose updates needed.
-  if ((rig.group.userData as { wrapped?: boolean }).wrapped) {
-    const wob = Math.sin(a.t * 1.6) * 0.05;
-    if (p.torso) p.torso.scale.set(1 + wob * 0.7, 1 - wob * 0.9, 1 + wob * 0.5);
-    if (p.head) p.head.scale.setScalar(1 + wob * 0.5);
-    return;
-  }
-
   if (a.mode === 'dead' || a.mode === 'floor' || a.mode === 'lie') {
     const d = a.death ?? (a.death = (a.mode === 'dead' ? initDeath(rig) : initCollapse(rig, a.mode === 'lie')));
     const g = rig.group;
@@ -1209,11 +1342,25 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
       [g.position.y, d.gvy] = springStep(g.position.y, d.gty, d.gvy, h, 90, 16);
       if (!d.impacted && Math.abs(g.rotation.x) >= Math.abs(d.gtx) * 0.7) d.impacted = true;
     }
-    // per-joint crumple
+    // per-joint crumple. On hierarchical rigs head/hair/hood/arms are children
+    // of the torso, so their flat (world) target must be converted to local by
+    // subtracting the torso's current pitch. Process torso first so its value
+    // is up to date for the children.
+    const hierD = !!rig.group.userData.hierarchyBuilt;
+    const torsoChild = (n: string) => n === 'head' || n === 'hair' || n === 'hood' || n === 'hoodTip' || n === 'armL' || n === 'armR';
+    if (hierD && p.torso && d.pt.torso) {
+      const tv = d.pv.torso;
+      [p.torso.rotation.x, tv.x] = springStep(p.torso.rotation.x, d.pt.torso.x, tv.x, h, STIFF, DAMP);
+      [p.torso.rotation.y, tv.y] = springStep(p.torso.rotation.y, d.pt.torso.y, tv.y, h, STIFF, DAMP);
+      [p.torso.rotation.z, tv.z] = springStep(p.torso.rotation.z, d.pt.torso.z, tv.z, h, STIFF, DAMP);
+    }
+    const torsoPitch = hierD && p.torso ? p.torso.rotation.x : 0;
     for (const name in d.pt) {
+      if (hierD && name === 'torso') continue;   // already handled above
       const m = p[name]; if (!m) continue;
       const t = d.pt[name], v = d.pv[name];
-      [m.rotation.x, v.x] = springStep(m.rotation.x, t.x, v.x, h, STIFF, DAMP);
+      const lx = hierD && torsoChild(name) ? t.x - torsoPitch : t.x;
+      [m.rotation.x, v.x] = springStep(m.rotation.x, lx, v.x, h, STIFF, DAMP);
       [m.rotation.y, v.y] = springStep(m.rotation.y, t.y, v.y, h, STIFF, DAMP);
       [m.rotation.z, v.z] = springStep(m.rotation.z, t.z, v.z, h, STIFF, DAMP);
     }
@@ -1340,7 +1487,12 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   }
 
   // ── arms: swing the upper arm, then bend the elbow (relative) ──
-  p.armL.rotation.x = armLX; p.armR.rotation.x = armRX;
+  // On hierarchical rigs the arm pivots are children of the torso, so their
+  // flat (world-space) target must be converted to local by subtracting the
+  // torso's pitch. Flat rigs (chibi/bat/skeleton) keep the absolute value.
+  const hier = !!rig.group.userData.hierarchyBuilt;
+  const armLocal = hier ? (v: number) => v - torsoX : (v: number) => v;
+  p.armL.rotation.x = armLocal(armLX); p.armR.rotation.x = armLocal(armRX);
   p.armL.rotation.z = armLZ; p.armR.rotation.z = armRZ;
   if (hasKnee && p.foreL) {
     p.foreL.rotation.x = elbowL + (a.forearmLOffset ?? 0);
@@ -1371,7 +1523,10 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
         weapon.rotation.x = 0;   // a staff is held upright, independent of the arm swing
       } else {
         const weaponBase = wkind === 'torch' ? 0.4 : 1.35;   // blade points FORWARD (+Z)
-        weapon.rotation.x = weaponBase + (hasKnee && p.foreR ? p.foreR.rotation.x + p.armR.rotation.x : p.armR.rotation.x) * 0.9;
+        // armR.rotation.x is local to torso on hierarchical rigs, so add torsoX
+        // back to recover the world arm pitch the weapon should swing with.
+        const armWorldX = (hasKnee && p.foreR ? p.foreR.rotation.x + p.armR.rotation.x : p.armR.rotation.x) + (hier ? torsoX : 0);
+        weapon.rotation.x = weaponBase + armWorldX * 0.9;
       }
     }
 
@@ -1391,18 +1546,47 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const bb = bob * 1.2;
   const hy = a.headYOffset ?? 0;   // persistent head-nudge (editor)
 
-  p.torso.position.y = TO + bob - DROP;
+  // ── positions ──
+  // On hierarchical rigs the head/hair/hood/arm pivots are children of the
+  // torso (or head) and were placed at their correct LOCAL offsets by
+  // buildHierarchy. Overwriting them with the flat-rig absolute Y heights
+  // (measured from the rig origin) would yank them out of place. So on
+  // hierarchical rigs we only reposition the torso pivot (child of group) and
+  // the legs (children of group); the nested children ride their parent.
+  // The torso pivot sits at the hip joint (baseY), NOT the mesh centre (TO).
+  if (hier && p.torso.userData.baseY !== undefined) {
+    p.torso.position.y = p.torso.userData.baseY + bob - DROP;
+  } else {
+    p.torso.position.y = TO + bob - DROP;
+  }
   p.torso.scale.y = 1 + idle * 0.02;
   p.torso.rotation.x = torsoX;                            // hunch / lean
-  p.head.position.y = HO + bb - DROP + hy;
-  p.head.rotation.x = headX;                              // keep eyes forward
-  if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP + hy; p.eyeR.position.y = EO + bb - DROP + hy; }
-  if (p.hood) { p.hood.position.y = HUD + bb - DROP + hy; p.hoodTip!.position.y = HT + bb - DROP + hy; }
-  if (p.hair) { p.hair.position.y = HRO + bb - DROP + hy + (a.hairYOffset ?? 0); p.hair.rotation.x = headX; }
-  p.armL.position.y = AR + bob - DROP; p.armR.position.y = AR + bob - DROP;
-  if (!hasKnee) { p.handL.position.y = HA + bob - DROP; p.handR.position.y = HA + bob - DROP; }
-  if (weapon && !hasKnee) weapon.position.y = WO + bob - DROP;
-  if (p.padL) { p.padL.position.y = PA + bob - DROP; p.padR!.position.y = PA + bob - DROP; }
+  if (hier) {
+    // head/hair/hood follow the torso; only apply the persistent editor nudges
+    // and the flat→local rotation conversion. Positions stay at their
+    // buildHierarchy local Y (stored in userData.baseY) plus any world-space
+    // nudge (headYOffset / hairYOffset).
+    p.head.rotation.x = headX - torsoX;                   // keep eyes forward
+    if (p.head.userData.baseY !== undefined) p.head.position.y = p.head.userData.baseY + hy;
+    if (p.hair) {
+      p.hair.rotation.x = 0;
+      if (p.hair.userData.baseY !== undefined) p.hair.position.y = p.hair.userData.baseY + (a.hairYOffset ?? 0);
+    }
+    if (p.hood) { p.hood.rotation.x = 0; p.hoodTip!.rotation.x = 0; }
+    // eyes are NOT reparented (stay group children), so keep their absolute
+    // positioning in sync with the head's world Y.
+    if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP + hy; p.eyeR.position.y = EO + bb - DROP + hy; }
+  } else {
+    p.head.position.y = HO + bb - DROP + hy;
+    p.head.rotation.x = headX;                            // keep eyes forward
+    if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP + hy; p.eyeR.position.y = EO + bb - DROP + hy; }
+    if (p.hood) { p.hood.position.y = HUD + bb - DROP + hy; p.hoodTip!.position.y = HT + bb - DROP + hy; p.hood.rotation.x = headX; p.hoodTip!.rotation.x = headX; }
+    if (p.hair) { p.hair.position.y = HRO + bb - DROP + hy + (a.hairYOffset ?? 0); p.hair.rotation.x = headX; }
+    p.armL.position.y = AR + bob - DROP; p.armR.position.y = AR + bob - DROP;
+    if (!hasKnee) { p.handL.position.y = HA + bob - DROP; p.handR.position.y = HA + bob - DROP; }
+    if (weapon && !hasKnee) weapon.position.y = WO + bob - DROP;
+    if (p.padL) { p.padL.position.y = PA + bob - DROP; p.padR!.position.y = PA + bob - DROP; }
+  }
 
   if (a.lunge > 0) a.lunge = Math.max(0, a.lunge - dt * 3.2);
   if (a.flinch > 0) {

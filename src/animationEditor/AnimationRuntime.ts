@@ -112,8 +112,16 @@ export function playClipOnRig(rig: Rig, clip: AnimClip, t: number): void {
     p.shinR.rotation.x = shinRX;
   }
 
-  p.armL.rotation.x = armLX;
-  p.armR.rotation.x = armRX;
+  // Set the torso first so its pitch is available for the flat→local
+  // conversion that head/arms need on hierarchical rigs (head & arms are
+  // children of the torso after buildHierarchy).
+  p.torso.rotation.x = torsoX;
+  const hier = !!rig.group.userData.hierarchyBuilt;
+  const armLXl = hier ? armLX - torsoX : armLX;
+  const armRXl = hier ? armRX - torsoX : armRX;
+
+  p.armL.rotation.x = armLXl;
+  p.armR.rotation.x = armRXl;
   p.armL.rotation.z = armLZ;
   p.armR.rotation.z = armRZ;
 
@@ -132,10 +140,12 @@ export function playClipOnRig(rig: Rig, clip: AnimClip, t: number): void {
     if (p.handL) p.handL.rotation.x = 0;
     if (p.handR) p.handR.rotation.x = 0;
   } else {
-    if (p.handL) p.handL.rotation.x = armLX;
-    if (p.handR) p.handR.rotation.x = armRX;
+    if (p.handL) p.handL.rotation.x = armLXl;
+    if (p.handR) p.handR.rotation.x = armRXl;
   }
 
-  p.torso.rotation.x = torsoX;
-  p.head.rotation.x = headX;
+  p.head.rotation.x = hier ? headX - torsoX : headX;
+  if (p.hair) p.hair.rotation.x = hier ? 0 : headX;
+  if (p.hood) p.hood.rotation.x = hier ? 0 : headX;
+  if (p.hoodTip) p.hoodTip.rotation.x = hier ? 0 : headX;
 }

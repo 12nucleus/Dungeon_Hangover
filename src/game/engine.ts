@@ -15,7 +15,6 @@ import { dungeonLevel } from '../levels/dungeon';
 import { buildIronDoor, buildGoldenChest, buildLever, buildRubble, buildStoneBath, buildWeaponRack } from './dungeonProps';
 import { ParticleSystem, FX } from './particles';
 import { buildCharacter, updateRig, setWeapon, type Rig } from './characters';
-import { wrapPoseablePartJoints } from './poseEditor';
 import { Combat } from './combat';
 import { SKILLS, CONDITIONS, createRoster } from './skills';
 import { AudioManager } from './audio';
@@ -1324,7 +1323,7 @@ box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 ..
     // nudge the barkeep's head up 1 voxel (0.11 world units) — see headYOffset in characters.ts
     if (this.tavernActors['barkeep']) this.tavernActors['barkeep'].anim.headYOffset = 0.11;
     // barmaid mid-floor, ready to deliver the next round
-    addNpc(buildCharacter({ skin: 0xd9a066, cloth: 0xdfe4ea, accent: 0x8b7355, hair: 0x8b3a2a, hood: false, kind: 'barmaid' }),
+    addNpc(buildCharacter({ skin: 0xd9a066, cloth: 0xb02a2a, accent: 0x8b7355, hair: 0x8b3a2a, hood: false, kind: 'barmaid' }),
       -2.2, 0.2, faceYaw(-2.2, 0.2), 'idle', 'barmaid');
     // jumpy wizard in the back-right corner (staff, star hat, white beard)
     addNpc(buildCharacter({ skin: 0xf0d9b5, cloth: 0x4a2a6a, accent: 0x8a4af0, hair: 0xd0d0d0, hood: false, kind: 'wizard' }, 'staff'),
@@ -1340,36 +1339,10 @@ box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 ..
     // a patron nursing a drink by the fire
     addNpc(buildCharacter({ skin: 0x8a6a4a, cloth: 0x4a4a2a, accent: 0x2a2a2a, hair: 0x3a2a1a, hood: false, style: 'normal' }),
       1.3, -2.5, faceYaw(1.3, -2.5), 'cross', 'patron');
-    // a patron lying asleep at the side table (comic background)
+// a patron lying asleep at the side table (comic background)
     addNpc(buildCharacter({ skin: 0x9a7a55, cloth: 0x3a4a5a, accent: 0x2a2a2a, hair: 0x140f0f, hood: false, style: 'normal' }),
       -0.8, -2.35, 1.708, 'sleep', 'snoozer', -0.65);
-    const snoozer = this.tavernActors['snoozer'];
-if (snoozer) {
-      wrapPoseablePartJoints(snoozer);
-      const P = snoozer.parts;
-      // apply flat rotations — head & arms are children of torso, convert to local
-      P.torso.rotation.set(-1.442, 0, 0);
-      const tx = P.torso.rotation.x;
-      P.head.rotation.set(-1.274 - tx, 0, 0);
-      P.armL.rotation.set(-1.614 - tx, 0, -0.042);
-      P.armR.rotation.set(1.586 - tx, 0, -0.102);
-      P.foreL.rotation.set(-0.242, 0, 0.328);
-      P.foreR.rotation.set(0.428, 0, -0.452);
-      P.legL.rotation.set(-1.732, 0, 0);
-      P.legR.rotation.set(-1.662, 0, 0);
-      P.shinL.rotation.set(0.648, 0, 0);
-      P.shinR.rotation.set(0.308, 0, 0);
-      // squash legs to prevent floor clipping (matching the sleep-pose DROP=0.28)
-      const legScaleY = Math.max(0.5, 1 - 0.28 / snoozer.pivots!.hip);
-      for (const name of ['legL', 'legR']) {
-        const pivot = P[name] as THREE.Group;
-        if (!pivot) continue;
-        const upper = pivot.children.find((c) => (c as THREE.Object3D).type === 'Group') as THREE.Group;
-        if (upper) upper.scale.y = legScaleY;
-      }
-      snoozer.group.userData.wrapped = true;
-      this.spawnDrunkStars(snoozer);
-    }
+    if (this.tavernActors['snoozer']) this.spawnDrunkStars(this.tavernActors['snoozer']);
 
     // == LIGHTING - hearth (flickering), chandelier, sconces, soft fill ==
     const fireLight = new THREE.PointLight(0xffa040, 11, 11, 1.8); fireLight.position.set(2.6, 1.0, -3.4); g.add(fireLight);
@@ -1926,13 +1899,9 @@ if (snoozer) {
     let ang = 0;
     const tmp = new THREE.Vector3();
     this.propAnims.push((dt: number) => {
-      if (!this.tavern) return true;                 // stop once the tavern is gone
+      if (!this.tavern) return true;
       ang += dt * 1.6;
-      const headPivot = rig.parts.head;
-      // after wrapPoseablePartJoints the head part is a pivot at the neck joint;
-      // grab the mesh child to get the actual head-centre world position
-      const headMesh = headPivot.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
-      (headMesh ?? headPivot).getWorldPosition(tmp);
+      rig.parts.head.getWorldPosition(tmp);
       if (Math.random() < dt * 6) {
         const a = ang + Math.random() * 0.6;
         const r = 0.45 + Math.random() * 0.15;

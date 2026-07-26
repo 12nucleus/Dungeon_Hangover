@@ -160,12 +160,22 @@ export class AnimationScene {
 
   onTick(cb: ChangeListener): () => void { this._onChange.add(cb); return () => this._onChange.delete(cb); }
 
+  // Joints that are children of the torso on hierarchical rigs. Their stored
+  // rotation is local to the torso, but the editor contract is flat (world)
+  // values — matching playClipOnRig and the pose presets. Convert on read/write.
+  private static TORSO_CHILDREN = new Set(['head', 'hair', 'hood', 'hoodTip', 'armL', 'armR']);
+
   get jointValues(): Record<string, JointEuler> {
     if (!this.rig) return {};
+    const hier = !!this.rig.group.userData.hierarchyBuilt;
+    const torsoX = hier && this.rig.parts.torso ? this.rig.parts.torso.rotation.x : 0;
     const out: Record<string, JointEuler> = {};
     for (const n of JOINT_NAMES) {
       const o = this.rig.parts[n];
-      if (o) out[n] = { x: o.rotation.x, y: o.rotation.y, z: o.rotation.z };
+      if (!o) continue;
+      // local → flat: add the torso pitch back for torso-children
+      const x = hier && AnimationScene.TORSO_CHILDREN.has(n) ? o.rotation.x + torsoX : o.rotation.x;
+      out[n] = { x, y: o.rotation.y, z: o.rotation.z };
     }
     return out;
   }
@@ -173,7 +183,12 @@ export class AnimationScene {
   setJointEuler(joint: string, euler: JointEuler): void {
     if (!this.rig) return;
     const o = this.rig.parts[joint];
-    if (o) o.rotation.set(euler.x, euler.y, euler.z);
+    if (!o) return;
+    const hier = !!this.rig.group.userData.hierarchyBuilt;
+    // flat → local: subtract the torso pitch for torso-children
+    const torsoX = hier && this.rig.parts.torso ? this.rig.parts.torso.rotation.x : 0;
+    const x = hier && AnimationScene.TORSO_CHILDREN.has(joint) ? euler.x - torsoX : euler.x;
+    o.rotation.set(x, euler.y, euler.z);
   }
 
   applyPose(joints: Record<string, JointEuler>): void {
