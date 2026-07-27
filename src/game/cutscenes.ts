@@ -280,7 +280,13 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // == BEAT 1: establishing - the warm, dingy room; Greg mid-bender ==
   await h.narrate('t_open', 'The Dirty Mug. Last call came and went two hours ago. Nobody has found the courage to tell Greg.', 5200);
   if (h.introSkipped) { finishIntro(h); return; }
-  for (let i = 0; i < 3; i++) { hv.rig.anim.mode = 'drink'; await h.cineDelay(300); hv.rig.anim.mode = 'sit'; await h.cineDelay(240); }
+  // Greg takes a long, theatrical sip: a single 3-second keyframed animation
+  // (raise the mug → sip with head tilted back → lower it back to the table).
+  // The clip drives the arm/head rotations; updateRig keeps the sitting hip-sink.
+  hv.rig.anim.t = 0;
+  hv.rig.anim.mode = 'drink_anim';
+  await h.cineDelay(3000);
+  hv.rig.anim.mode = 'sit';
 
   // == BEAT 2: Greg holds court ==
   h.iso.desiredYaw = Math.PI * 0.16; h.iso.desiredPitch = 0.36; h.iso.desiredDist = 3.6;

@@ -8,6 +8,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { orcModel } from './voxelModels.mjs';
 import type { CharacterScheme, WeaponKind } from './types';
+import { playClipOnRig } from '../animationEditor/AnimationRuntime';
+import { gregDrinkClip } from '../animationData/gregDrinkClip';
 
 // Soft-body / ragdoll collapse state, created the first frame a rig dies.
 // Every joint is a critically-under-damped spring that swings toward a
@@ -26,7 +28,7 @@ export interface Rig {
   group: THREE.Group;
   parts: Record<string, THREE.Object3D>;
   anim: {
-    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'crack' | 'cross' | 'getup' | 'sit_cross' | 'sleep' | 'point' | 'wipe';
+    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'drink_anim' | 'crack' | 'cross' | 'getup' | 'sit_cross' | 'sleep' | 'point' | 'wipe';
     t: number;
     lunge: number;
     flinch: number;
@@ -1450,6 +1452,60 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   let legLY = 0, legLZ = 0, legRY = 0, legRZ = 0;
   let kneeLY = 0, kneeLZ = 0, kneeRY = 0, kneeRZ = 0;
   let hipRotX = 0, hipRotY = 0, hipRotZ = 0;               // hip: rotates both legs together relative to torso
+
+  // ── drink_anim: Greg's keyframed drinking animation (raise → sip → lower) ──
+  // playClipOnRig writes all joint rotations directly from the clip; we set up
+  // the sitting hip-sink (DROP) and apply the position cascading that depends
+  // on it, then return early (skipping the pose-preset chain + rotation
+  // application, which would overwrite the clip's rotations).
+  if (a.mode === 'drink_anim') {
+    DROP = 0.20;
+    legScaleY = Math.max(0.5, 1 - DROP / HIP);
+    hipY = HIP - 0.22;
+    playClipOnRig(rig, gregDrinkClip, a.t);
+
+    rig.group.rotation.x = 0;
+    const hierD = !!rig.group.userData.hierarchyBuilt;
+    const bob = idle * 0.02;
+    a.bob = bob;
+    const bb = bob * 1.2;
+    const hy = a.headYOffset ?? 0;
+
+    // hip pivot sinks with DROP (legs ride it on hierarchical rigs)
+    if (p.hip && p.hip.userData.baseY !== undefined) p.hip.position.y = p.hip.userData.baseY - DROP;
+    if (!hasKnee) { p.legL.scale.y = legScaleY; p.legR.scale.y = legScaleY; }
+    if (!hierD) { p.legL.position.y = hipY; p.legR.position.y = hipY; }
+
+    // torso pivot sinks with DROP; breathing scale
+    if (hierD && p.torso.userData.baseY !== undefined) p.torso.position.y = p.torso.userData.baseY + bob - DROP;
+    else p.torso.position.y = (P?.torso ?? 0.78) + bob - DROP;
+    p.torso.scale.y = 1 + idle * 0.02;
+
+    // head/hair/hood ride the torso on hierarchical rigs (positions only;
+    // rotations were set by playClipOnRig with flat→local conversion)
+    if (hierD) {
+      if (p.head.userData.baseY !== undefined) p.head.position.y = p.head.userData.baseY + hy;
+      if (p.hair && p.hair.userData.baseY !== undefined) p.hair.position.y = p.hair.userData.baseY + (a.hairYOffset ?? 0);
+    } else {
+      p.head.position.y = (P?.head ?? 1.28) + bb - DROP + hy;
+      p.armL.position.y = (P?.arm ?? 0.8) + bob - DROP;
+      p.armR.position.y = (P?.arm ?? 0.8) + bob - DROP;
+    }
+    // eyes are group children (not reparented), so keep their absolute Y in sync
+    const EO = P?.eye ?? 1.3;
+    if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP + hy; p.eyeR.position.y = EO + bb - DROP + hy; }
+
+    // weapon: keep a staff upright if present (Greg has none in the cutscene)
+    const weapon = p.weapon as unknown as THREE.Object3D | undefined;
+    if (weapon && (weapon as { userData?: { kind?: string } }).userData?.kind === 'staff') weapon.rotation.x = 0;
+
+    if (a.lunge > 0) a.lunge = Math.max(0, a.lunge - dt * 3.2);
+    if (a.flinch > 0) {
+      a.flinch = Math.max(0, a.flinch - dt * 4);
+      rig.group.rotation.x = -Math.sin(a.flinch * Math.PI) * 0.25;
+    }
+    return;
+  }
 
   // ── pose presets ──
     // Zero all pose-specific variables so unset ones don't keep stale defaults
