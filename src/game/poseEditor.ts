@@ -26,6 +26,7 @@ export type PoseJoints = Record<string, JointEuler>;
 
 export const JOINT_GROUPS: { label: string; joints: string[] }[] = [
   { label: 'Body', joints: ['torso', 'head'] },
+  { label: 'Hip', joints: ['hip'] },
   { label: 'Left arm',  joints: ['armL', 'foreL', 'wristL', 'handL'] },
   { label: 'Right arm', joints: ['armR', 'foreR', 'wristR', 'handR'] },
   { label: 'Left leg',  joints: ['legL', 'shinL'] },
@@ -60,7 +61,7 @@ export const POSE_PRESETS: { name: string; label: string; joints: PoseJoints }[]
   },
   {
     name: 'sleep', label: 'sleep — lying on ground',
-    joints: { ...blankPose(), torso: j(-1.442), head: j(-1.274), armL: j(-1.614, 0, -0.042), armR: j(1.586, 0, -0.102), foreL: j(-0.242, 0, 0.328), foreR: j(0.428, 0, -0.452), legL: j(-1.732), legR: j(-1.662), shinL: j(0.648), shinR: j(0.308) },
+    joints: { ...blankPose(), torso: j(-1.442, 1.188, 0), head: j(-1.274, 1.338, 0), hip: j(0.178, 0.048, -1.642), armL: j(-1.614, 0.278, -0.042), armR: j(1.586, 0, -0.102), foreL: j(-0.242, 0, 0.328), foreR: j(0.428, 0, -0.452), legL: j(-1.732, -0.562, 0), legR: j(-1.662, 0, 0), shinL: j(1.278, -0.172, 0), shinR: j(0.308, 0, 0) },
   },
   {
     name: 'point', label: 'point — pointing with right arm',
@@ -71,7 +72,7 @@ export const POSE_PRESETS: { name: string; label: string; joints: PoseJoints }[]
 export function blankPose(): PoseJoints {
   const z = () => ({ x: 0, y: 0, z: 0 });
   return {
-    torso: z(), head: z(),
+    torso: z(), head: z(), hip: z(),
     armL: z(), armR: z(), foreL: z(), foreR: z(),
     legL: z(), legR: z(), shinL: z(), shinR: z(),
     handL: z(), handR: z(), wristL: z(), wristR: z(),
@@ -87,19 +88,22 @@ function j(x = 0, y = 0, z = 0): JointEuler { return { x, y, z }; }
  */
 export function applyPose(rig: Rig, joints: PoseJoints): void {
   const P = rig.parts;
-  // apply torso first so its rotation is available for head/hair conversion
+  // apply torso first so its rotation is available for head/hair/arm conversion
   if (joints.torso && P.torso) {
     P.torso.rotation.set(joints.torso.x, joints.torso.y, joints.torso.z);
   }
   const tx = P.torso ? P.torso.rotation.x : 0;
+  const ty = P.torso ? P.torso.rotation.y : 0;
+  const tz = P.torso ? P.torso.rotation.z : 0;
   for (const name of Object.keys(joints)) {
     if (name === 'torso') continue;
     const obj = P[name];
     if (!obj) continue;
     const j = joints[name];
-    // head/hair are children of torso: convert flat → local
+    // head/hair/hood/arms are children of torso: convert flat (world) → local
+    // by subtracting the torso's rotation on each axis.
     const isTorsoChild = name === 'head' || name === 'hair' || name === 'hood' || name === 'hoodTip' || name === 'armL' || name === 'armR';
-    obj.rotation.set(isTorsoChild ? j.x - tx : j.x, j.y, j.z);
+    obj.rotation.set(isTorsoChild ? j.x - tx : j.x, isTorsoChild ? j.y - ty : j.y, isTorsoChild ? j.z - tz : j.z);
   }
 }
 
@@ -219,24 +223,36 @@ export function wrapPoseablePartJoints(rig: Rig): void {
   group.updateMatrixWorld(true);
 }
 
-/** emit the paste-ready `else if (a.mode === '<name>') { ... }` block for updateRig */
+/** emit the paste-ready `else if (a.mode === '<name>') { ... }` block for updateRig.
+ *  Outputs ALL x/y/z axes for every joint so the snippet is a complete
+ *  representation of the pose (no silent zero-skipping). */
 export function poseSnippet(name: string, joints: PoseJoints): string {
   const lines: string[] = [];
   lines.push(`} else if (a.mode === '${name}') {                         // ${name} pose`);
-  const emit = (varName: string, jx?: JointEuler, axis: 'x' | 'y' | 'z' = 'x') => {
+  const emit3 = (varX: string, varY: string, varZ: string, jx?: JointEuler) => {
     if (!jx) return;
-    const v = axis === 'x' ? jx.x : axis === 'y' ? jx.y : jx.z;
-    if (v === 0) return;
-    lines.push(`    ${varName} = ${fmt(v)};`);
+    lines.push(`    ${varX} = ${fmt(jx.x)}; ${varY} = ${fmt(jx.y)}; ${varZ} = ${fmt(jx.z)};`);
   };
-  emit('torsoX', joints.torso, 'x'); emit('headX', joints.head, 'x');
-  emit('armLX', joints.armL, 'x'); emit('armLZ', joints.armL, 'z');
-  emit('armRX', joints.armR, 'x'); emit('armRZ', joints.armR, 'z');
-  emit('elbowL', joints.foreL, 'x'); emit('elbowLZ', joints.foreL, 'z');
-  emit('elbowR', joints.foreR, 'x'); emit('elbowRZ', joints.foreR, 'z');
-  emit('wristL', joints.wristL, 'x'); emit('wristR', joints.wristR, 'x');
-  emit('legLX', joints.legL, 'x'); emit('legRX', joints.legR, 'x');
-  emit('kneeL', joints.shinL, 'x'); emit('kneeR', joints.shinR, 'x');
+  // torso + head (full 3-axis)
+  emit3('torsoX', 'torsoY', 'torsoZ', joints.torso);
+  emit3('headX', 'headY', 'headZ', joints.head);
+  // hip (full 3-axis)
+  emit3('hipRotX', 'hipRotY', 'hipRotZ', joints.hip);
+  // arms (full 3-axis)
+  emit3('armLX', 'armLY', 'armLZ', joints.armL);
+  emit3('armRX', 'armRY', 'armRZ', joints.armR);
+  // elbows (full 3-axis)
+  emit3('elbowL', 'elbowLY', 'elbowLZ', joints.foreL);
+  emit3('elbowR', 'elbowRY', 'elbowRZ', joints.foreR);
+  // wrists (full 3-axis)
+  emit3('wristL', 'wristLY', 'wristLZ', joints.wristL);
+  emit3('wristR', 'wristRY', 'wristRZ', joints.wristR);
+  // legs (full 3-axis)
+  emit3('legLX', 'legLY', 'legLZ', joints.legL);
+  emit3('legRX', 'legRY', 'legRZ', joints.legR);
+  // knees (full 3-axis)
+  emit3('kneeL', 'kneeLY', 'kneeLZ', joints.shinL);
+  emit3('kneeR', 'kneeRY', 'kneeRZ', joints.shinR);
   lines.push('  }');
   return lines.join('\n');
 }

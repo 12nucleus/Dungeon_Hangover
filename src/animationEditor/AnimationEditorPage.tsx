@@ -10,6 +10,7 @@ import {
   projectToJSON, projectFromJSON, copyToClipboard,
   newClip,
 } from './animationUtils';
+import { GAME_PRESETS } from './gamePresets';
 
 export function AnimationEditorPage() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -30,6 +31,8 @@ export function AnimationEditorPage() {
   const [grabbed, setGrabbed] = useState<string | null>(null);
   const [copied, setCopied] = useState('');
   const [jsonLoaded, setJsonLoaded] = useState('');
+  const [mugOn, setMugOn] = useState(false);
+  const [poseMenuOpen, setPoseMenuOpen] = useState(false);
 
   const activeClip = project.clips[activeClipIdx] ?? null;
 
@@ -40,12 +43,13 @@ export function AnimationEditorPage() {
     sceneRef.current = s;
     const preset = MODEL_PRESETS.find((m) => m.id === project.modelType) ?? MODEL_PRESETS[0];
     s.buildCharacter(preset.scheme, preset.weapon);
+    if (mugOn) s.setMugEnabled(true);
     if (activeClip) s.setClip(activeClip);
     s.onTick(() => {
       setPlayTime(s.playTime);
       if (s.isPlaying) setJointValues(s.jointValues);
     });
-  }, [project.modelType, activeClip]);
+  }, [project.modelType, activeClip, mugOn]);
 
   useEffect(() => {
     buildScene();
@@ -178,6 +182,50 @@ export function AnimationEditorPage() {
       modelConfig: preset.scheme,
       weapon: preset.weapon,
     }));
+  }, []);
+
+  const handleToggleMug = useCallback(() => {
+    setMugOn((prev) => {
+      const next = !prev;
+      if (sceneRef.current) sceneRef.current.setMugEnabled(next);
+      return next;
+    });
+  }, []);
+
+  // Load a game pose (sit / drink / idle / ...) as a new clip so the user can
+  // edit it as a starting point. The pose is a single keyframe at t=0.
+  const handleLoadGamePose = useCallback((preset: AnimClip) => {
+    setPoseMenuOpen(false);
+    // Build the clip up-front so we can snap the rig to it immediately.
+    const clip: AnimClip = {
+      name: preset.name,
+      duration: preset.duration,
+      loop: preset.loop,
+      keyframes: preset.keyframes.map((k) => ({ time: k.time, joints: clonePose(k.joints) })),
+    };
+    let targetIdx = -1;
+    setProject((prev) => {
+      const existingIdx = prev.clips.findIndex((c) => c.name === preset.name);
+      if (existingIdx >= 0) {
+        targetIdx = existingIdx;
+        return { ...prev, clips: prev.clips.map((c, i) => i === existingIdx ? clip : c) };
+      }
+      targetIdx = prev.clips.length;
+      return { ...prev, clips: [...prev.clips, clip] };
+    });
+    // Select the clip and snap the rig to its first keyframe (after state flush).
+    setTimeout(() => {
+      if (targetIdx < 0) return;
+      setActiveClipIdx(targetIdx);
+      setSelectedKfIdx(0);
+      setIsPlaying(false);
+      setPlayTime(0);
+      if (sceneRef.current) {
+        sceneRef.current.stop();
+        sceneRef.current.applyPose(clip.keyframes[0].joints);
+        setJointValues(clonePose(clip.keyframes[0].joints));
+      }
+    }, 0);
   }, []);
 
   const handleExportJSON = useCallback(() => {
@@ -353,6 +401,46 @@ export function AnimationEditorPage() {
           }}>
           {copied === 'snippet' ? 'OK Copied' : 'Copy Pose'}
         </button>
+        <button onClick={handleToggleMug}
+          style={{
+            padding: '4px 10px', background: mugOn ? '#8a5a2e' : '#3a2a1a', color: '#ddd',
+            border: '1px solid rgba(255,255,255,0.15)', borderRadius: 5,
+            cursor: 'pointer', fontSize: 11, fontWeight: 600,
+          }}>
+          {mugOn ? 'Mug ON' : 'Mug'}
+        </button>
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setPoseMenuOpen((v) => !v)}
+            style={{
+              padding: '4px 10px', background: '#2a4a3a', color: '#ddd',
+              border: '1px solid rgba(255,255,255,0.15)', borderRadius: 5,
+              cursor: 'pointer', fontSize: 11, fontWeight: 600,
+            }}>
+            Game Poses ▾
+          </button>
+          {poseMenuOpen && (
+            <div style={{
+              position: 'absolute', top: '100%', right: 0, marginTop: 2,
+              background: '#1a1612', border: '1px solid #553', borderRadius: 4,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.6)', zIndex: 100,
+              minWidth: 120, padding: 2,
+            }}>
+              {GAME_PRESETS.map((p) => (
+                <button key={p.name} onClick={() => handleLoadGamePose(p)}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '5px 10px', background: 'transparent', color: '#e8e2d6',
+                    border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 11,
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#2a2418'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}>
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>

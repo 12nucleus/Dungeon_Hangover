@@ -26,13 +26,16 @@ export interface Rig {
   group: THREE.Group;
   parts: Record<string, THREE.Object3D>;
   anim: {
-    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'crack' | 'cross' | 'getup' | 'sit_cross' | 'sleep' | 'point';
+    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'crack' | 'cross' | 'getup' | 'sit_cross' | 'sleep' | 'point' | 'wipe';
     t: number;
     lunge: number;
     flinch: number;
     lungeDir: THREE.Vector3;
     bob: number;
     crouch: number;
+    /** random per-rig phase offset (radians) so idle breathing / arm sway
+     *  isn't in lockstep across all NPCs. Set once at build time. */
+    phase?: number;
     /** persistent vertical offset (world units) added to the whole head
      *  assembly every frame — used by the editor to nudge a rig's head
      *  without fighting the per-frame pose solver. 1 tavern voxel = 0.11. */
@@ -282,6 +285,21 @@ export function buildHierarchy(rig: Rig): void {
   fixLimbJoints('legL', 'shinL');
   fixLimbJoints('legR', 'shinR');
 
+  // ── Step A4: hip pivot — wraps both legs so they can rotate together ──
+  // Placed at the hip joint (grid-Y 34). Both legL and legR pivots are
+  // reparented under it. Rotating this group swings both legs as a unit
+  // (useful for sitting / lying poses where the whole lower body tilts).
+  group.updateMatrixWorld(true);
+  {
+    const hipPivot = new THREE.Group();
+    hipPivot.position.set(0, HIP_GY * C, 0);
+    hipPivot.userData.baseY = HIP_GY * C;
+    group.add(hipPivot);
+    if (P.legL) hipPivot.attach(P.legL);
+    if (P.legR) hipPivot.attach(P.legR);
+    P.hip = hipPivot;
+  }
+
   // ── Step B: reparent head/hair/arms under torso so they follow torso tilt ──
   group.updateMatrixWorld(true);
   const rep = (childName: string, parentName: string) => {
@@ -301,7 +319,7 @@ export function buildHierarchy(rig: Rig): void {
   // changed (attach preserves world transform). Re-capture the true local Y
   // so updateRig can reconstruct positions correctly when applying nudges.
   group.updateMatrixWorld(true);
-  for (const n of ['torso', 'head', 'hair', 'hood', 'hoodTip', 'armL', 'armR']) {
+  for (const n of ['torso', 'head', 'hair', 'hood', 'hoodTip', 'armL', 'armR', 'hip']) {
     const o = P[n];
     if (o) o.userData.baseY = o.position.y;
   }
@@ -334,7 +352,8 @@ function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 
       v.add(0, 4, 2, METAL); v.add(0, 4, -2, METAL);
       break;
     case 'staff':
-      v.fill(0, -5, 0, 0, 27, 0, 0x6b4a2e);
+      // shaft extends from y=-34 (touches the ground) to y=27 (top crossbar)
+      v.fill(0, -34, 0, 0, 27, 0, 0x6b4a2e);
       v.fill(-1, 27, 0, 1, 27, 0, 0x5f3e22);
       break;
     case 'bow':
@@ -349,10 +368,18 @@ function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 
   }
   g.add(v.mesh());
     if (kind === 'staff') {
-      const orb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), orbMat);
-      orb.position.set(0, 28 * C, 0);
+      // faceted gem: octahedron (8 faces) instead of a plain cube
+      const gemSize = 0.11;
+      const orb = new THREE.Mesh(new THREE.OctahedronGeometry(gemSize, 0), orbMat);
+      orb.position.set(0, 28.5 * C, 0);
       orb.castShadow = true;
       g.add(orb);
+      // small accent facets: a second smaller octahedron rotated 45° for extra sparkle
+      const gem2 = new THREE.Mesh(new THREE.OctahedronGeometry(gemSize * 0.6, 0), orbMat);
+      gem2.position.set(0, 28.5 * C, 0);
+      gem2.rotation.y = Math.PI / 4;
+      gem2.castShadow = true;
+      g.add(gem2);
     }
   if (kind === 'torch') {
     const flameMat = new THREE.MeshLambertMaterial({ color: 0xffb545, emissive: 0xff7a1f, emissiveIntensity: 0.8 });
@@ -1024,8 +1051,14 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
   for (const s of [-1, 1] as const) {
     cur = s < 0 ? buckets.legL : buckets.legR;
     const cx = s * LEG_X;
-    if (feat.robe || feat.dress) {
-      colf(cx, 0, 0, 34, 3, 3, cloth);                 // hidden inside the robe/dress
+    if (feat.robe) {
+      colf(cx, 0, 0, 34, 3, 3, cloth);                 // hidden inside the robe
+    } else if (feat.dress) {
+      // dress: paint the legs with the dress (cloth) color so when she walks
+      // the swinging legs read as the robe/dress hem moving.
+      box(cx - 3, 0, -4, cx + 3, 2, 6, 0x3a2a1a);      // boot
+      colf(cx, 0.5, 2, 34, 3.2, 3.4, cloth);            // dress-coloured leg
+      for (let y = 4; y <= 33; y += 3) put(cx, y, 4, clothD);
     } else {
       box(cx - 3, 0, -4, cx + 3, 2, 6, 0x3a2a1a);      // boot
       colf(cx, 0.5, 2, 34, 3.2, 3.4, pant);            // trouser leg
@@ -1387,7 +1420,11 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   if (a.mode !== 'getup') rig.group.rotation.x = 0;
   const walking = a.mode === 'walk';
   const w = walking ? Math.sin(a.t * 11) : 0;
-  const idle = Math.sin(a.t * 2.2);
+  // idle breathing: half the original speed (1.1 vs 2.2) with a per-rig random
+  // phase so NPCs don't bop in lockstep. Lazily initialised on first frame.
+  if (a.phase === undefined) a.phase = Math.random() * Math.PI * 2;
+  const ph = a.phase;
+  const idle = Math.sin((a.t + ph) * 1.1);
 
   // crouch pose: hips sink while feet stay planted.
   const cr = a.crouch ?? 0;
@@ -1406,6 +1443,13 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   let armLZ = 0, armRZ = 0;                                     // upper-arm lateral rotation (swings arm across the body)
   let elbowLZ = 0, elbowRZ = 0;                                 // elbow lateral (rotates the forearm across the chest)
   let wristL = 0, wristR = 0;                                   // wrist rotation (crossed-arms pose)
+  // full 3-axis support (populated by pose presets / pose editor snippets)
+  let torsoY = 0, torsoZ = 0, headY = 0, headZ = 0;
+  let armLY = 0, armRY = 0, elbowLY = 0, elbowRY = 0;
+  let wristLY = 0, wristLZ = 0, wristRY = 0, wristRZ = 0;
+  let legLY = 0, legLZ = 0, legRY = 0, legRZ = 0;
+  let kneeLY = 0, kneeLZ = 0, kneeRY = 0, kneeRZ = 0;
+  let hipRotX = 0, hipRotY = 0, hipRotZ = 0;               // hip: rotates both legs together relative to torso
 
   // ── pose presets ──
     // Zero all pose-specific variables so unset ones don't keep stale defaults
@@ -1449,15 +1493,41 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
       legLX = -1.532; legRX = -1.442; kneeL = 1.258; kneeR = 0.648;
       hipY = HIP - 0.22;
     } else if (a.mode === 'sleep') {                       // sleeping / lying on the ground
-      DROP += 0.28; legScaleY = Math.max(0.5, 1 - DROP / HIP);
-      torsoX = -1.442; headX = -1.274;
-      armLX = -1.614; armLZ = -0.042; armRX = 1.586; armRZ = -0.102;
-      elbowL = -0.242; elbowLZ = 0.328; elbowR = 0.428; elbowRZ = -0.452;
-      legLX = -1.732; legRX = -1.662; kneeL = 0.648; kneeR = 0.308;
-      hipY = HIP - 0.30;
+      DROP += 0.10; legScaleY = Math.max(0.5, 1 - DROP / HIP);
+      torsoX = -1.442; torsoY = 1.188; torsoZ = 0;
+      headX = -1.274; headY = 1.338; headZ = 0;
+      hipRotX = 0.178; hipRotY = 0.048; hipRotZ = -1.642;
+      armLX = -1.614; armLY = 0.278; armLZ = -0.042;
+      armRX = 1.586; armRY = 0; armRZ = -0.102;
+      elbowL = -0.242; elbowLY = 0; elbowLZ = 0.328;
+      elbowR = 0.428; elbowRY = 0; elbowRZ = -0.452;
+      wristL = 0; wristLY = 0; wristLZ = 0;
+      wristR = 0; wristRY = 0; wristRZ = 0;
+      legLX = -1.732; legLY = -0.562; legLZ = 0;
+      legRX = -1.662; legRY = 0; legRZ = 0;
+      kneeL = 1.278; kneeLY = -0.172; kneeLZ = 0;
+      kneeR = 0.308; kneeRY = 0; kneeRZ = 0;
+      hipY = HIP - 0.10;
     } else if (a.mode === 'point') {                       // pointing with right arm
       armRX = -1.422; armRZ = -0.212;
       elbowL = -0.732; elbowLZ = -0.062;
+    } else if (a.mode === 'wipe') {                        // barkeep wiping the counter in circles
+      // deep lean forward & down so the hand reaches the counter surface
+      torsoX = 0.55; headX = -0.35;
+      // circular wipe driven by the LEFT arm (the side facing the counter,
+      // since the barkeep is rotated PI/2). The shoulder rotates in X (pitch)
+      // and Z (yaw) to trace the wiping circle; the elbow bends to plant
+      // the hand (with rag) on the counter surface.
+      const wipeT = a.t * 2.5;                             // wipe speed (rad/s)
+      const wipeR = 0.16;                                  // circle radius (rad)
+      armLX = -1.40 ;//+ Math.sin(wipeT) * wipeR;             // shoulder pitch: forward/down circle
+      armLZ = -0.0 + Math.cos(wipeT) * wipeR;   
+      armLY = 0.55 + Math.sin(wipeT) * wipeR;           // shoulder yaw: left/right circle
+      elbowL = 0.25 + Math.cos(wipeT) * 0.08;             // elbow bent more to drop forearm/hand onto counter
+      elbowLZ = 0.95;
+      wristL = 0.5; wristLZ = 0;                             // wrist stays loose (rag drags)
+      // right arm rests
+      armRX = 0.08; armRZ = -0.1; elbowR = -0.3;
     }
   // idle: arms hang slightly forward (~10°) rather than straight down
   if (a.mode === 'idle') { armLX -= 0.1745; armRX -= 0.1745; }
@@ -1471,38 +1541,54 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
 
   rig.group.rotation.x = 0;
 
+  // hierarchical rigs have a unified skeleton (buildHierarchy); flat rigs
+  // (chibi/bat/skeleton) keep absolute rotations about the rig origin.
+  const hier = !!rig.group.userData.hierarchyBuilt;
+
+  // ── hip: rotate both legs together relative to the torso ──
+  if (p.hip) {
+    p.hip.rotation.set(hipRotX, hipRotY, hipRotZ);
+    // the hip pivot sinks with DROP (sitting / sleeping)
+    if (p.hip.userData.baseY !== undefined) p.hip.position.y = p.hip.userData.baseY - DROP;
+  }
+
   // ── legs: swing the thigh, then bend the knee (relative) ──
   p.legL.rotation.x = legLX; p.legR.rotation.x = legRX;
-  p.legL.rotation.z = 0; p.legR.rotation.z = 0;
+  p.legL.rotation.y = legLY; p.legR.rotation.y = legRY;
+  p.legL.rotation.z = legLZ; p.legR.rotation.z = legRZ;
   if (hasKnee) {
     // walking knees: bend the leg that is swinging forward (lift the foot)
     if (walking) { kneeL = 0.25 + Math.max(0, -w) * 0.7; kneeR = 0.25 + Math.max(0, w) * 0.7; }
     if (a.crouch > 0) { kneeL = kneeR = 0.2 + a.crouch * 1.3; }   // sink by bending, not scaling
     p.shinL.rotation.x = kneeL; p.shinR.rotation.x = kneeR;
-    p.legL.position.y = hipY; p.legR.position.y = hipY;
+    p.shinL.rotation.y = kneeLY; p.shinR.rotation.y = kneeRY;
+    p.shinL.rotation.z = kneeLZ; p.shinR.rotation.z = kneeRZ;
+    // On hierarchical rigs the legs ride the hip pivot (set above); only set
+    // absolute leg positions on flat rigs.
+    if (!hier) { p.legL.position.y = hipY; p.legR.position.y = hipY; }
   } else {
     p.legL.scale.y = legScaleY; p.legR.scale.y = legScaleY;
-    p.legL.position.y = hipY + Math.max(0, w) * 0.06;
-    p.legR.position.y = hipY + Math.max(0, -w) * 0.06;
+    if (!hier) { p.legL.position.y = hipY + Math.max(0, w) * 0.06; p.legR.position.y = hipY + Math.max(0, -w) * 0.06; }
   }
 
   // ── arms: swing the upper arm, then bend the elbow (relative) ──
   // On hierarchical rigs the arm pivots are children of the torso, so their
   // flat (world-space) target must be converted to local by subtracting the
   // torso's pitch. Flat rigs (chibi/bat/skeleton) keep the absolute value.
-  const hier = !!rig.group.userData.hierarchyBuilt;
   const armLocal = hier ? (v: number) => v - torsoX : (v: number) => v;
   p.armL.rotation.x = armLocal(armLX); p.armR.rotation.x = armLocal(armRX);
+  p.armL.rotation.y = armLY; p.armR.rotation.y = armRY;
   p.armL.rotation.z = armLZ; p.armR.rotation.z = armRZ;
   if (hasKnee && p.foreL) {
     p.foreL.rotation.x = elbowL + (a.forearmLOffset ?? 0);
     p.foreR.rotation.x = elbowR + (a.forearmROffset ?? 0);
+    p.foreL.rotation.y = elbowLY; p.foreR.rotation.y = elbowRY;
     p.foreL.rotation.z = elbowLZ; p.foreR.rotation.z = elbowRZ;
     // wizard: keep the held staff vertical by counter-rotating the wrist
     const wizL = a.forearmLOffset ? -(armLX + elbowL + a.forearmLOffset) : 0;
     const wizR = a.forearmROffset ? -(armRX + elbowR + a.forearmROffset) : 0;
-    if (p.wristL) p.wristL.rotation.x = wristL + wizL;
-    if (p.wristR) p.wristR.rotation.x = wristR + wizR;
+    if (p.wristL) { p.wristL.rotation.x = wristL + wizL; p.wristL.rotation.y = wristLY; p.wristL.rotation.z = wristLZ; }
+    if (p.wristR) { p.wristR.rotation.x = wristR + wizR; p.wristR.rotation.y = wristRY; p.wristR.rotation.z = wristRZ; }
     if (p.handL) p.handL.rotation.x = 0; if (p.handR) p.handR.rotation.x = 0;   // hands ride the wrist
   } else {
     p.handL.rotation.x = armLX; p.handR.rotation.x = armRX;
@@ -1561,27 +1647,32 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   }
   p.torso.scale.y = 1 + idle * 0.02;
   p.torso.rotation.x = torsoX;                            // hunch / lean
+  p.torso.rotation.y = torsoY;                            // torso twist
+  p.torso.rotation.z = torsoZ;                            // torso side-lean
   if (hier) {
     // head/hair/hood follow the torso; only apply the persistent editor nudges
     // and the flat→local rotation conversion. Positions stay at their
     // buildHierarchy local Y (stored in userData.baseY) plus any world-space
     // nudge (headYOffset / hairYOffset).
     p.head.rotation.x = headX - torsoX;                   // keep eyes forward
+    p.head.rotation.y = headY - torsoY;
+    p.head.rotation.z = headZ - torsoZ;
     if (p.head.userData.baseY !== undefined) p.head.position.y = p.head.userData.baseY + hy;
     if (p.hair) {
-      p.hair.rotation.x = 0;
+      p.hair.rotation.set(0, 0, 0);
       if (p.hair.userData.baseY !== undefined) p.hair.position.y = p.hair.userData.baseY + (a.hairYOffset ?? 0);
     }
-    if (p.hood) { p.hood.rotation.x = 0; p.hoodTip!.rotation.x = 0; }
+    if (p.hood) { p.hood.rotation.set(0, 0, 0); p.hoodTip!.rotation.set(0, 0, 0); }
     // eyes are NOT reparented (stay group children), so keep their absolute
     // positioning in sync with the head's world Y.
     if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP + hy; p.eyeR.position.y = EO + bb - DROP + hy; }
   } else {
     p.head.position.y = HO + bb - DROP + hy;
     p.head.rotation.x = headX;                            // keep eyes forward
+    p.head.rotation.y = headY; p.head.rotation.z = headZ;
     if (p.eyeL) { p.eyeL.position.y = EO + bb - DROP + hy; p.eyeR.position.y = EO + bb - DROP + hy; }
-    if (p.hood) { p.hood.position.y = HUD + bb - DROP + hy; p.hoodTip!.position.y = HT + bb - DROP + hy; p.hood.rotation.x = headX; p.hoodTip!.rotation.x = headX; }
-    if (p.hair) { p.hair.position.y = HRO + bb - DROP + hy + (a.hairYOffset ?? 0); p.hair.rotation.x = headX; }
+    if (p.hood) { p.hood.position.y = HUD + bb - DROP + hy; p.hoodTip!.position.y = HT + bb - DROP + hy; p.hood.rotation.set(headX, headY, headZ); p.hoodTip!.rotation.set(headX, headY, headZ); }
+    if (p.hair) { p.hair.position.y = HRO + bb - DROP + hy + (a.hairYOffset ?? 0); p.hair.rotation.set(headX, headY, headZ); }
     p.armL.position.y = AR + bob - DROP; p.armR.position.y = AR + bob - DROP;
     if (!hasKnee) { p.handL.position.y = HA + bob - DROP; p.handR.position.y = HA + bob - DROP; }
     if (weapon && !hasKnee) weapon.position.y = WO + bob - DROP;

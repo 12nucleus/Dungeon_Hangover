@@ -1,7 +1,7 @@
 import type { CharacterScheme, WeaponKind } from '@/game/types';
 
 export const JOINT_NAMES = [
-  'torso', 'head',
+  'torso', 'head', 'hip',
   'armL', 'foreL', 'wristL', 'handL',
   'armR', 'foreR', 'wristR', 'handR',
   'legL', 'shinL', 'legR', 'shinR',
@@ -11,6 +11,7 @@ export type JointName = typeof JOINT_NAMES[number];
 
 export const JOINT_GROUPS: { label: string; joints: JointName[] }[] = [
   { label: 'Body', joints: ['torso', 'head'] },
+  { label: 'Hip', joints: ['hip'] },
   { label: 'Left arm', joints: ['armL', 'foreL', 'wristL', 'handL'] },
   { label: 'Right arm', joints: ['armR', 'foreR', 'wristR', 'handR'] },
   { label: 'Left leg', joints: ['legL', 'shinL'] },

@@ -1317,11 +1317,25 @@ box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 ..
       if (key) this.tavernActors[key] = rig;
     };
 
-    // barkeep behind the counter, facing out into the room
+    // barkeep behind the counter, wiping it in circles with a rag
     addNpc(buildCharacter({ skin: 0xc98a5a, cloth: 0x2a2230, accent: 0x6b3a1a, hair: 0x20140c, hood: false, kind: 'barkeep' }),
-      -4.1, -1.4, Math.PI / 2, 'idle', 'barkeep');
+      -4.1, -1.4, Math.PI / 2, 'wipe', 'barkeep');
     // nudge the barkeep's head up 1 voxel (0.11 world units) — see headYOffset in characters.ts
-    if (this.tavernActors['barkeep']) this.tavernActors['barkeep'].anim.headYOffset = 0.11;
+    if (this.tavernActors['barkeep']) {
+      this.tavernActors['barkeep'].anim.headYOffset = 0.11;
+      // add a rag (small white cloth) to the barkeep's left hand (the side
+      // facing the counter, since the barkeep is rotated PI/2)
+      const handL = this.tavernActors['barkeep'].parts.handL as THREE.Mesh | undefined;
+      if (handL) {
+        const rag = new THREE.Mesh(
+          new THREE.BoxGeometry(0.12, 0.04, 0.12),
+          new THREE.MeshLambertMaterial({ color: 0xe8e0d0 })
+        );
+        rag.position.set(0, -0.02, 0.06);
+        rag.castShadow = true;
+        handL.add(rag);
+      }
+    }
     // barmaid mid-floor, ready to deliver the next round
     addNpc(buildCharacter({ skin: 0xd9a066, cloth: 0xb02a2a, accent: 0x8b7355, hair: 0x8b3a2a, hood: false, kind: 'barmaid' }),
       -2.2, 0.2, faceYaw(-2.2, 0.2), 'idle', 'barmaid');
@@ -1343,6 +1357,30 @@ box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 ..
     addNpc(buildCharacter({ skin: 0x9a7a55, cloth: 0x3a4a5a, accent: 0x2a2a2a, hair: 0x140f0f, hood: false, style: 'normal' }),
       -0.8, -2.35, 1.708, 'sleep', 'snoozer', -0.65);
     if (this.tavernActors['snoozer']) this.spawnDrunkStars(this.tavernActors['snoozer']);
+
+    // two beer bottles on the floor next to the snoozer (one upright, one tipped over)
+    {
+      const BOTTLE = 0x2a6a3a, BOTTLE_D = 0x1a4a2a;
+      // upright bottle (grid ~ next to snoozer at -0.8, -2.35 → grid -7, -21)
+      const upB = new THREE.Group();
+      const bodyU = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.06), new THREE.MeshLambertMaterial({ color: BOTTLE }));
+      bodyU.position.y = 0.11; bodyU.castShadow = true;
+      const neckU = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.06, 0.035), new THREE.MeshLambertMaterial({ color: BOTTLE_D }));
+      neckU.position.y = 0.25;
+      upB.add(bodyU, neckU);
+      upB.position.set(-0.55, 0, -2.15);
+      g.add(upB);
+      // tipped-over bottle (lying on its side)
+      const sideB = new THREE.Group();
+      const bodyS = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.06), new THREE.MeshLambertMaterial({ color: BOTTLE }));
+      bodyS.rotation.z = Math.PI / 2; bodyS.position.x = 0.11; bodyS.castShadow = true;
+      const neckS = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.06, 0.035), new THREE.MeshLambertMaterial({ color: BOTTLE_D }));
+      neckS.rotation.z = Math.PI / 2; neckS.position.x = 0.25;
+      sideB.add(bodyS, neckS);
+      sideB.position.set(-0.45, 0.06, -2.55);
+      sideB.rotation.y = 0.4;
+      g.add(sideB);
+    }
 
     // == LIGHTING - hearth (flickering), chandelier, sconces, soft fill ==
     const fireLight = new THREE.PointLight(0xffa040, 11, 11, 1.8); fireLight.position.set(2.6, 1.0, -3.4); g.add(fireLight);
@@ -1375,6 +1413,20 @@ box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 ..
       bouncer: new THREE.Vector3(3.4, 1.25, 3.2),
       barmaid: new THREE.Vector3(-2.2, 1.2, 0.2),
     };
+
+    // == EDITOR-ONLY: dummy "Greg" at his intro starting position ==
+    // In ?debug mode the real hero rig isn't placed (the intro director never
+    // runs), so we drop a stand-in at Greg's starting tile (0, 2) facing
+    // Math.PI — the exact addNpc line the intro should use — so the position
+    // is visible and tunable via the DebugPanel. Registered as the 'greg'
+    // tavern actor so its x/y/z/yaw show up in the actor list and the
+    // "Copy addNpc line" button emits a pasteable coordinate.
+    if (this.editorMode) {
+      addNpc(buildCharacter(
+        { skin: 0xf0d9b5, cloth: 0x4a4a2a, accent: 0x2a2a2a, hair: 0x3a2a1a, hood: false, style: 'normal' },
+      ), 0, 2, Math.PI, 'idle', 'greg');
+    }
+
     return g;
   }
 
@@ -2577,10 +2629,15 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
  // IsoCamera + tavernActors idle so the React DebugPanel can drive them
  // live and emit pasteable cutscene one-liners. Activated by `?debug`.
  private editorFocusTarget: THREE.Vector3 | null = null;
+ /** true while the cutscene/level editor is active (?debug). The tavern
+  *  builder uses this to drop a dummy "Greg" at his intro seat so the
+  *  starting position is visible & tunable without playing the intro. */
+ private editorMode = false;
  enterEditorMode() {
    void this.audio.init();
    this.applyAudioSettings();
    if (!this.cutsceneHost) return;
+   this.editorMode = true;
    // drop the title-exterior backdrop (if any) so we build a clean tavern
    if (this.titleExt) {
      this.scene.remove(this.titleExt);

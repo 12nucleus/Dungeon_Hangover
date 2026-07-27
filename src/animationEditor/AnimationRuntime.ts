@@ -84,68 +84,56 @@ function sampleClip(clip: AnimClip, time: number): Record<string, JointEuler> {
 export function playClipOnRig(rig: Rig, clip: AnimClip, t: number): void {
   const pose = sampleClip(clip, t);
   const p = rig.parts;
-
-  const torsoX  = pose.torso  ? pose.torso.x  : 0;
-  const headX   = pose.head   ? pose.head.x   : 0;
-  const armLX   = pose.armL   ? pose.armL.x   : 0;
-  const armLZ   = pose.armL   ? pose.armL.z   : 0;
-  const armRX   = pose.armR   ? pose.armR.x   : 0;
-  const armRZ   = pose.armR   ? pose.armR.z   : 0;
-  const foreLX  = pose.foreL  ? pose.foreL.x  : 0;
-  const foreLZ  = pose.foreL  ? pose.foreL.z  : 0;
-  const foreRX  = pose.foreR  ? pose.foreR.x  : 0;
-  const foreRZ  = pose.foreR  ? pose.foreR.z  : 0;
-  const wristLX = pose.wristL ? pose.wristL.x : 0;
-  const wristRX = pose.wristR ? pose.wristR.x : 0;
-  const legLX   = pose.legL   ? pose.legL.x   : 0;
-  const legRX   = pose.legR   ? pose.legR.x   : 0;
-  const shinLX  = pose.shinL  ? pose.shinL.x  : 0;
-  const shinRX  = pose.shinR  ? pose.shinR.x  : 0;
-
-  p.legL.rotation.x = legLX;
-  p.legR.rotation.x = legRX;
-  p.legL.rotation.z = 0;
-  p.legR.rotation.z = 0;
-
-  if (p.shinL) {
-    p.shinL.rotation.x = shinLX;
-    p.shinR.rotation.x = shinRX;
-  }
-
-  // Set the torso first so its pitch is available for the flat→local
-  // conversion that head/arms need on hierarchical rigs (head & arms are
-  // children of the torso after buildHierarchy).
-  p.torso.rotation.x = torsoX;
   const hier = !!rig.group.userData.hierarchyBuilt;
-  const armLXl = hier ? armLX - torsoX : armLX;
-  const armRXl = hier ? armRX - torsoX : armRX;
 
-  p.armL.rotation.x = armLXl;
-  p.armR.rotation.x = armRXl;
-  p.armL.rotation.z = armLZ;
-  p.armR.rotation.z = armRZ;
+  // helper: read a joint's xyz from the sampled pose (default 0)
+  const j = (name: string) => pose[name] ?? { x: 0, y: 0, z: 0 };
 
-  if (p.foreL) {
-    const fLO = rig.anim.forearmLOffset ?? 0;
-    const fRO = rig.anim.forearmROffset ?? 0;
-    p.foreL.rotation.x = foreLX + fLO;
-    p.foreR.rotation.x = foreRX + fRO;
-    p.foreL.rotation.z = foreLZ;
-    p.foreR.rotation.z = foreRZ;
+  // Set the torso first so its rotation is available for flat→local conversion
+  // of head/arms on hierarchical rigs.
+  const tj = j('torso');
+  if (p.torso) p.torso.rotation.set(tj.x, tj.y, tj.z);
 
-    const wizL = fLO ? -(armLX + foreLX + fLO) : 0;
-    const wizR = fRO ? -(armRX + foreRX + fRO) : 0;
-    if (p.wristL) p.wristL.rotation.x = wristLX + wizL;
-    if (p.wristR) p.wristR.rotation.x = wristRX + wizR;
-    if (p.handL) p.handL.rotation.x = 0;
-    if (p.handR) p.handR.rotation.x = 0;
-  } else {
-    if (p.handL) p.handL.rotation.x = armLXl;
-    if (p.handR) p.handR.rotation.x = armRXl;
-  }
+  // hip: rotates both legs together (child of group, no conversion needed)
+  const hj = j('hip');
+  if (p.hip) p.hip.rotation.set(hj.x, hj.y, hj.z);
 
-  p.head.rotation.x = hier ? headX - torsoX : headX;
-  if (p.hair) p.hair.rotation.x = hier ? 0 : headX;
-  if (p.hood) p.hood.rotation.x = hier ? 0 : headX;
-  if (p.hoodTip) p.hoodTip.rotation.x = hier ? 0 : headX;
+  // legs (full 3-axis)
+  const ll = j('legL'), lr = j('legR');
+  if (p.legL) p.legL.rotation.set(ll.x, ll.y, ll.z);
+  if (p.legR) p.legR.rotation.set(lr.x, lr.y, lr.z);
+
+  // shins / knees (full 3-axis)
+  const sl = j('shinL'), sr = j('shinR');
+  if (p.shinL) p.shinL.rotation.set(sl.x, sl.y, sl.z);
+  if (p.shinR) p.shinR.rotation.set(sr.x, sr.y, sr.z);
+
+  // arms (full 3-axis, flat→local on hierarchical rigs)
+  const al = j('armL'), ar = j('armR');
+  if (p.armL) p.armL.rotation.set(hier ? al.x - tj.x : al.x, hier ? al.y - tj.y : al.y, hier ? al.z - tj.z : al.z);
+  if (p.armR) p.armR.rotation.set(hier ? ar.x - tj.x : ar.x, hier ? ar.y - tj.y : ar.y, hier ? ar.z - tj.z : ar.z);
+
+  // forearms / elbows (full 3-axis)
+  const fl = j('foreL'), fr = j('foreR');
+  const fLO = rig.anim.forearmLOffset ?? 0;
+  const fRO = rig.anim.forearmROffset ?? 0;
+  if (p.foreL) p.foreL.rotation.set(fl.x + fLO, fl.y, fl.z);
+  if (p.foreR) p.foreR.rotation.set(fr.x + fRO, fr.y, fr.z);
+
+  // wrists (full 3-axis) + wizard staff counter-rotation
+  const wl = j('wristL'), wr = j('wristR');
+  const wizL = fLO ? -(al.x + fl.x + fLO) : 0;
+  const wizR = fRO ? -(ar.x + fr.x + fRO) : 0;
+  if (p.wristL) p.wristL.rotation.set(wl.x + wizL, wl.y, wl.z);
+  if (p.wristR) p.wristR.rotation.set(wr.x + wizR, wr.y, wr.z);
+  if (p.handL) p.handL.rotation.set(0, 0, 0);
+  if (p.handR) p.handR.rotation.set(0, 0, 0);
+
+  // head (full 3-axis, flat→local on hierarchical rigs)
+  const hd = j('head');
+  if (p.head) p.head.rotation.set(hier ? hd.x - tj.x : hd.x, hier ? hd.y - tj.y : hd.y, hier ? hd.z - tj.z : hd.z);
+  // hair/hood follow the head (local 0 on hierarchical rigs)
+  if (p.hair) p.hair.rotation.set(hier ? 0 : hd.x, hier ? 0 : hd.y, hier ? 0 : hd.z);
+  if (p.hood) p.hood.rotation.set(hier ? 0 : hd.x, hier ? 0 : hd.y, hier ? 0 : hd.z);
+  if (p.hoodTip) p.hoodTip.rotation.set(hier ? 0 : hd.x, hier ? 0 : hd.y, hier ? 0 : hd.z);
 }

@@ -30,6 +30,13 @@ export class AnimationScene {
   private _playing = false;
   private _speed = 1;
 
+  // ── mug prop: voxel tankard in the left hand, level-counter-rotated ──
+  private _mug: THREE.Group | null = null;
+  private _mugHand: THREE.Object3D | null = null;
+  private _mugEnabled = false;
+  private _tmpQ = new THREE.Quaternion();
+  private _tmpE = new THREE.Euler();
+
   constructor(host: HTMLDivElement) {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x14110d);
@@ -100,6 +107,14 @@ export class AnimationScene {
         }
       }
 
+      // Keep the tankard level by counter-rotating it against the hand's
+      // world pitch (hierarchy-agnostic, same trick as the intro cutscene).
+      if (this._mug && this._mugHand) {
+        this._mugHand.getWorldQuaternion(this._tmpQ);
+        this._tmpE.setFromQuaternion(this._tmpQ, 'XYZ');
+        this._mug.rotation.x = -this._tmpE.x;
+      }
+
       const orbit = 1.6 * dt, zoom = 4.0 * dt;
       if (this._keys.has('a')) { this._yaw += orbit; this._notifyChange(); }
       if (this._keys.has('d')) { this._yaw -= orbit; this._notifyChange(); }
@@ -130,6 +145,55 @@ export class AnimationScene {
     this.scene.add(rig.group);
     this.rig = rig;
     this._applyKeyframePose();
+    // Re-attach the mug to the new rig if it was enabled.
+    if (this._mugEnabled) this._attachMug();
+  }
+
+  /** Toggle the voxel tankard in the left hand (matches the intro cutscene mug). */
+  setMugEnabled(enabled: boolean): void {
+    this._mugEnabled = enabled;
+    if (enabled) this._attachMug();
+    else this._detachMug();
+  }
+
+  get mugEnabled(): boolean { return this._mugEnabled; }
+
+  private _attachMug(): void {
+    this._detachMug();
+    if (!this.rig) return;
+    const hand = this.rig.parts.handL ?? this.rig.parts.armL;
+    if (!hand) return;
+    // Build the voxel tankard: body + foam cap, matching cutscenes.ts.
+    const mug = new THREE.Group();
+    const mugBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.20, 0.24, 0.20),
+      new THREE.MeshLambertMaterial({ color: 0x8a5a2e }),
+    );
+    const mugFoam = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 0.05, 0.22),
+      new THREE.MeshLambertMaterial({ color: 0xf2ead2 }),
+    );
+    mugFoam.position.y = 0.14;
+    mug.add(mugBody, mugFoam);
+    mug.position.set(0, 0.18, 0.12);
+    hand.add(mug);
+    this._mug = mug;
+    this._mugHand = hand;
+  }
+
+  private _detachMug(): void {
+    if (this._mug) {
+      this._mug.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+        else if (mat) mat.dispose();
+      });
+      if (this._mug.parent) this._mug.parent.remove(this._mug);
+      this._mug = null;
+    }
+    this._mugHand = null;
   }
 
   setClip(clip: AnimClip | null): void {
@@ -210,6 +274,8 @@ export class AnimationScene {
   }
 
   private _disposeRig(rig: Rig): void {
+    // Detach the mug first so it isn't double-disposed by the rig traversal.
+    this._detachMug();
     rig.group.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();

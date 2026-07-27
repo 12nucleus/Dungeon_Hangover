@@ -232,7 +232,10 @@ export async function playIntroCutscene(h: CutsceneHost) {
   const poi = (h.tavern!.userData as { poi: Record<string, THREE.Vector3> }).poi;
 
   // -- seat Greg at his table: sitting, tankard in hand, facing into the room --
+  // poi.gregSeat.y is 0.8 (a camera focus height), but the rig origin is at
+  // the feet — drop him to the floor so he actually sits on the stool.
   const seat = poi.gregSeat.clone();
+  seat.y = 0;
   hv.rig.group.position.copy(seat);
   hv.rig.group.rotation.y = Math.PI;
   hv.yaw = hv.targetYaw = Math.PI;
@@ -575,7 +578,7 @@ export async function runTitleNarration(h: CutsceneHost, ext: THREE.Group, prevB
   h.iso.desiredYaw = 0.10; h.iso.desiredPitch = 0.30; h.iso.desiredDist = 4.2;
   h.iso.focus(signWp.clone().add(new THREE.Vector3(0, 0.2, 0.4)));
   await h.cineDelay(900);
-  await h.narrate('title_2', 'Actually, not that far. Just around the corner from the village.', 4000);
+  await h.narrate('title_2', 'Actually, not that far. Just around the corner from the village...', 4000);
   if (h.introSkipped) { endTitleSequence(h, ext, prevBg); return; }
 
   h.fadeTo(1); await h.cineDelay(700);
