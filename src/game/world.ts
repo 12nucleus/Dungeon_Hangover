@@ -437,4 +437,51 @@ export class VoxelWorld {
     }
     for (const u of this.propUpdates) u(this.time, dt);
   }
+
+  /**
+   * Tear down all GPU resources owned by this world so the next floor
+   * can be built without leaking memory. Called by GameEngine.disposeFloor().
+   *
+   * Disposes:
+   *  - every geometry / material under this.group (merged voxel terrain,
+   *    water sheet, base slab, props, cave detail)
+   *  - point lights from torches
+   *  - the water texture clone
+   *  - the waterMesh / baseMesh references
+   *
+   * After dispose() the world is unusable — call setupDungeon() to build
+   * a fresh one for the next level.
+   */
+  dispose() {
+    // 1. Walk the entire group and dispose GPU resources.
+    this.group.traverse((o: THREE.Object3D) => {
+      const m = o as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) {
+        const mats = Array.isArray(m.material) ? m.material : [m.material];
+        mats.forEach((mat) => {
+          // dispose any textures the material owns (e.g. water's tiled map)
+          const tex = (mat as THREE.MeshLambertMaterial).map;
+          if (tex) tex.dispose();
+          mat.dispose();
+        });
+      }
+      // dispose point lights that came along for the ride (torches, prop glow)
+      const l = o as unknown as { isLight?: boolean; light?: THREE.PointLight };
+      if (l.isLight && l.light) l.light.dispose();
+    });
+    // 2. Detach every child.
+    while (this.group.children.length) this.group.remove(this.group.children[0]);
+    // 3. Clear bookkeeping so the GC can collect arrays/closures.
+    this.heights = [];
+    this.blocked = [];
+    this.topMat = [];
+    this.floorMats = [];
+    this.wallMats = [];
+    this.wallH = [];
+    this.waterTiles = null;
+    this.torches = [];
+    this.propUpdates = [];
+    this.water = undefined as unknown as THREE.Mesh;
+  }
 }

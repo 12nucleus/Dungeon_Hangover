@@ -29,6 +29,11 @@ function inRect(p: GridPos, r: { x0: number; z0: number; x1: number; z1: number 
 
 /** Build the dungeon set dressing — iron door, bath, boss, chests, lever, rubble, hermit */
 export function setupDungeon(engine: any, L: any) {
+  // PERFORMANCE: tear down every GPU resource owned by the previous floor
+  // BEFORE building this one. Without this, 50 floors would leak ~150k
+  // voxel cubes + every prop / rig / chest / lever per floor, eventually
+  // crashing the tab. See GameEngine.disposeFloor() in engine.ts.
+  if (typeof engine.disposeFloor === 'function') engine.disposeFloor();
   const st = L.structures;
   if (!st) return;
   engine.structures = st;

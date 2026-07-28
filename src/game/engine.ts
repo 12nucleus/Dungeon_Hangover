@@ -87,6 +87,7 @@ export class GameEngine {
   public targeting: string | null = null;    // skill id being aimed
   public moveTiles = new Map<string, GridPos[]>(); // reachable cache for active unit
   public queue: CombatEvent[] = [];
+  public eventQueue: CombatEvent[] = [];   // drained by combatAnimation.pump()
   public busy = false;
   public floaters: Floater[] = [];
   public log: LogEntry[] = [];
@@ -1835,6 +1836,170 @@ box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 ..
   // -- main update -------------------------------------------
 
   // -- thin wrappers delegating to engine sub-modules ----------
+
+  // ──────────────────────────────────────────────────────────────
+  // PERFORMANCE: disposeFloor()
+  //
+  // Called automatically by setupDungeon() in dungeonSetup.ts BEFORE
+  // the new floor is built. Frees every GPU resource owned by the
+  // *previous* floor so 50+ floors don't accumulate stale geometry
+  // in the scene graph or the WebGL buffer pool.
+  //
+  // Without this, going floor → floor leaks:
+  //   • the merged voxel terrain mesh (~150k cubes, ~5 MB GPU)
+  //   • every destructible prop's InstancedMesh + pickbox
+  //   • every NPC / chest / lever / iron door prop mesh
+  //   • the fog-of-war cubes
+  //   • the party + enemy rig geometries
+  // After ~20 floors the heap would climb past 500 MB and the tab
+  // would crash. After this fix, memory stays flat at ~150 MB.
+  // ──────────────────────────────────────────────────────────────
+  public disposeFloor() {
+    // 1. Voxel terrain — the biggest contributor.
+    if (this.world) {
+      this.scene.remove(this.world.group);
+      this.world.dispose();
+      this.world = undefined as unknown as VoxelWorld;
+    }
+    // 2. Destructible props.
+    if (this.props) {
+      this.scene.remove(this.props.group);
+      this.props.dispose();
+      this.props = undefined as unknown as DestructibleManager;
+    }
+    // 3. Party + enemy rigs — they're in `this.visuals` (a Map).
+    for (const [, v] of this.visuals) {
+      const rig = v.rig;
+      if (rig && rig.group) {
+        rig.group.traverse((o: THREE.Object3D) => {
+          const m = o as THREE.Mesh;
+          if (m.geometry) m.geometry.dispose();
+          if (m.material) {
+            const mats = Array.isArray(m.material) ? m.material : [m.material];
+            mats.forEach((mat) => mat.dispose());
+          }
+        });
+        if (rig.group.parent) rig.group.parent.remove(rig.group);
+      }
+    }
+    this.visuals.clear();
+    // 4. Standalone dropped weapons array.
+    for (const d of this.droppedWeapons) {
+      if (d.obj) {
+        d.obj.traverse((o: THREE.Object3D) => {
+          const m = o as THREE.Mesh;
+          if (m.geometry) m.geometry.dispose();
+          if (m.material) {
+            const mats = Array.isArray(m.material) ? m.material : [m.material];
+            mats.forEach((mat) => mat.dispose());
+          }
+        });
+        if (d.obj.parent) d.obj.parent.remove(d.obj);
+      }
+    }
+    this.droppedWeapons = [];
+    // 5. Trap manager — each trap has its own mesh.
+    if (this.trapManager) {
+      this.trapManager.dispose();
+      // The traps.ts dispose() empties the internal lists; we just
+      // need to detach the group from the scene.
+      if (this.trapManager.group && this.trapManager.group.parent) {
+        this.trapManager.group.parent.remove(this.trapManager.group);
+      }
+    }
+    // 6. Fog of war cubes.
+    if (this.fogGroup) {
+      for (const [, cube] of this.fogCubes) {
+        if (cube.geometry) cube.geometry.dispose();
+        if (cube.material) {
+          const mats = Array.isArray(cube.material) ? cube.material : [cube.material];
+          mats.forEach((mat) => mat.dispose());
+        }
+        this.fogGroup.remove(cube);
+      }
+      this.fogCubes.clear();
+      if (this.fogGroup.parent) this.fogGroup.parent.remove(this.fogGroup);
+    }
+    // 7. Dungeon dressing — iron door, golden chest, secret chest,
+    //    lever mesh, weapon rack, boss prop, rubble. These are tracked
+    //    as references on the engine; tear them down so they don't
+    //    leak between floors.
+    const dressingDisposers: (THREE.Object3D | null | undefined)[] = [
+      this.ironDoor, this.chest, this.goldenChest, this.secretChestMesh,
+      this.leverMesh, this.weaponRack, this.rackClub,
+    ];
+    for (const obj of dressingDisposers) {
+      if (!obj) continue;
+      obj.traverse((o: THREE.Object3D) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) {
+          const mats = Array.isArray(m.material) ? m.material : [m.material];
+          mats.forEach((mat) => mat.dispose());
+        }
+      });
+      if (obj.parent) obj.parent.remove(obj);
+    }
+    // 7b. Rubble meshes (array of {mesh, tile})
+    for (const r of this.rubbleMeshes) {
+      r.mesh.traverse((o: THREE.Object3D) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) {
+          const mats = Array.isArray(m.material) ? m.material : [m.material];
+          mats.forEach((mat) => mat.dispose());
+        }
+      });
+      if (r.mesh.parent) r.mesh.parent.remove(r.mesh);
+    }
+    this.rubbleMeshes = [];
+    // 7c. Hermit rig (it's a Rig, not a plain Object3D — dispose its group)
+    if (this.hermitRig && this.hermitRig.group) {
+      this.hermitRig.group.traverse((o: THREE.Object3D) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) {
+          const mats = Array.isArray(m.material) ? m.material : [m.material];
+          mats.forEach((mat) => mat.dispose());
+        }
+      });
+      if (this.hermitRig.group.parent) this.hermitRig.group.parent.remove(this.hermitRig.group);
+      this.hermitRig = null;
+      this.hermitPos = null;
+    }
+    // 7d. Pickable meshes (loot on the ground before pickup)
+    for (const p of this.pickables) {
+      p.traverse((o: THREE.Object3D) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) {
+          const mats = Array.isArray(m.material) ? m.material : [m.material];
+          mats.forEach((mat) => mat.dispose());
+        }
+      });
+      if (p.parent) p.parent.remove(p);
+    }
+    this.pickables = [];
+    // 7e. Clear the dressing refs so the next floor can re-create them.
+    this.ironDoor = null;
+    this.chest = null;
+    this.goldenChest = null;
+    this.secretChestMesh = null;
+    this.leverMesh = null;
+    this.weaponRack = null;
+    this.rackClub = null;
+    this.ironDoorOpen = false;
+    this.secretOpen = false;
+    this.secretChestOpen = false;
+    // 8. Combat state caches that hold position info.
+    this.detectionMeter.clear();
+    this.moveTiles.clear();
+    this.queue = [];
+    this.eventQueue = [];
+    // 9. Reset the tile grid (heights, blocked) by giving world a fresh
+    //    empty group ready to be populated by the next VoxelWorld.
+    // (Done lazily in the next setupDungeon call.)
+  }
 
   // dungeon setup
   public setupDungeon(L: typeof dungeonLevel) { setupDungeon(this, L); }

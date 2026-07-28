@@ -153,4 +153,28 @@ export class DestructibleManager {
     this.world.blocked[p.pos.x][p.pos.z] = false;
     return rollLootTable(p.def.id);
   }
+
+  /**
+   * Tear down every prop's GPU resources and clear the manager so the
+   * next floor can rebuild from scratch. Called by GameEngine.disposeFloor().
+   * After dispose() the manager is unusable — construct a new one.
+   */
+  dispose() {
+    // Walk every prop group + pick mesh, dispose their geometry/material.
+    for (const p of this.list) {
+      p.group.traverse((o: THREE.Object3D) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) {
+          const mats = Array.isArray(m.material) ? m.material : [m.material];
+          mats.forEach((mat) => mat.dispose());
+        }
+      });
+      if (p.pick.geometry) p.pick.geometry.dispose();
+      // pickMat is shared — don't dispose
+    }
+    while (this.group.children.length) this.group.remove(this.group.children[0]);
+    this.list.length = 0;
+    this.pickboxes.length = 0;
+  }
 }
