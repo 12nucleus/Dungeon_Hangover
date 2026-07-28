@@ -201,6 +201,20 @@ export const FX = {
   arcane(ps: ParticleSystem, p: THREE.Vector3) {
     ps.burst({ pos: p, count: 34, color: [0xc084fc, 0x8b5cf6, 0xe9d5ff], speed: [1, 3.4], life: [0.3, 0.8], size: [0.4, 1], gravity: 1, endScale: 0.2 });
   },
+  /**
+   * Polymorph spell — the wizard's signature big-bang: a purple-pink
+   * sparkle burst with golden accent particles and a high density so
+   * it reads as a TRANSFORMATION rather than an explosion. Reusable for
+   * any future polymorph / shapeshift spell effect (e.g. boss chambers).
+   */
+  polymorph(ps: ParticleSystem, p: THREE.Vector3) {
+    // main purple-pink burst — fast-moving, short-lived, lots of sparks
+    ps.burst({ pos: p, count: 60, color: [0xc084fc, 0xe879f9, 0xf0abfc, 0xfdf4ff], speed: [2, 5], life: [0.4, 1.0], size: [0.5, 1.3], gravity: -0.5, up: 1.2, endScale: 0.15 });
+    // golden transformation motes — slower, longer-lived, drift upward
+    ps.burst({ pos: p, count: 20, color: [0xfde047, 0xfacc15, 0xffffff], speed: [0.5, 1.6], life: [0.6, 1.4], size: [0.3, 0.8], gravity: -2.2, drag: 0.4, endScale: 0.2 });
+    // a few chunky solid flecks — reads as physical transformation debris
+    ps.burst({ pos: p, count: 6, color: [0x4a3a8c, 0x6b5cf0], speed: [0.8, 2.4], life: [0.3, 0.7], size: [0.4, 0.9], gravity: 6, endScale: 0.4, solid: true });
+  },
   ice(ps: ParticleSystem, p: THREE.Vector3) {
     ps.burst({ pos: p, count: 60, color: [0xbae6fd, 0x7dd3fc, 0xe0f2fe], speed: [2, 5.5], life: [0.4, 0.9], size: [0.5, 1.2], gravity: 4, endScale: 0.3 });
   },

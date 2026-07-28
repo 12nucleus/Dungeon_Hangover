@@ -313,6 +313,10 @@ export function buildTavern(
   poi.barmaid = new THREE.Vector3(-28, 0.9, -6);
   poi.wizard = new THREE.Vector3(-16, 0.8, 4);
   poi.bouncer = new THREE.Vector3(-4, 0.8, ZF - 3);
+  // FIX 3: door poi — used by the intro cutscene to face the front wall
+  // when it pans to show the door + windows. Z=ZF places it on the wall;
+  // Y=2.5 is roughly at door-handle height.
+  poi.doorZ = new THREE.Vector3(0, 2.5, ZF - 1);
 
   g.userData.poi = poi;
   return g;

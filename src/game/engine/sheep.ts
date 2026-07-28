@@ -37,16 +37,18 @@ function addVox(g: THREE.Group, cx: number, cy: number, cz: number, rx: number, 
   g.add(m);
 }
 
-/** Build a sheep model — animated field prop for the exterior set */
+/**
+ * Build a sheep model — reusable field prop for tavern exterior cutscenes AND
+ * any future outdoor/overworld scene. Caller scales via `.scale.setScalar(s)`
+ * if a different size is needed (intro uses 0.45; the model is built at 1.0).
+ */
 export function buildSheep(): THREE.Group {
   const g = new THREE.Group();
-  // woolly body (scale 1.3, 1.0, 1.7 in voxel space → rx=11, ry=8, rz=14 approx)
-  addVox(g, 0.5, 9.5, 0, 11, 8, 14, 0xf2efe6);
-  // wool tufts
-  for (const [dx, dy, dz] of [[6, 13, 5], [-6, 13, -3], [3, 15, -6], [-3, 14, 6], [4, 12, -5]] as const) {
-    addVox(g, dx, dy, dz, 3, 3, 3, 0xf2efe6);
-  }
-  // four legs (box voxels)
+
+  // ── four legs first so we can anchor the body on top of them ──
+  // Legs: box voxels stacked from y=0 (ground) up to y=8 (where the body's
+  // underside sits). Caller should leave the group at origin (y=0) so legs
+  // stand on the ground.
   for (const [lx, lz] of [[5, 6], [-5, 6], [5, -6], [-5, -6]] as const) {
     for (let ly = 0; ly < 9; ly++) {
       const g2 = new THREE.BoxGeometry(C, C, C);
@@ -61,12 +63,21 @@ export function buildSheep(): THREE.Group {
       m.castShadow = true; g.add(m);
     }
   }
-  // head
-  addVox(g, 0, 11, 12, 4, 4, 4, 0xc9b89a);
-  // ears + eyes
+
+  // ── body sits ON the legs: cy moved from 9.5 → 8 (top of legs is ly=8),
+  //    ry reduced from 8 → 6 so body fits between leg-tops and the wool tufts. ──
+  addVox(g, 0.5, 8, 0, 11, 6, 14, 0xf2efe6);
+  // wool tufts — moved down by 1.5 to keep their world-y consistent
+  for (const [dx, dy, dz] of [[6, 11.5, 5], [-6, 11.5, -3], [3, 13.5, -6], [-3, 12.5, 6], [4, 10.5, -5]] as const) {
+    addVox(g, dx, dy, dz, 3, 3, 3, 0xf2efe6);
+  }
+
+  // head — also dropped by 1.5 so it stays attached to the body
+  addVox(g, 0, 9.5, 12, 4, 4, 4, 0xc9b89a);
+  // ears + eyes — shifted down by 1.5
   for (const s of [-1, 1]) {
-    addVox(g, s * 3, 13, 12, 1, 2, 1, 0xc9b89a);
-    for (let ey = 11; ey <= 12; ey++) {
+    addVox(g, s * 3, 11.5, 12, 1, 2, 1, 0xc9b89a);
+    for (let ey = 9.5; ey <= 10.5; ey++) {
       const g2 = new THREE.BoxGeometry(C * 0.8, C * 0.8, C * 0.8);
       g2.translate(s * 1.5 * C, ey * C, 15 * C);
       const n = g2.attributes.position.count;

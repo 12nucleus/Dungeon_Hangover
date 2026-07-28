@@ -12,7 +12,7 @@ import type { GameSettings, SaveData } from '../save';
 import { unitWorld } from './visuals';
 import { clearHighlights, showTargeting } from './targeting';
 import { attachHeroTorch } from './dungeonSetup';
-import { runTitleNarration } from '../cutscenes';
+import { runTitleNarration } from '../cutscenes/index';
 
 // ══ start / explore ════════════════════════════════════════
 export function startGame(engine: any) {

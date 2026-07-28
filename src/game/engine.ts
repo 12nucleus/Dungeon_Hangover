@@ -21,7 +21,7 @@ import { Vox } from './voxelModels.mjs';
 import type { CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit } from './types';
 import { NPCS, type NPCDef } from './npc';
 import { QuestLog } from './quest';
-import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes';
+import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes/index';
 
 import { IsoCamera } from './engine/IsoCamera';
 import { voxelMeshC } from './engine/voxelUtils';
@@ -1241,6 +1241,14 @@ box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 ..
     const prevBg = this.titlePrevBg;
     this.titleExt = null;
     this.titlePrevBg = null;
+    // FIX 8 (corrected): the React <SplashScreen> overlay is what briefly
+    // flashed in front of the cutscene. React removes that overlay from the
+    // DOM via `splashVisible=false` in GameCanvas.handleNewGame; the engine
+    // cine-fade must be TRANSPARENT here so the exterior tavern scene — the
+    // "In a tavern far, far away..." opener — is visible behind it. The
+    // previous attempt called fadeTo(1) which blacked the entire exterior
+    // and hid it for ~8s until the interior cutscene began.
+    this.fadeTo(0);
     void runTitleNarration(this.cutsceneHost, ext, prevBg);
   }
 
