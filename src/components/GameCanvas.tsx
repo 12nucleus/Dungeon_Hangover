@@ -45,9 +45,11 @@ export function GameCanvas() {
   };
 
   const handleQuitToTitle = () => {
-    // the title scene was torn down when the run started, so a full reload
-    // is the clean way back to a fresh splash
-    window.location.reload();
+    // PERFORMANCE (Fix B): don't reload the page \u2014 ask the engine to
+    // rebuild the title scene in-place. Saves ~3\u20135 s of re-parsing the
+    // 1.16 MB JS bundle + re-running the synchronous engine init().
+    engineRef.current?.returnToTitle();
+    setSplashVisible(true);
   };
 
   const handleExit = () => {

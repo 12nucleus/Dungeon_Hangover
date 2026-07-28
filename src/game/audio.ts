@@ -30,7 +30,18 @@ export class AudioManager {
   private started = false;
   private tavernPending = false;
 
-  /** must be called from a user gesture */
+  /** must be called from a user gesture.
+   *
+   * PERFORMANCE (Fix C): only the *critical* audio files are awaited
+   * here so the click→first-sound latency is as low as possible.
+   *  - ui_click (menu feedback)
+   *  - sword_hit, dice (immediate combat feedback)
+   *  - tavern_music (title screen music)
+   *  - music_ambient (dungeon music on enter)
+   *
+   * The remaining SFX (fireball/heal/magic_missile/arrow/victory/
+   * bonfire_lit) are lazy-loaded the first time play() is called for
+   * them. This roughly halves init time on first click. */
   async init() {
     if (this.started) return;
     this.started = true;
@@ -49,25 +60,53 @@ export class AudioManager {
     this.tavernGain.gain.value = 0;   // silent until the tavern plays
     this.tavernGain.connect(this.master);
 
-    const load = async (name: string) => {
-      try {
-        const res = await fetch(`${import.meta.env.BASE_URL}audio/${name}.mp3`);
-        const buf = await res.arrayBuffer();
-        this.buffers.set(name, await this.ctx!.decodeAudioData(buf));
-      } catch { /* missing file → silently skip */ }
-    };
-    await Promise.all([...SFX_FILES.map(load), load('music_ambient'), load('tavern_music')]);
+    // Critical audio — awaited so the first click feels instant.
+    const critical = ['ui_click', 'sword_hit', 'dice', 'tavern_music', 'music_ambient'];
+    await Promise.all(critical.map((n) => this._loadBuffer(n)));
     // NOTE: the dungeon ambient loop is intentionally NOT started here. Autoplay
     // policy blocks audio before a gesture, and we don't want the dungeon theme
     // bleeding into the tavern title screen. It is started later, when the intro
     // cutscene hands control to the player (see finishIntro / playIntroCutscene).
     if (this.tavernPending) { this.tavernPending = false; this.playTavernMusic(this._pendingOpts ?? {}); this._pendingOpts = undefined; }
+
+    // Background-load the rest of the SFX list — don't await, let them
+    // trickle in. Each future play() call is guaranteed to wait if it's
+    // not ready yet (see play() below).
+    queueMicrotask(() => {
+      const deferred = SFX_FILES.filter((n) => !critical.includes(n));
+      Promise.all(deferred.map((n) => this._loadBuffer(n)));
+    });
+  }
+
+  /** internal: fetch + decode one mp3 into the buffer cache. Silent on
+   *  network failure so a missing file doesn't break gameplay. */
+  private async _loadBuffer(name: string): Promise<void> {
+    if (!this.ctx) return;
+    if (this.buffers.has(name)) return;
+    try {
+      const res = await fetch(`${import.meta.env.BASE_URL}audio/${name}.mp3`);
+      if (!res.ok) return;
+      const buf = await res.arrayBuffer();
+      this.buffers.set(name, await this.ctx.decodeAudioData(buf));
+    } catch { /* missing file → silently skip */ }
+  }
+
+  /** public lazy loader — exposed so other modules can warm the cache
+   *  early (e.g. when a level loads, fetch its most-used SFX). */
+  async preload(name: SfxName): Promise<void> {
+    await this._loadBuffer(name);
   }
 
   play(name: SfxName, volume = 1, rate = 1) {
     if (!this.ctx || this.muted) return;
     const buf = this.buffers.get(name);
-    if (!buf) return;
+    if (!buf) {
+      // Buffer not loaded yet — kick off a background fetch for next time,
+      // but skip this play() so we don't add latency. (Critical SFX are
+      // already loaded in init(); this only happens for deferred ones.)
+      void this._loadBuffer(name);
+      return;
+    }
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = rate * (0.96 + Math.random() * 0.08);

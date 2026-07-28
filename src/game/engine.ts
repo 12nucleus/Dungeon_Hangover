@@ -304,6 +304,32 @@ export class GameEngine {
     fill.position.set(-15, 20, -18);
     this.scene.add(fill);
 
+    // PERFORMANCE (Fix A): the heaviest single operation in init() is
+    // `new VoxelWorld(...)` which builds ~150k voxel cubes synchronously
+    // (~600-1000 ms blocking the main thread). We defer the entire
+    // post-lights block to setTimeout(0) so the splash overlay + an empty
+    // lit scene paints first (~16 ms). The RAF loop / composer / input
+    // are already set up by the time the world is ready, so the game
+    // simply animates over a black sky for one frame and then the world
+    // pops in. No race conditions: the post-world setup (fog, props,
+    // traps, units, title scene) lives INSIDE the setTimeout, so it
+    // runs AFTER the world is built, in the same relative order as
+    // before.
+    setTimeout(() => {
+      if (this.disposed) return;
+      this._initWorldAndDressing();
+    }, 0);
+  }
+
+  /** PERFORMANCE (Fix A): the heavy half of init() that requires
+   *  this.world. Deferred via setTimeout in init() so the splash paints
+   *  fast. Contains: world build, fog grid, pickables, highlight pools,
+   *  selection ring, click ping, destructibles, vision cones, traps,
+   *  combat + units, setupDungeon, cutscene host + director, title
+   *  scene, splash audio listener, composer, input, RAF loop. */
+  private _initWorldAndDressing() {
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+
     // world ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ underground cave level
     this.world = new VoxelWorld(dungeonLevel, 1337);
     this.scene.add(this.world.group);
@@ -1216,6 +1242,56 @@ box(v, -42, 21, -31, -40, 21, 7, WOOD_D);        // back shelf (lower) -> -35 ..
     this.titleExt = null;
     this.titlePrevBg = null;
     void runTitleNarration(this.cutsceneHost, ext, prevBg);
+  }
+
+  /** PERFORMANCE (Fix B): full-screen "Quit to Title" path WITHOUT reloading.
+   *
+   *  Replaces the old window.location.reload() trick in GameCanvas.
+   *  Tears down the current floor + dungeon state, then rebuilds the
+   *  title scene so the React splash can fade back in over it.
+   *
+   *  Avoids the ~3-5 s cost of re-parsing the 1.16 MB JS bundle and
+   *  re-running the synchronous engine init().
+   */
+  returnToTitle() {
+    // 1. Drop the title-ext if it's still around (rare).
+    if (this.titleExt) {
+      this.scene.remove(this.titleExt);
+      this.titleExt = null;
+    }
+    if (this.titlePrevBg) {
+      this.scene.background = this.titlePrevBg;
+      this.titlePrevBg = null;
+    }
+
+    // 2. Free the current floor's geometry - disposeFloor handles all
+    //    meshes / rigs / fog / props.
+    if (typeof this.disposeFloor === 'function') this.disposeFloor();
+
+    // 3. Reset combat / phase state.
+    this.inTavern = false;
+    this.introActive = false;
+    this.introPlayed = false;
+    this.bossCineActive = false;
+    this.editorMode = false;
+    this.phase = 'menu';
+    this.keys.clear();
+    this.paused = false;
+    if (this.combat) this.combat.inCombat = false;
+    this.queue = [];
+    this.eventQueue = [];
+
+    // 4. Rebuild the title-exterior backdrop so the splash overlay has
+    //    something to fade out over (it expects the same tavern view).
+    if (this.cutsceneHost) {
+      const title = setupTitleScene(this.cutsceneHost);
+      this.titleExt = title.ext;
+      this.titlePrevBg = title.prevBg;
+      this.titleIdle = true;
+    }
+
+    // 5. Notify React so it can show the splash overlay again.
+    this.emitSnapshot();
   }
 
  // -- EDITOR (cutscene / level tweaker ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ Tier 1) --------------------------
