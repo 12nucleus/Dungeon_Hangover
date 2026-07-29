@@ -28,9 +28,15 @@ export interface CharacterScheme {
   style?: 'normal' | 'chibi';  // normal proportions or chibi stubby
   monster?: 'rat' | 'bat' | 'skeleton';  // beast/undead rigs (characters.ts)
   kind?: 'wizard' | 'barmaid' | 'bouncer' | 'barkeep';  // distinct tavern NPC silhouettes
+  /**
+   * "naked" rebuilds the rig as underwear only — no shirt, no pants, no boots,
+   * no belt/buckle/laces. Used for Greg's dungeon spawn ("yes, underwear, the
+   * dungeon has a sense of humour"). Cloth + accent become the boxer/bra trim.
+   */
+  naked?: boolean;
 }
 
-export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club' | 'torch';
+export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club' | 'torch' | 'unarmed';
 export type Klass = 'fighter' | 'wizard' | 'cleric' | 'goblin';
 
 export type ParticleFX =
@@ -99,7 +105,7 @@ export interface Unit {
   initiative: number;
   conditions: Condition[];
   scheme: CharacterScheme;
-  weapon: WeaponKind;
+  weapon?: WeaponKind;
   xpValue: number;        // used by the loot/XP hooks
   // ── dungeon encounter fields (optional) ──
   dormant?: boolean;      // not yet aggroed — excluded from combat until its group activates

@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import type { EquipSlot } from '../types';
 
 export const C_CHIBI = 0.1;
 export const C_NORMAL = 0.055;
@@ -59,6 +60,8 @@ export interface Rig {
     hair: number; arm: number; hand: number; weapon: number;
     hood?: number; hoodTip?: number; pad?: number; knee?: number; elbow?: number; wrist?: number;
   };
+  /** voxel equipment meshes attached via the equipment system, keyed by slot */
+  equipped?: Partial<Record<EquipSlot, THREE.Object3D[]>>;
 }
 
 /** Convenience type for inline voxel builders used by beast/undead rigs. */

@@ -24,6 +24,7 @@ export function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Ri
   const cloth = scheme.cloth;
   const shirtD = shade(cloth, 0.9), shirtD2 = shade(cloth, 0.8), shirtHI = shade(cloth, 1.03);
   const pant = scheme.accent;
+  const accent = scheme.accent;   // alias used by the `naked` underwear branch
   const pantD = shade(pant, 0.82), pantD2 = shade(pant, 0.66), pantHI = shade(pant, 1.16), seam = shade(pant, 1.38);
   const hair = scheme.hair;
   const hairD = shade(hair, 0.66), hairD2 = shade(hair, 0.45), hairHI = shade(hair, 1.4), hairHL = shade(hair, 1.75);
@@ -74,80 +75,116 @@ export function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Ri
         }
   };
 
+  const naked = scheme.naked === true;
   // ═══ BOOTS + JEANS ═══
+  // When `naked` is true the legs are drawn as bare skin plus a snug boxer
+  // brief at the hips — no boots, no jeans, no laces, no sole.
   for (const s of [-1, 1] as const) {
     cur = s < 0 ? buckets.legL : buckets.legR;
     const cx = s * LEG_X;
-    rbox(cx - 3, 0, -4, cx + 3, 1, 6, 2, SOLE);
-    box(cx - 3, 1, -4, cx + 3, 1, 6, BOOTD);
-    rbox(cx - 3, 2, -4, cx + 3, 8, 5, 2, BOOT);
-    box(cx - 2, 2, 5, cx + 2, 4, 6, BOOTHI);
-    box(cx - 2, 2, -4, cx + 2, 4, -4, BOOTD);
-    rbox(cx - 3, 8, -3, cx + 3, 10, 4, 2, BOOTHI);
-    box(cx - 3, 9, -3, cx + 3, 9, 4, BOOTD);
-    for (let ly = 4; ly <= 8; ly += 2) { put(cx - 1, ly, 6, LACE); put(cx + 1, ly, 6, LACE); }
-    put(cx, 5, 6, LACE); put(cx, 7, 6, LACE);
-    box(cx - 3, 5, 0, cx - 3, 6, 0, BOOTD);
-    box(cx + 3, 5, 0, cx + 3, 6, 0, BOOTD);
-    colf(cx, 0.5, 10, 34, 3.2, 3.4, pant);
-    colf(cx, 0.5, 10, 11, 3.4, 3.6, pantD);
-    for (let y = 11; y <= 33; y++) {
-      put(cx + s * 3, y, 0, seam);
-      put(cx - s * 3, y, 0, pantD2);
-      put(cx, y, 3, pantHI);
-      put(cx, y, -3, pantD);
+    if (naked) {
+      // bare leg: skin column with subtle shading
+      colf(cx, 0.5, 0, 30, 2.8, 3.0, skin);
+      for (let y = 4; y <= 28; y += 3) put(cx, y, 3, skinHL);
+      for (let y = 6; y <= 26; y += 4) put(cx, y, -3, skinD);
+      // boxer brief: cloth main, accent trim band at the waist
+      rbox(cx - 3, 31, -3, cx + 3, 35, 3, 1.6, cloth);
+      for (let y = 35; y <= 36; y++) { put(cx - 3, y, 3, cloth); put(cx + 3, y, 3, cloth); put(cx, y, 3, accent); }
+      put(cx, 31, 3, accent);
+    } else {
+      rbox(cx - 3, 0, -4, cx + 3, 1, 6, 2, SOLE);
+      box(cx - 3, 1, -4, cx + 3, 1, 6, BOOTD);
+      rbox(cx - 3, 2, -4, cx + 3, 8, 5, 2, BOOT);
+      box(cx - 2, 2, 5, cx + 2, 4, 6, BOOTHI);
+      box(cx - 2, 2, -4, cx + 2, 4, -4, BOOTD);
+      rbox(cx - 3, 8, -3, cx + 3, 10, 4, 2, BOOTHI);
+      box(cx - 3, 9, -3, cx + 3, 9, 4, BOOTD);
+      for (let ly = 4; ly <= 8; ly += 2) { put(cx - 1, ly, 6, LACE); put(cx + 1, ly, 6, LACE); }
+      put(cx, 5, 6, LACE); put(cx, 7, 6, LACE);
+      box(cx - 3, 5, 0, cx - 3, 6, 0, BOOTD);
+      box(cx + 3, 5, 0, cx + 3, 6, 0, BOOTD);
+      colf(cx, 0.5, 10, 34, 3.2, 3.4, pant);
+      colf(cx, 0.5, 10, 11, 3.4, 3.6, pantD);
+      for (let y = 11; y <= 33; y++) {
+        put(cx + s * 3, y, 0, seam);
+        put(cx - s * 3, y, 0, pantD2);
+        put(cx, y, 3, pantHI);
+        put(cx, y, -3, pantD);
+      }
+      box(cx - 2, 20, 3, cx + 2, 20, 4, pantD);
+      box(cx - 2, 22, 3, cx + 2, 22, 4, pantHI);
+      box(cx - 1, 18, 3, cx + 1, 18, 4, pantD);
+      box(cx - 3, 12, 3, cx + 3, 12, 3, seam);
+      colf(cx, 3, 19, 23, 1.6, 1.2, pantHI);
     }
-    box(cx - 2, 20, 3, cx + 2, 20, 4, pantD);
-    box(cx - 2, 22, 3, cx + 2, 22, 4, pantHI);
-    box(cx - 1, 18, 3, cx + 1, 18, 4, pantD);
-    box(cx - 3, 12, 3, cx + 3, 12, 3, seam);
-    colf(cx, 3, 19, 23, 1.6, 1.2, pantHI);
   }
 
   // ═══ TORSO ═══
   cur = buckets.torso;
-  rbox(-8, 33, -4, 8, 36, 4, 2, pant);
-  box(-1, 33, 3, 1, 36, 4, pantD);
-  box(-1, 33, -4, 1, 36, -4, pantD2);
-  for (const s of [-1, 1]) { box(Math.min(s * 4, s * 6), 34, 4, Math.max(s * 4, s * 6), 36, 4, pantD); put(s * 4, 33, 4, seam); put(s * 6, 33, 4, seam); }
-  rbox(-8, 35, -4, 8, 37, 5, 2, 0x3a2a1a);
-  box(-2, 35, 5, 2, 37, 5, 0xc9a94a);
-  box(-1, 35, 5, 1, 36, 5, 0xa2842f);
-  for (const bx of [-6, -2, 2, 6]) box(bx, 35, 5, bx, 37, 5, pantD);
-  for (let y = 37; y <= 55; y++) { const t = (y - 37) / 18; const hx = Math.round(7 + t * 1.8); rbox(-hx, y, -5, hx, y, 5, 2, cloth); }
-  box(-8, 37, -4, 8, 37, 5, shirtD);
-  rbox(-11, 53, -4, 11, 56, 4, 2, cloth);
-  box(-11, 53, 0, -9, 55, 0, shirtD);
-  box(9, 53, 0, 11, 55, 0, shirtD);
-  for (let y = 38; y <= 53; y++) { put(-5, y, 5, shirtD); put(5, y, 5, shirtHI); put(0, y, -5, shirtD); }
-  for (let i = 0; i < 5; i++) { put(-6 + i, 39 + i, 5, shirtD2); put(6 - i, 39 + i, 5, shirtD2); }
-  box(-8, 48, 4, -6, 51, 5, shirtD);
-  box(6, 48, 4, 8, 51, 5, shirtD);
-  rbox(-3, 55, 2, 3, 57, 5, 1, cloth);
-  box(-2, 56, 5, 2, 56, 5, shirtD);
-  box(-2, 57, 4, 2, 57, 5, skinD2);
-  box(2, 46, 5, 5, 50, 5, 0x5a3d2e);
-  box(2, 50, 5, 5, 50, 5, 0x4a3022);
-  put(2, 46, 5, 0x4a3022); put(5, 46, 5, 0x4a3022);
-  box(2, 46, 5, 2, 50, 5, 0x4a3022);
-  box(5, 46, 5, 5, 50, 5, 0x4a3022);
-  colf(0, -1, 55, 58, 2.2, 2.0, skin);
-  put(0, 56, -2, skinD2);
-  box(-2, 56, 2, 2, 57, 2, skinD);
-  if (weapon === 'staff') rbox(-9, 30, -4, 9, 37, 5, 2, cloth);
+  if (naked) {
+    // bare chest + a snug underwear band around the ribcage
+    for (let y = 37; y <= 55; y++) { const t = (y - 37) / 18; const hx = Math.round(7 + t * 1.8); rbox(-hx, y, -5, hx, y, 5, 2, skin); }
+    for (let y = 38; y <= 55; y++) { put(-5, y, 5, skinHL); put(5, y, 5, skinD); put(0, y, -5, skinD); }
+    for (let y = 43; y <= 50; y++) { put(0, y, 5, skinHL); put(-2, y, 5, skin); put(2, y, 5, skin); }
+    // yellow trim band — visual underwear line
+    for (const y of [39, 50]) rbox(-11, y, -4, 11, y, 5, 1.5, accent);
+    rbox(-3, 55, 2, 3, 57, 5, 1, skin);
+    box(-2, 56, 5, 2, 56, 5, skinHL);
+    box(-2, 57, 4, 2, 57, 5, skinD2);
+    box(-2, 56, 2, 2, 57, 2, skinD);
+    colf(0, -1, 55, 58, 2.2, 2.0, skin);
+    put(0, 56, -2, skinD2);
+  } else {
+    rbox(-8, 33, -4, 8, 36, 4, 2, pant);
+    box(-1, 33, 3, 1, 36, 4, pantD);
+    box(-1, 33, -4, 1, 36, -4, pantD2);
+    for (const s of [-1, 1]) { box(Math.min(s * 4, s * 6), 34, 4, Math.max(s * 4, s * 6), 36, 4, pantD); put(s * 4, 33, 4, seam); put(s * 6, 33, 4, seam); }
+    rbox(-8, 35, -4, 8, 37, 5, 2, 0x3a2a1a);
+    box(-2, 35, 5, 2, 37, 5, 0xc9a94a);
+    box(-1, 35, 5, 1, 36, 5, 0xa2842f);
+    for (const bx of [-6, -2, 2, 6]) box(bx, 35, 5, bx, 37, 5, pantD);
+    for (let y = 37; y <= 55; y++) { const t = (y - 37) / 18; const hx = Math.round(7 + t * 1.8); rbox(-hx, y, -5, hx, y, 5, 2, cloth); }
+    box(-8, 37, -4, 8, 37, 5, shirtD);
+    rbox(-11, 53, -4, 11, 56, 4, 2, cloth);
+    box(-11, 53, 0, -9, 55, 0, shirtD);
+    box(9, 53, 0, 11, 55, 0, shirtD);
+    for (let y = 38; y <= 53; y++) { put(-5, y, 5, shirtD); put(5, y, 5, shirtHI); put(0, y, -5, shirtD); }
+    for (let i = 0; i < 5; i++) { put(-6 + i, 39 + i, 5, shirtD2); put(6 - i, 39 + i, 5, shirtD2); }
+    box(-8, 48, 4, -6, 51, 5, shirtD);
+    box(6, 48, 4, 8, 51, 5, shirtD);
+    rbox(-3, 55, 2, 3, 57, 5, 1, cloth);
+    box(-2, 56, 5, 2, 56, 5, shirtD);
+    box(-2, 57, 4, 2, 57, 5, skinD2);
+    box(2, 46, 5, 5, 50, 5, 0x5a3d2e);
+    box(2, 50, 5, 5, 50, 5, 0x4a3022);
+    put(2, 46, 5, 0x4a3022); put(5, 46, 5, 0x4a3022);
+    box(2, 46, 5, 2, 50, 5, 0x4a3022);
+    box(5, 46, 5, 5, 50, 5, 0x4a3022);
+    colf(0, -1, 55, 58, 2.2, 2.0, skin);
+    put(0, 56, -2, skinD2);
+    box(-2, 56, 2, 2, 57, 2, skinD);
+    if (weapon === 'staff') rbox(-9, 30, -4, 9, 37, 5, 2, cloth);
+  }
 
   // ═══ ARMS ═══
+  // When naked the upper arm is bare skin all the way to the elbow — no sleeves.
   for (const s of [-1, 1] as const) {
     cur = s < 0 ? buckets.armL : buckets.armR;
     const cx = s * ARM_X;
-    colf(cx, 0, 43, 55, 2.6, 2.6, cloth);
-    colf(cx, 0, 43, 44, 2.8, 2.8, shirtD);
-    put(cx + s * 2, 52, 0, shirtHI);
-    put(cx - s * 2, 51, 0, shirtD);
-    colf(cx, 0, 34, 42, 2.2, 2.3, skin);
-    for (let y = 35; y <= 41; y++) { put(cx, y, 2, skinHL); put(cx, y, -2, skinD); }
-    put(cx + s * 2, 40, 1, skinD);
-    colf(cx, -1, 42, 43, 2.0, 1.6, skinD);
+    if (naked) {
+      colf(cx, 0, 34, 55, 2.5, 2.5, skin);
+      for (let y = 36; y <= 54; y += 4) { put(cx, y, 2, skinHL); put(cx, y, -2, skinD); }
+      colf(cx, -1, 42, 43, 2.0, 1.6, skinD);
+    } else {
+      colf(cx, 0, 43, 55, 2.6, 2.6, cloth);
+      colf(cx, 0, 43, 44, 2.8, 2.8, shirtD);
+      put(cx + s * 2, 52, 0, shirtHI);
+      put(cx - s * 2, 51, 0, shirtD);
+      colf(cx, 0, 34, 42, 2.2, 2.3, skin);
+      for (let y = 35; y <= 41; y++) { put(cx, y, 2, skinHL); put(cx, y, -2, skinD); }
+      put(cx + s * 2, 40, 1, skinD);
+      colf(cx, -1, 42, 43, 2.0, 1.6, skinD);
+    }
   }
 
   // ═══ HANDS ═══

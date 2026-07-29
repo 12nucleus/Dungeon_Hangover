@@ -239,13 +239,13 @@ export function createRoster(): Unit[] {
   return [
     // ── the party — one warrior, alone in the cave ──
     mkUnit({
-      name: 'Greg the Drunk', title: 'Human Fighter', team: 'party', klass: 'fighter', pos: { x: 10, z: 8 },
-      maxHp: 38, hp: 38, ac: 16,
+      name: 'Greg', title: 'Human', team: 'party', klass: 'fighter', pos: { x: 10, z: 8 },
+      maxHp: 38, hp: 38, ac: 10,
       abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 11, cha: 12 },
       knownSkills: ['slash', 'cleave', 'shield_bash'],
-      scheme: { skin: 0xd9a066, cloth: 0xffffff, accent: 0x6b7280, hair: 0x4a2f1a, hood: false, style: 'normal' },
-      weapon: 'torch', xpValue: 0,
-      equipment: { weapon: makeItem('torch1'), chest: makeItem('padded') },
+      scheme: { skin: 0xd9a066, cloth: 0xffffff, accent: 0xffeb3b, hair: 0x4a2f1a, hood: false, style: 'normal', naked: true },
+      weapon: 'unarmed', xpValue: 0,
+      equipment: {},
     }),
     // ── the goblin warband at the ruins ──
     mkUnit({
@@ -315,15 +315,15 @@ export function createDungeonRoster(sp: DungeonSpawns): Unit[] {
   uid = 0;
   const units: Unit[] = [];
 
-  // ── the lone hero — a warrior with a torch for light and a real blade ──
+  // ── the lone hero — naked except for white/yellow underwear (cloth+accent) ──
   units.push(mkUnit({
-    name: 'Greg the Drunk', title: 'Human Fighter', team: 'party', klass: 'fighter', pos: { ...sp.party },
-    maxHp: 46, hp: 46, ac: 16, level: 4,
+    name: 'Greg', title: 'Human', team: 'party', klass: 'fighter', pos: { ...sp.party },
+    maxHp: 46, hp: 46, ac: 10, level: 4,
     abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 11, cha: 12 },
     knownSkills: ['slash', 'cleave', 'shield_bash', 'power_strike'],
-    scheme: { skin: 0xd9a066, cloth: 0xdfe4ea, accent: 0x6b7280, hair: 0x4a2f1a, hood: false, style: 'normal' },
-    weapon: 'sword', xpValue: 0,
-    equipment: { weapon: makeItem('sword2'), chest: makeItem('chain') },
+    scheme: { skin: 0xd9a066, cloth: 0xffffff, accent: 0xffeb3b, hair: 0x4a2f1a, hood: false, style: 'normal', naked: true },
+    weapon: 'unarmed', xpValue: 0,
+    equipment: {},
   }));
 
   const rat = (pos: GridPos, group: string) => mkUnit({

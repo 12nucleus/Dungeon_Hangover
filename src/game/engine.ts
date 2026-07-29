@@ -6,7 +6,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { VoxelWorld, WORLD_SIZE } from './world';
 import { dungeonLevel } from '../levels/dungeon';
 import { ParticleSystem, FX } from './particles';
-import { updateRig, setWeapon, type Rig } from './characters';
+import { updateRig, setWeapon, equip, unequip, itemToEquipVisual, type Rig } from './characters';
 import { Combat } from './combat';
 import { SKILLS, createRoster } from './skills';
 import { AudioManager } from './audio';
@@ -17,7 +17,7 @@ import { effMaxHp } from './stats';
 import { SaveManager, SettingsManager, type GameSettings, type SaveData, type SaveSlotMeta } from './save';
 import { canUnlock, treeFor } from './skilltree';
 import { TrapManager } from './traps';
-import type { CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit } from './types';
+import type { CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot } from './types';
 import { NPCS, type NPCDef } from './npc';
 import { QuestLog } from './quest';
 import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes/index';
@@ -1490,6 +1490,13 @@ export class GameEngine {
       u.weapon = item.weaponKind;
       const rig = this.visuals.get(u.id)?.rig;
       if (rig) setWeapon(rig, item.weaponKind, u.scheme.accent);
+    } else if (actualSlot !== 'weapon') {
+      // layer the worn piece onto the voxel rig (clothes/armor/hats/…)
+      const rig = this.visuals.get(u.id)?.rig;
+      if (rig) {
+        const vis = itemToEquipVisual(item, actualSlot);
+        if (vis) equip(rig, vis);
+      }
     }
     this.audio.play('ui_click', 0.7);
     this.pushLog(`${u.name} equips ${item.icon} ${item.name}.`, 'system');
@@ -1506,6 +1513,10 @@ export class GameEngine {
     if (slot === 'weapon') {
       const rig = this.visuals.get(u.id)?.rig;
       if (rig) setWeapon(rig, null, u.scheme.accent);
+    } else {
+      // remove the worn piece from the voxel rig
+      const rig = this.visuals.get(u.id)?.rig;
+      if (rig) unequip(rig, (slot.startsWith('ring') ? 'ring' : slot) as EquipSlot);
     }
     this.audio.play('ui_click', 0.5);
     this.pushLog(`${u.name} unequips ${item.icon} ${item.name}.`, 'system');

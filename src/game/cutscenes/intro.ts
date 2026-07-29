@@ -3,6 +3,7 @@
 // ═════════════════════════════════════════════════════════════
 import * as THREE from 'three';
 import type { CutsceneHost } from './types';
+import { equip, unequipAll } from '../characters';
 // Real tavern room bounds — used to size the cinematic camera clamp (h.iso.box)
 // so it matches the actual room instead of a stale, undersized box.
 // Adjust this import path if your project layout differs.
@@ -51,13 +52,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   hv.rig.anim.mode = 'sit'; hv.rig.anim.crouch = 0; hv.rig.anim.lunge = 0; hv.rig.anim.flinch = 0;
   hv.rig.group.scale.setScalar(1);
 
-  // PLAIN GREG: the hero rig is built "martial" (his weapon is a sword), which
-  // adds metal shoulder pads (padL/padR). For the tavern flashback he should
-  // just be a drunk in a shirt — hide the pads. Restored when he wakes in the
-  // dungeon (see the wake-up block + finishIntro below).
-  const gregPads = [hv.rig.parts.padL, hv.rig.parts.padR].filter(Boolean) as THREE.Object3D[];
-  for (const p of gregPads) p.visible = false;
-
   // FIX 2: voxel tankard clamped under Greg's LEFT FOREARM (not in the hand)
   // so it sits lower — resting against his elbow / mid-forearm. Same prop anim
   // (counter-rotating against the host's world pitch) keeps it visually level.
@@ -92,6 +86,15 @@ export async function playIntroCutscene(h: CutsceneHost) {
     });
   }
   h.setWeapon(hv.rig, null, hero.scheme.accent);
+
+  // dress Greg for the tavern flashback — the rig is built naked (briefs
+  // only), so we layer his normal clothes on top via the equipment system.
+  // He gets stripped again when he wakes in the dungeon (see below).
+  const sc = hero.scheme;
+  equip(hv.rig, { slot: 'chest', color: sc.cloth, style: 'shirt' });
+  equip(hv.rig, { slot: 'legs', color: sc.accent, style: 'pants' });
+  equip(hv.rig, { slot: 'boots', color: 0x5c3d22, style: 'boots' });
+  equip(hv.rig, { slot: 'gloves', color: sc.cloth, style: 'shirt' });
 
   // companion torch removed permanently per user request – no more hero light at all.
   // (the hero torch is never created by attachHeroTorch which is now a no-op)
@@ -445,16 +448,15 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.scene.fog = new THREE.Fog(0x08080e, 4, 24);
   h.inTavern = false;
   for (const [id, v] of h.visuals) { if (id !== hero.id) v.rig.group.visible = true; }
-  // PLAIN GREG (reset): restore the fighter's shoulder pads once he wakes in
-  // the dungeon so the in-game martial rig is complete again.
-  for (const p of gregPads) p.visible = true;
-  h.setWeapon(hv.rig, hero.weapon, hero.scheme.accent);
+  h.setWeapon(hv.rig, hero.weapon ?? 'unarmed', hero.scheme.accent);
 
   const floorWp = h.unitWorld(h.combat.units[0].pos);
   hv.rig.group.position.copy(floorWp);
   hv.rig.group.rotation.set(0, Math.PI, 0);
   hv.yaw = hv.targetYaw = Math.PI;
   hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 1; hv.rig.anim.mode = 'floor';
+  // strip Greg back to his underwear for the dungeon spawn ("in your underwear")
+  unequipAll(hv.rig);
   if (mugHand) mugHand.remove(mug);
 
   h.iso.desiredYaw = Math.PI * 0.25; h.iso.desiredPitch = 0.62; h.iso.desiredDist = 8;
@@ -512,7 +514,7 @@ export function finishIntro(h: CutsceneHost) {
       if (hv.rig.parts.padL) hv.rig.parts.padL.visible = true;
       if (hv.rig.parts.padR) hv.rig.parts.padR.visible = true;
       hv.yaw = hv.targetYaw = Math.PI;
-      if (hero.weapon) h.setWeapon(hv.rig, hero.weapon, hero.scheme.accent);
+      h.setWeapon(hv.rig, hero.weapon ?? 'unarmed', hero.scheme.accent);
       // suspend hero torch attachment — now a no-op
     }
   }

@@ -42,6 +42,9 @@ export function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: nu
       v.fill(0, 0, 0, 0, 4, 0, 0x6b4a2e);
       v.fill(-1, 4, -1, 1, 5, 1, 0x3a2a18);
       break;
+    case 'unarmed':
+      // no weapon — return empty group
+      break;
   }
   g.add(v.mesh());
   if (kind === 'staff') {

@@ -7,7 +7,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { orcModel } from './voxelModels.mjs';
-import type { CharacterScheme, WeaponKind } from './types';
+import type { CharacterScheme, WeaponKind, EquipSlot } from './types';
+import type { Item } from './items';
 import { playClipOnRig } from '../animationEditor/AnimationRuntime';
 import { gregDrinkClip } from '../animationData/gregDrinkClip';
 
@@ -58,6 +59,8 @@ export interface Rig {
     hair: number; arm: number; hand: number; weapon: number;
     hood?: number; hoodTip?: number; pad?: number; knee?: number; elbow?: number; wrist?: number;
   };
+  /** voxel equipment meshes attached via the equipment system, keyed by slot */
+  equipped?: Partial<Record<EquipSlot, THREE.Object3D[]>>;
 }
 
 const C_CHIBI = 0.1;
@@ -473,80 +476,121 @@ function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
         }
   };
 
-  // ═══ BOOTS + JEANS (per side) ═══
+  // ═══ LEGS (per side) ═══
   for (const s of [-1, 1] as const) {
     cur = s < 0 ? buckets.legL : buckets.legR;
     const cx = s * LEG_X;
-    rbox(cx - 3, 0, -4, cx + 3, 1, 6, 2, B_SOLE);
-    box(cx - 3, 1, -4, cx + 3, 1, 6, B_BOOTD);
-    rbox(cx - 3, 2, -4, cx + 3, 8, 5, 2, B_BOOT);
-    box(cx - 2, 2, 5, cx + 2, 4, 6, B_BOOTHI);
-    box(cx - 2, 2, -4, cx + 2, 4, -4, B_BOOTD);
-    rbox(cx - 3, 8, -3, cx + 3, 10, 4, 2, B_BOOTHI);
-    box(cx - 3, 9, -3, cx + 3, 9, 4, B_BOOTD);
-    for (let ly = 4; ly <= 8; ly += 2) { put(cx - 1, ly, 6, LACE); put(cx + 1, ly, 6, LACE); }
-    put(cx, 5, 6, LACE); put(cx, 7, 6, LACE);
-    box(cx - 3, 5, 0, cx - 3, 6, 0, B_BOOTD);
-    box(cx + 3, 5, 0, cx + 3, 6, 0, B_BOOTD);
-    colf(cx, 0.5, 10, 34, 3.2, 3.4, pant);
-    colf(cx, 0.5, 10, 11, 3.4, 3.6, pantD);
-    for (let y = 11; y <= 33; y++) {
-      put(cx + s * 3, y, 0, seam);
-      put(cx - s * 3, y, 0, pantD2);
-      put(cx, y, 3, pantHI);
-      put(cx, y, -3, pantD);
+    if (scheme.naked) {
+      // bare leg + bare foot + yellow briefs (no shoes, no jeans)
+      colf(cx, 0.5, 2, 34, 3.2, 3.4, skin);
+      colf(cx, 0.5, 0, 2, 3.4, 3.6, skinD);
+      for (let y = 1; y <= 33; y++) {
+        put(cx + s * 3, y, 0, skinD2);
+        put(cx - s * 3, y, 0, skinD);
+        put(cx, y, 3, skinHL);
+        put(cx, y, -3, skinD2);
+      }
+      rbox(cx - 3, 0, -4, cx + 3, 1, 6, 2, skinD);   // bare foot
+      rbox(cx - 3, 33, -2, cx + 3, 37, 3, 1.6, cloth); // briefs band
+      box(cx - 3, 33, 3, cx + 3, 35, 3, cloth);         // front pouch
+      put(cx, 35, 3, shirtHI);
+    } else {
+      // boots + jeans
+      rbox(cx - 3, 0, -4, cx + 3, 1, 6, 2, B_SOLE);
+      box(cx - 3, 1, -4, cx + 3, 1, 6, B_BOOTD);
+      rbox(cx - 3, 2, -4, cx + 3, 8, 5, 2, B_BOOT);
+      box(cx - 2, 2, 5, cx + 2, 4, 6, B_BOOTHI);
+      box(cx - 2, 2, -4, cx + 2, 4, -4, B_BOOTD);
+      rbox(cx - 3, 8, -3, cx + 3, 10, 4, 2, B_BOOTHI);
+      box(cx - 3, 9, -3, cx + 3, 9, 4, B_BOOTD);
+      for (let ly = 4; ly <= 8; ly += 2) { put(cx - 1, ly, 6, LACE); put(cx + 1, ly, 6, LACE); }
+      put(cx, 5, 6, LACE); put(cx, 7, 6, LACE);
+      box(cx - 3, 5, 0, cx - 3, 6, 0, B_BOOTD);
+      box(cx + 3, 5, 0, cx + 3, 6, 0, B_BOOTD);
+      colf(cx, 0.5, 10, 34, 3.2, 3.4, pant);
+      colf(cx, 0.5, 10, 11, 3.4, 3.6, pantD);
+      for (let y = 11; y <= 33; y++) {
+        put(cx + s * 3, y, 0, seam);
+        put(cx - s * 3, y, 0, pantD2);
+        put(cx, y, 3, pantHI);
+        put(cx, y, -3, pantD);
+      }
+      box(cx - 2, 20, 3, cx + 2, 20, 4, pantD);
+      box(cx - 2, 22, 3, cx + 2, 22, 4, pantHI);
+      box(cx - 1, 18, 3, cx + 1, 18, 4, pantD);
+      box(cx - 3, 12, 3, cx + 3, 12, 3, seam);
+      colf(cx, 3, 19, 23, 1.6, 1.2, pantHI);
     }
-    box(cx - 2, 20, 3, cx + 2, 20, 4, pantD);
-    box(cx - 2, 22, 3, cx + 2, 22, 4, pantHI);
-    box(cx - 1, 18, 3, cx + 1, 18, 4, pantD);
-    box(cx - 3, 12, 3, cx + 3, 12, 3, seam);
-    colf(cx, 3, 19, 23, 1.6, 1.2, pantHI);
   }
 
-  // ═══ TORSO (hip, belt, shirt, folds, collar, pocket, print, neck) ═══
+  // ═══ TORSO (hip / briefs / bare chest / neck) ═══
   cur = buckets.torso;
-  rbox(-8, 33, -4, 8, 36, 4, 2, pant);
-  box(-1, 33, 3, 1, 36, 4, pantD);
-  box(-1, 33, -4, 1, 36, -4, pantD2);
-  for (const s of [-1, 1]) { box(Math.min(s * 4, s * 6), 34, 4, Math.max(s * 4, s * 6), 36, 4, pantD); put(s * 4, 33, 4, seam); put(s * 6, 33, 4, seam); }
-  rbox(-8, 35, -4, 8, 37, 5, 2, C_BELT);
-  box(-2, 35, 5, 2, 37, 5, BUCKLE);
-  box(-1, 35, 5, 1, 36, 5, BUCKLE_D);
-  for (const bx of [-6, -2, 2, 6]) box(bx, 35, 5, bx, 37, 5, pantD);
-  for (let y = 37; y <= 55; y++) { const t = (y - 37) / 18; const hx = Math.round(7 + t * 1.8); rbox(-hx, y, -5, hx, y, 5, 2, cloth); }
-  box(-8, 37, -4, 8, 37, 5, shirtD);
-  rbox(-11, 53, -4, 11, 56, 4, 2, cloth);
-  box(-11, 53, 0, -9, 55, 0, shirtD);
-  box(9, 53, 0, 11, 55, 0, shirtD);
-  for (let y = 38; y <= 53; y++) { put(-5, y, 5, shirtD); put(5, y, 5, shirtHI); put(0, y, -5, shirtD); }
-  for (let i = 0; i < 5; i++) { put(-6 + i, 39 + i, 5, shirtD2); put(6 - i, 39 + i, 5, shirtD2); }
-  box(-8, 48, 4, -6, 51, 5, shirtD);
-  box(6, 48, 4, 8, 51, 5, shirtD);
-  rbox(-3, 55, 2, 3, 57, 5, 1, cloth);
-  box(-2, 56, 5, 2, 56, 5, shirtD);
-  box(-2, 57, 4, 2, 57, 5, skinD2);
-  box(2, 46, 5, 5, 50, 5, POCK);
-  box(2, 50, 5, 5, 50, 5, POCK_ST);
-  put(2, 46, 5, POCK_ST); put(5, 46, 5, POCK_ST);
-  box(2, 46, 5, 2, 50, 5, POCK_ST);
-  box(5, 46, 5, 5, 50, 5, POCK_ST);
-  colf(0, -1, 55, 58, 2.2, 2.0, skin);
-  put(0, 56, -2, skinD2);
-  box(-2, 56, 2, 2, 57, 2, skinD);
+  if (scheme.naked) {
+    // yellow briefs centre band + bare chest + neck
+    rbox(-8, 33, -4, 8, 36, 4, 2, cloth);
+    box(-1, 33, 3, 1, 36, 4, shirtHI);
+    box(-1, 33, -4, 1, 36, -4, cloth);
+    for (let y = 37; y <= 55; y++) { const t = (y - 37) / 18; const hx = Math.round(7 + t * 1.8); rbox(-hx, y, -5, hx, y, 5, 2, skin); }
+    box(-8, 37, -4, 8, 37, 5, skinD);
+    rbox(-11, 53, -4, 11, 56, 4, 2, skin);
+    box(-11, 53, 0, -9, 55, 0, skinD);
+    box(9, 53, 0, 11, 55, 0, skinD);
+    for (let y = 38; y <= 53; y++) { put(-5, y, 5, skinD); put(5, y, 5, skinHL); put(0, y, -5, skinD); }
+    for (let i = 0; i < 5; i++) { put(-6 + i, 39 + i, 5, skinD2); put(6 - i, 39 + i, 5, skinD2); }
+    put(-3, 47, 5, skinD2); put(3, 47, 5, skinD2);   // nipples
+    colf(0, -1, 55, 58, 2.2, 2.0, skin);
+    put(0, 56, -2, skinD2);
+    box(-2, 56, 2, 2, 57, 2, skinD);
+  } else {
+    rbox(-8, 33, -4, 8, 36, 4, 2, pant);
+    box(-1, 33, 3, 1, 36, 4, pantD);
+    box(-1, 33, -4, 1, 36, -4, pantD2);
+    for (const s of [-1, 1]) { box(Math.min(s * 4, s * 6), 34, 4, Math.max(s * 4, s * 6), 36, 4, pantD); put(s * 4, 33, 4, seam); put(s * 6, 33, 4, seam); }
+    rbox(-8, 35, -4, 8, 37, 5, 2, C_BELT);
+    box(-2, 35, 5, 2, 37, 5, BUCKLE);
+    box(-1, 35, 5, 1, 36, 5, BUCKLE_D);
+    for (const bx of [-6, -2, 2, 6]) box(bx, 35, 5, bx, 37, 5, pantD);
+    for (let y = 37; y <= 55; y++) { const t = (y - 37) / 18; const hx = Math.round(7 + t * 1.8); rbox(-hx, y, -5, hx, y, 5, 2, cloth); }
+    box(-8, 37, -4, 8, 37, 5, shirtD);
+    rbox(-11, 53, -4, 11, 56, 4, 2, cloth);
+    box(-11, 53, 0, -9, 55, 0, shirtD);
+    box(9, 53, 0, 11, 55, 0, shirtD);
+    for (let y = 38; y <= 53; y++) { put(-5, y, 5, shirtD); put(5, y, 5, shirtHI); put(0, y, -5, shirtD); }
+    for (let i = 0; i < 5; i++) { put(-6 + i, 39 + i, 5, shirtD2); put(6 - i, 39 + i, 5, shirtD2); }
+    box(-8, 48, 4, -6, 51, 5, shirtD);
+    box(6, 48, 4, 8, 51, 5, shirtD);
+    rbox(-3, 55, 2, 3, 57, 5, 1, cloth);
+    box(-2, 56, 5, 2, 56, 5, shirtD);
+    box(-2, 57, 4, 2, 57, 5, skinD2);
+    box(2, 46, 5, 5, 50, 5, POCK);
+    box(2, 50, 5, 5, 50, 5, POCK_ST);
+    put(2, 46, 5, POCK_ST); put(5, 46, 5, POCK_ST);
+    box(2, 46, 5, 2, 50, 5, POCK_ST);
+    box(5, 46, 5, 5, 50, 5, POCK_ST);
+    colf(0, -1, 55, 58, 2.2, 2.0, skin);
+    put(0, 56, -2, skinD2);
+    box(-2, 56, 2, 2, 57, 2, skinD);
+  }
   if (weapon === 'staff') rbox(-9, 30, -4, 9, 37, 5, 2, cloth);   // caster robe skirt
 
-  // ═══ ARMS (sleeve + bare forearm + elbow) ═══
+  // ═══ ARMS (bare when naked, else sleeve + bare forearm) ═══
   for (const s of [-1, 1] as const) {
     cur = s < 0 ? buckets.armL : buckets.armR;
     const cx = s * ARM_X;
-    colf(cx, 0, 43, 55, 2.6, 2.6, cloth);
-    colf(cx, 0, 43, 44, 2.8, 2.8, shirtD);
-    put(cx + s * 2, 52, 0, shirtHI);
-    put(cx - s * 2, 51, 0, shirtD);
-    colf(cx, 0, 34, 42, 2.2, 2.3, skin);
-    for (let y = 35; y <= 41; y++) { put(cx, y, 2, skinHL); put(cx, y, -2, skinD); }
-    put(cx + s * 2, 40, 1, skinD);
-    colf(cx, -1, 42, 43, 2.0, 1.6, skinD);
+    if (scheme.naked) {
+      colf(cx, 0, 34, 55, 2.4, 2.5, skin);
+      for (let y = 35; y <= 54; y++) { put(cx, y, 2, skinHL); put(cx, y, -2, skinD); }
+      put(cx + s * 2, 53, 1, skinD);
+    } else {
+      colf(cx, 0, 43, 55, 2.6, 2.6, cloth);
+      colf(cx, 0, 43, 44, 2.8, 2.8, shirtD);
+      put(cx + s * 2, 52, 0, shirtHI);
+      put(cx - s * 2, 51, 0, shirtD);
+      colf(cx, 0, 34, 42, 2.2, 2.3, skin);
+      for (let y = 35; y <= 41; y++) { put(cx, y, 2, skinHL); put(cx, y, -2, skinD); }
+      put(cx + s * 2, 40, 1, skinD);
+      colf(cx, -1, 42, 43, 2.0, 1.6, skinD);
+    }
   }
 
   // ═══ HANDS ═══
@@ -1740,4 +1784,205 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
     a.flinch = Math.max(0, a.flinch - dt * 4);
     rig.group.rotation.x = -Math.sin(a.flinch * Math.PI) * 0.25;
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// equipment — layer voxel clothing / armor / hats onto a rig
+// ─────────────────────────────────────────────────────────────
+// The player rig is built "naked" (briefs only). This module adds wearable
+// pieces on top by attaching small voxel meshes to the correct rig part, so
+// they follow the body's animation (boots track the feet, gloves the hands,
+// a helmet the head, …). Each piece is tracked in `rig.equipped` so it can be
+// removed later (unequip / unequipAll) — e.g. Greg is dressed for the tavern
+// flashback, then stripped back to his underwear when he wakes in the dungeon.
+// ─────────────────────────────────────────────────────────────
+
+/** grid pivot (cx, cy) for every rig part, so equipment voxels built in the
+ *  part's LOCAL space line up 1:1 with the body voxels that part was built from. */
+export const PART_PIVOTS: Record<string, { cx: number; cy: number }> = {
+  torso: { cx: 0, cy: 45 },
+  head: { cx: 0, cy: 64 },
+  hair: { cx: 0, cy: 66 },
+  legL: { cx: -4, cy: 34 }, legR: { cx: 4, cy: 34 },
+  shinL: { cx: -4, cy: 22 }, shinR: { cx: 4, cy: 22 },
+  armL: { cx: -10, cy: 55 }, armR: { cx: 10, cy: 55 },
+  foreL: { cx: -10, cy: 43 }, foreR: { cx: 10, cy: 43 },
+  handL: { cx: -10, cy: 31 }, handR: { cx: 10, cy: 31 },
+  wristL: { cx: -10, cy: 31 }, wristR: { cx: 10, cy: 31 },
+};
+
+export type EquipStyle =
+  | 'shirt' | 'leather' | 'chain' | 'plate'
+  | 'hood' | 'helm' | 'cap'
+  | 'pants' | 'greaves' | 'boots';
+
+export interface EquipVisual {
+  slot: EquipSlot;
+  color: number;
+  style?: EquipStyle;
+}
+
+function inRound(x: number, z: number, x0: number, z0: number, x1: number, z1: number, r: number): boolean {
+  const cx0 = x0 + r, cx1 = x1 - r, cz0 = z0 + r, cz1 = z1 - r;
+  let dx = 0, dz = 0;
+  if (x < cx0) dx = x - cx0; else if (x > cx1) dx = x - cx1;
+  if (z < cz0) dz = z - cz0; else if (z > cz1) dz = z - cz1;
+  return dx * dx + dz * dz <= r * r + 0.3;
+}
+
+function ringShell(
+  vox: Vox, piv: { cx: number; cy: number },
+  x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r: number,
+  color: number, skip?: (x: number, y: number, z: number) => boolean,
+) {
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        if (!inRound(x, z, x0, z0, x1, z1, r)) continue;
+        if (skip && skip(x, y, z)) continue;
+        const enclosed =
+          inRound(x + 1, z, x0, z0, x1, z1, r) &&
+          inRound(x - 1, z, x0, z0, x1, z1, r) &&
+          inRound(x, z + 1, x0, z0, x1, z1, r) &&
+          inRound(x, z - 1, x0, z0, x1, z1, r);
+        if (enclosed) continue;
+        vox.add(x - piv.cx, y - piv.cy, z, color, 0.02);
+      }
+    }
+  }
+}
+
+function buildChest(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  const color = def.color;
+  for (let y = 34; y <= 57; y++) {
+    const t = (y - 37) / 18;
+    const hx = Math.round(7 + t * 1.8);
+    ringShell(v, piv, -hx - 2, y, -7, hx + 2, y, 7, 2, color);
+  }
+  if (def.style === 'plate') {
+    for (const s of [-1, 1]) ringShell(v, piv, s * 9, 52, -5, s * 12, 56, 5, 2, color);
+  }
+}
+
+function buildLegs(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  ringShell(v, piv, piv.cx - 5, 22, -5, piv.cx + 5, 34, 5, 2, def.color);
+}
+
+function buildBoots(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  ringShell(v, piv, piv.cx - 5, 0, -6, piv.cx + 5, 21, 7, 2, def.color);
+}
+
+function buildGloves(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  ringShell(v, piv, piv.cx - 3, 28, -3, piv.cx + 3, 34, 3, 2, def.color);
+}
+
+function buildHead(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  const topY = def.style === 'cap' ? 71 : 73;
+  const botY = def.style === 'cap' ? 65 : 58;
+  ringShell(v, piv, -7, botY, -7, 7, topY, 7, 2, def.color, (_x, y, z) => z > 3 && y < 64);
+}
+
+function buildAmulet(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  v.add(0 - piv.cx, 42 - piv.cy, 6, def.color, 0.02);
+  v.add(0 - piv.cx, 43 - piv.cy, 6, shade(def.color, 0.8), 0.02);
+}
+
+function buildRing(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  for (let a = 0; a < 360; a += 45) {
+    const rad = (Math.PI * a) / 180;
+    const x = Math.round(piv.cx + 2 * Math.cos(rad));
+    const z = Math.round(2 * Math.sin(rad));
+    v.add(x - piv.cx, 30 - piv.cy, z, def.color, 0.02);
+  }
+}
+
+function buildShield(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  ringShell(v, piv, -13, 40, -3, -11, 46, 3, 1, def.color);
+}
+
+function buildPiece(def: EquipVisual): { part: string; mesh: THREE.Mesh }[] {
+  const out: { part: string; mesh: THREE.Mesh }[] = [];
+  const mk = (part: string, build: (v: Vox, piv: { cx: number; cy: number }) => void) => {
+    const piv = PART_PIVOTS[part];
+    if (!piv) return;
+    const vox = new Vox(C_DETAIL, 1);
+    build(vox, piv);
+    out.push({ part, mesh: vox.mesh() });
+  };
+  switch (def.slot) {
+    case 'chest': mk('torso', (v, p) => buildChest(v, p, def)); break;
+    case 'legs': for (const s of ['L', 'R']) mk('leg' + s, (v, p) => buildLegs(v, p, def)); break;
+    case 'boots': for (const s of ['L', 'R']) mk('shin' + s, (v, p) => buildBoots(v, p, def)); break;
+    case 'gloves': for (const s of ['L', 'R']) mk('hand' + s, (v, p) => buildGloves(v, p, def)); break;
+    case 'head': mk('head', (v, p) => buildHead(v, p, def)); break;
+    case 'amulet': mk('torso', (v, p) => buildAmulet(v, p, def)); break;
+    case 'ring': for (const s of ['L', 'R']) mk('hand' + s, (v, p) => buildRing(v, p, def)); break;
+    case 'offHand': mk('foreL', (v, p) => buildShield(v, p, def)); break;
+    default: break;
+  }
+  return out;
+}
+
+/** Equip a piece onto a rig (replacing any existing piece in the same slot). */
+export function equip(rig: Rig, def: EquipVisual): void {
+  unequip(rig, def.slot);
+  const pieces = buildPiece(def);
+  const stored: THREE.Object3D[] = [];
+  for (const { part, mesh } of pieces) {
+    const target = rig.parts[part];
+    if (!target) { mesh.geometry.dispose(); continue; }
+    target.add(mesh);
+    stored.push(mesh);
+  }
+  if (!rig.equipped) rig.equipped = {};
+  rig.equipped[def.slot] = stored;
+}
+
+/** Remove a single equipped piece (by slot). */
+export function unequip(rig: Rig, slot: EquipSlot): void {
+  const arr = rig.equipped?.[slot];
+  if (!arr) return;
+  for (const o of arr) {
+    o.parent?.remove(o);
+    o.traverse((c: THREE.Object3D) => { const m = c as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
+  }
+  if (rig.equipped) delete rig.equipped[slot];
+}
+
+/** Strip every equipped piece from a rig. */
+export function unequipAll(rig: Rig): void {
+  if (!rig.equipped) return;
+  for (const slot of Object.keys(rig.equipped) as EquipSlot[]) unequip(rig, slot);
+}
+
+/**
+ * Convert a data Item into an EquipVisual for the voxel rig. Returns null for
+ * items that have no wearable visual (weapons are handled by setWeapon, cloaks
+ * have no EquipSlot, consumables aren't equipped).
+ */
+export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisual | null {
+  let slot: string | undefined =
+    slotOverride ?? item.slot ?? (item.kind === 'armor' ? 'chest' : item.kind === 'weapon' ? 'weapon' : undefined);
+  if (!slot) {
+    const n = item.name.toLowerCase();
+    if (n.includes('ring')) slot = 'ring';
+    else if (n.includes('amulet')) slot = 'amulet';
+    else return null;
+  }
+  if (slot === 'weapon' || slot === 'cloak') return null;
+  const s = slot as EquipSlot;
+  const n = item.name.toLowerCase();
+  let color = 0x9aa0a8;
+  let style: EquipStyle = 'shirt';
+  if (item.kind === 'armor') {
+    if (n.includes('plate')) { color = 0xb8bfc9; style = 'plate'; }
+    else if (n.includes('chain')) { color = 0x9aa0a8; style = 'chain'; }
+    else if (n.includes('leather')) { color = 0x6b4423; style = 'leather'; }
+    else { color = 0xcfc4a8; style = 'shirt'; }
+  } else if (s === 'head') { color = 0x6b4423; style = 'helm'; }
+  else if (s === 'legs') { color = 0x4a3b2a; style = 'pants'; }
+  else if (s === 'boots') { color = 0x4a3b2a; style = 'boots'; }
+  else if (s === 'gloves') { color = 0x6b4423; style = 'leather'; }
+  else if (s === 'amulet' || s === 'ring') { color = 0xffd700; style = 'shirt'; }
+  return { slot: s, color, style };
 }
