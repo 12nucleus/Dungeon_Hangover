@@ -51,16 +51,12 @@ export async function playIntroCutscene(h: CutsceneHost) {
   hv.rig.anim.mode = 'sit'; hv.rig.anim.crouch = 0; hv.rig.anim.lunge = 0; hv.rig.anim.flinch = 0;
   hv.rig.group.scale.setScalar(1);
 
-  // FIX 1: remove Greg's shoulder pads by narrowing the torso's x-extent.
-  // The gregRigModel's torso array has a wide shoulder line at z=4-5 across
-  // y=33-44 (pale-blue voxels 0xafb3b8) that reads visually as padded armor.
-  // We narrow the torso mesh's scale.x by 12% so the shoulder line collapses
-  // inward without touching the immutable .mjs rig data — this fix is
-  // reusable on any future player model without re-exporting from scripts/.
-  const torso = hv.rig.parts.torso;
-  if (torso) torso.scale.x = 0.88;
-  // (Sleeves still hang from the shoulder pivots; they automatically follow
-  //  the narrower torso without their own scale edit.)
+  // PLAIN GREG: the hero rig is built "martial" (his weapon is a sword), which
+  // adds metal shoulder pads (padL/padR). For the tavern flashback he should
+  // just be a drunk in a shirt — hide the pads. Restored when he wakes in the
+  // dungeon (see the wake-up block + finishIntro below).
+  const gregPads = [hv.rig.parts.padL, hv.rig.parts.padR].filter(Boolean) as THREE.Object3D[];
+  for (const p of gregPads) p.visible = false;
 
   // FIX 2: voxel tankard clamped under Greg's LEFT FOREARM (not in the hand)
   // so it sits lower — resting against his elbow / mid-forearm. Same prop anim
@@ -124,7 +120,11 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // interior instead, with a small margin so the camera never pokes through
   // a wall.
   h.iso.lerp = 2.0;
-  h.iso.box = { minX: -RX + 2, maxX: RX - 2, minZ: ZB + 2, maxZ: ZF - 2, minY: 0.5, maxY: WH - 3 };
+  // WORLD-UNIT clamp: RX/ZB/ZF/WH are tavern GRID coordinates (1 grid = 0.11
+  // world). Using them raw made the box ~10x bigger than the room, so the
+  // "clamp" let the camera fly straight through every wall.
+  const CU = 0.11;
+  h.iso.box = { minX: -(RX - 3) * CU, maxX: (RX - 3) * CU, minZ: (ZB + 3) * CU, maxZ: (ZF - 3) * CU, minY: 0.25, maxY: (WH - 3) * CU };
   h.iso.desiredYaw = Math.PI * 0.78; h.iso.desiredPitch = 0.44; h.iso.desiredDist = 5.4;
   h.iso.focus(poi.gregHead);
   h.fadeTo(0);
@@ -301,8 +301,12 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // onto the wizard in STAGE A; if we touch the focus here we restart the
   // iso.lerp ease and the whole shot jitters).
   const wizardTip = poi.wizard.clone().add(new THREE.Vector3(0.15, 1.6, 0.05));
+  if (wiz) wiz.anim.mode = 'point';          // AIM: staff arm extended at Greg
+  // charging swirl: two converging mote rings at the staff tip
   h.particles.burst({ pos: wizardTip, count: 14, color: [0xc084fc, 0xe9d5ff], speed: [0.2, 0.8], life: [0.5, 1.0], size: [0.3, 0.6], gravity: -0.4, endScale: 0.2 });
-  await h.cineDelay(800);
+  await h.cineDelay(400);
+  h.particles.burst({ pos: wizardTip, count: 10, color: [0xa855f7, 0xe9d5ff], speed: [0.1, 0.5], life: [0.3, 0.7], size: [0.2, 0.45], gravity: -0.6, endScale: 0.15 });
+  await h.cineDelay(400);
   if (h.introSkipped) { finishIntro(h); return; }
   // STAGE C: FIRE (0.8 s) — wizard snaps forward, single whip-pan to Greg + a
   // SINGLE shake burst at the polymorph moment (NO second shake during the pan
@@ -311,6 +315,43 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.audio.play('magic_missile', 0.9);
   h.iso.focus(hv.rig.group.position.clone().add(new THREE.Vector3(0, 0.8, 0)));
   h.iso.desiredDist = 5.2;            // gentle pull-back so the burst fits in frame
+
+  // ── MAGIC RAY: a visible beam from the staff tip to Greg, with a bright
+  // core, traveling sparkles, and a 0.6 s fade. This replaces the old
+  // "particles just appear on Greg" non-effect. ──
+  const rayFrom = wizardTip.clone();
+  const rayTo = to2.clone();
+  const rayDir = rayTo.clone().sub(rayFrom);
+  const rayLen = rayDir.length();
+  const rayMat = new THREE.MeshBasicMaterial({ color: 0xc084fc, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const ray = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.075, 1, 6, 1, true), rayMat);
+  ray.position.copy(rayFrom).addScaledVector(rayDir, 0.5);
+  ray.scale.set(1, rayLen, 1);
+  ray.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), rayDir.clone().normalize());
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xf5f0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const rayCore = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.03, 1, 6, 1, true), coreMat);
+  ray.add(rayCore);
+  h.scene.add(ray);
+  const rayT0 = performance.now();
+  h.propAnims.push(() => {
+    const t = (performance.now() - rayT0) / 1000;
+    const o = t < 0.08 ? (t / 0.08) * 0.9 : Math.max(0, 0.9 - (t - 0.08) / 0.5);
+    rayMat.opacity = o; coreMat.opacity = Math.min(1, o * 1.4);
+    ray.rotateY(0.35);   // spin the glow sheath
+    if (t < 0.45 && Math.random() < 0.6) {
+      h.particles.burst({
+        pos: rayFrom.clone().addScaledVector(rayDir, 0.15 + Math.random() * 0.85),
+        count: 2, color: [0xc084fc, 0xe9d5ff], speed: [0.1, 0.45], life: [0.2, 0.5],
+        size: [0.05, 0.14], gravity: 0, endScale: 0.2,
+      });
+    }
+    if (t > 0.62) {
+      h.scene.remove(ray);
+      ray.geometry.dispose(); rayCore.geometry.dispose(); rayMat.dispose(); coreMat.dispose();
+      return true;
+    }
+    return false;
+  });
   await h.cineDelay(260);
   if (wiz) wiz.anim.lunge = 0;
   // FIX 6: PARTICLE SPELL (replaces launchMagicMissile's cube orb).
@@ -378,7 +419,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   const _fallFocus = hv.rig.group.position.clone();
   h.iso.focus(_fallFocus);
   h.animateTo(() => _fallFocus.y, (v) => { _fallFocus.y = v; }, 0.65, 0.9);  // focus lands on his head
-  h.animateTo(() => hv.rig.group.position.y, (v) => { hv.rig.group.position.y = v; }, -0.15, 0.9); // he sags a hair past floor to lie properly
+  h.animateTo(() => hv.rig.group.position.y, (v) => { hv.rig.group.position.y = v; }, 0.28, 0.9); // lying ON the floorboards, not sunk through them
   h.animateTo(() => hv.rig.group.rotation.z, (v) => { hv.rig.group.rotation.z = v; }, -Math.PI * 0.5, 0.9);
   h.animateTo(() => hv.rig.group.rotation.x, (v) => { hv.rig.group.rotation.x = v; }, -0.45, 0.9);
   h.fx.impactDust(h.particles, hv.rig.group.position.clone().setY(0), []);
@@ -404,9 +445,9 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.scene.fog = new THREE.Fog(0x08080e, 4, 24);
   h.inTavern = false;
   for (const [id, v] of h.visuals) { if (id !== hero.id) v.rig.group.visible = true; }
-  // FIX 1 (reset): restore Greg's torso to full width once he wakes in the
-  // dungeon so the in-game rig doesn't look squished.
-  if (hv.rig.parts.torso) hv.rig.parts.torso.scale.x = 1.0;
+  // PLAIN GREG (reset): restore the fighter's shoulder pads once he wakes in
+  // the dungeon so the in-game martial rig is complete again.
+  for (const p of gregPads) p.visible = true;
   h.setWeapon(hv.rig, hero.weapon, hero.scheme.accent);
 
   const floorWp = h.unitWorld(h.combat.units[0].pos);
@@ -467,6 +508,9 @@ export function finishIntro(h: CutsceneHost) {
     const hv = h.visuals.get(hero.id);
     if (hv) {
       hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 0; hv.rig.group.rotation.set(0, Math.PI, 0);
+      // skip-safety: if the intro was skipped while Greg was "plain", restore pads
+      if (hv.rig.parts.padL) hv.rig.parts.padL.visible = true;
+      if (hv.rig.parts.padR) hv.rig.parts.padR.visible = true;
       hv.yaw = hv.targetYaw = Math.PI;
       if (hero.weapon) h.setWeapon(hv.rig, hero.weapon, hero.scheme.accent);
       // suspend hero torch attachment — now a no-op

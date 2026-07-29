@@ -45,7 +45,13 @@ export class IsoCamera {
   update(dt: number) {
     const k = Math.min(1, dt * this.lerp);
     this.target.lerp(this.desiredTarget, k);
-    this.yaw += (this.desiredYaw - this.yaw) * k;
+    // shortest-path yaw easing — without this a yaw jump across the ±π seam
+    // (e.g. +0.78π → -0.5π) spins the camera the LONG way around, which read
+    // as "the camera starts rotating like crazy" mid-cutscene.
+    let dyaw = (this.desiredYaw - this.yaw) % (Math.PI * 2);
+    if (dyaw > Math.PI) dyaw -= Math.PI * 2;
+    if (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    this.yaw += dyaw * k;
     this.dist += (this.desiredDist - this.dist) * k;
     this.pitch += (this.desiredPitch - this.pitch) * k;
     const p = this.cam.position;

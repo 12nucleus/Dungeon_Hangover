@@ -330,22 +330,26 @@ export function buildTavern(hooks: TavernHooks): THREE.Group {
   }
 
   // == LIGHTING - hearth (flickering), chandelier, sconces, soft fill ==
-  const fireLight = new THREE.PointLight(0xffa040, 11, 11, 1.8); fireLight.position.set(2.6, 1.0, -3.4); g.add(fireLight);
-  const chandLight = new THREE.PointLight(0xffd9a0, 14, 16, 1.5); chandLight.position.set(0, 2.7, 1.1); g.add(chandLight);
-  for (const [gx, wz] of sconces) { const l = new THREE.PointLight(0xffb060, 5, 6, 1.7); l.position.set(gx * CUBE, 2.5, wz + 0.2); g.add(l); }
-  g.add(new THREE.AmbientLight(0xfff0dd, 0.5));
+  // Intensities are deliberately modest: with three.js's physical light
+  // falloff, values in the 11-14 range at ~1-2 m distance NUKED any rig
+  // standing near the chandelier/table (Greg, the sheep, the barmaid all
+  // looked emissive). Keep every point light in the 1.5-6 range instead.
+  const fireLight = new THREE.PointLight(0xffa040, 6, 9, 1.8); fireLight.position.set(2.6, 1.0, -3.4); g.add(fireLight);
+  const chandLight = new THREE.PointLight(0xffd9a0, 5, 9, 1.8); chandLight.position.set(0, 2.7, 1.1); g.add(chandLight);
+  for (const [gx, wz] of sconces) { const l = new THREE.PointLight(0xffb060, 3, 6, 1.7); l.position.set(gx * CUBE, 2.5, wz + 0.2); g.add(l); }
+  g.add(new THREE.AmbientLight(0xfff0dd, 0.45));
   // warm spill from the two front-wall windows + a small light over the door
   for (const wx of [-15 * CUBE, 15 * CUBE]) {
-    const wl = new THREE.PointLight(WGLOW, 3, 4, 1.7); wl.position.set(wx, 2.4, (ZF - 2) * CUBE); g.add(wl);
+    const wl = new THREE.PointLight(WGLOW, 1.6, 4, 1.7); wl.position.set(wx, 2.4, (ZF - 2) * CUBE); g.add(wl);
   }
-  const doorLight = new THREE.PointLight(WGLOW, 2, 3.5, 1.7); doorLight.position.set(0, 1.0, (ZF - 2) * CUBE); g.add(doorLight);
+  const doorLight = new THREE.PointLight(WGLOW, 1.2, 3.5, 1.7); doorLight.position.set(0, 1.0, (ZF - 2) * CUBE); g.add(doorLight);
 
   // hearth flicker + rising embers (runs only while the tavern exists)
   let fireT = 0;
   hooks.propAnims.push((dt: number) => {
     if (!g.parent) return true;   // tavern removed from the scene -> stop
     fireT += dt;
-    fireLight.intensity = 11 * (0.78 + Math.sin(fireT * 13) * 0.14 + Math.random() * 0.12);
+    fireLight.intensity = 6 * (0.78 + Math.sin(fireT * 13) * 0.14 + Math.random() * 0.12);
     if (Math.random() < dt * 7) hooks.particles.burst({
       pos: new THREE.Vector3(2.6, 0.7, -3.5), count: 2,
       color: [0xff8a2a, 0xffd24a, 0xffae3a], speed: [0.3, 1.3], life: [0.4, 0.9],
