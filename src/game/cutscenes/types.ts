@@ -50,6 +50,8 @@ export interface CutsceneHost {
   readonly propsGroup: THREE.Group;
   /** world root group (terrain) */
   readonly worldGroup: THREE.Group;
+  /** dungeon dressing group (bath, weapon rack, door, chests, lever, rubble) */
+  readonly dressingGroup: THREE.Group | null;
   /** the underlying WebGL renderer's canvas element */
   readonly canvas: HTMLCanvasElement;
   readonly fadeEl: HTMLElement | null;

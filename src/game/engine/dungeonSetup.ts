@@ -19,7 +19,16 @@ import { animateTo } from './cheats';
 function place(engine: any, g: THREE.Group, tile: GridPos, yOff = 0) {
   const wp = unitWorld(engine, tile);
   g.position.set(wp.x, wp.y + yOff, wp.z);
-  engine.scene.add(g);
+  // FIX: dungeon dressing goes into a tracked dressingGroup, NOT the raw
+  // scene root, so the intro cutscene can hide it alongside worldGroup +
+  // propsGroup. Without this, the boss bath + weapon rack + iron door + chests
+  // leak through behind the tavern walls.
+  if (!engine.dressingGroup) {
+    engine.dressingGroup = new THREE.Group();
+    engine.dressingGroup.name = 'dungeonDressing';
+    engine.scene.add(engine.dressingGroup);
+  }
+  engine.dressingGroup.add(g);
 }
 
 /** test if a point falls inside a rectangular region */
@@ -109,21 +118,8 @@ export function setupDungeon(engine: any, L: any) {
 }
 
 /** Mount a burning torch in the hero's off-hand */
-export function attachHeroTorch(engine: any, rig: Rig) {
-  const hand = rig.parts.handL ?? rig.parts.armL;
-  if (!hand) return;
-  const torch = new THREE.Group();
-  const stick = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.5, 0.04), new THREE.MeshLambertMaterial({ color: 0x5a3a1e }));
-  stick.position.y = 0.22; torch.add(stick);
-  const wrap = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.13, 0.10), new THREE.MeshLambertMaterial({ color: 0x2a1a0e }));
-  wrap.position.y = 0.48; torch.add(wrap);
-  const flame = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.34, 0.16), new THREE.MeshBasicMaterial({ color: 0xffb545 }));
-  flame.position.y = 0.68; flame.name = 'hero_flame'; torch.add(flame);
-  const core = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.2, 0.09), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
-  core.position.y = 0.7; torch.add(core);
-  torch.position.set(0, 0.02, 0.06);
-  hand.add(torch);
-  engine.heroTorchFlame = flame;
+export function attachHeroTorch(_engine: any, _rig: Rig) {
+  // hero torch permanently removed — no-op stub
 }
 
 /** Per-frame dungeon logic — prop tweens, torch flicker, interactable proximity */

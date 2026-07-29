@@ -3,6 +3,10 @@
 // ═════════════════════════════════════════════════════════════
 import * as THREE from 'three';
 import type { CutsceneHost } from './types';
+// Real tavern room bounds — used to size the cinematic camera clamp (h.iso.box)
+// so it matches the actual room instead of a stale, undersized box.
+// Adjust this import path if your project layout differs.
+import { RX, ZB, ZF, WH } from '../engine/tavern';
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -23,13 +27,16 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.inTavern = true;
   h.worldGroup.visible = false;
   h.propsGroup.visible = false;
+  if (h.dressingGroup) h.dressingGroup.visible = false;   // hide boss bath + weapon rack etc.
   for (const [id, v] of h.visuals) {
     v.bar.style.display = 'none';
     if (id !== hero.id) v.rig.group.visible = false;
   }
   h.tavern = h.buildTavern();
   h.scene.add(h.tavern);
-  h.scene.fog = new THREE.Fog(0x140d08, 6, 26);
+  // No fog in the tavern — keeps all four walls fully visible without
+  // any atmospheric obscuring that could be misread as a missing wall.
+  h.scene.fog = null;
 
   const poi = (h.tavern!.userData as { poi: Record<string, THREE.Vector3> }).poi;
 
@@ -90,9 +97,34 @@ export async function playIntroCutscene(h: CutsceneHost) {
   }
   h.setWeapon(hv.rig, null, hero.scheme.accent);
 
-  // -- camera: kept inside the little set (box clamp) with slow cinematic easing --
+  // companion torch removed permanently per user request – no more hero light at all.
+  // (the hero torch is never created by attachHeroTorch which is now a no-op)
+  // FIX 9 (revised): a single `visible = false` here didn't stick, which
+  // means something else — most likely a normal per-frame "torch follows
+  // player" update running underneath the cutscene — is turning it back on
+  // every frame. Fight that every frame instead of once: force it off in a
+  // propAnim (which runs every render tick) for as long as we're in the
+  // tavern, except during the brief polymorph flash below.
+  let heroLightFlash = false;
+  h.propAnims.push(() => {
+    if (h.heroLight && !heroLightFlash) { h.heroLight.visible = false; h.heroLight.intensity = 0; }
+    return !h.inTavern;
+  });
+
+  // -- camera: kept inside the tavern (box clamp) with slow cinematic easing --
+  // FIX 8: this used to be a stale, tiny box (maxZ: 5.6) left over from an
+  // earlier version of the scene where everything sat near the room center.
+  // Since then Greg's table (z=18), the bouncer (z≈40), and the front wall
+  // (z=ZF=43) all moved out to their real positions, but this clamp never
+  // did — so on every wide/establishing/reveal shot the camera got yanked
+  // back into that tiny box while the *focus* target stayed far away. That's
+  // what caused walls to appear to vanish (camera ended up jammed behind/
+  // inside nearby geometry, backface-culled) and the camera to visibly fail
+  // to follow the barmaid/wizard/bouncer/Greg. Clamp to the real room
+  // interior instead, with a small margin so the camera never pokes through
+  // a wall.
   h.iso.lerp = 2.0;
-  h.iso.box = { minX: -4.2, maxX: 4.2, minZ: -3.4, maxZ: 5.6, minY: 0.5, maxY: 3.2 };
+  h.iso.box = { minX: -RX + 2, maxX: RX - 2, minZ: ZB + 2, maxZ: ZF - 2, minY: 0.5, maxY: WH - 3 };
   h.iso.desiredYaw = Math.PI * 0.78; h.iso.desiredPitch = 0.44; h.iso.desiredDist = 5.4;
   h.iso.focus(poi.gregHead);
   h.fadeTo(0);
@@ -172,12 +204,17 @@ export async function playIntroCutscene(h: CutsceneHost) {
   if (h.introSkipped) { finishIntro(h); return; }
 
   // == BEAT 7: the bouncer cracks his knuckles; Greg mounts the table ==
-  // FIX 4: TWO-SHOT here — frame both the bouncer (door area) AND Greg (he's
-  // about to mount the table). Use a wider dist that catches both.
+  // FIX 3a: the previous version's "two-shot" focus point (-2.0, 1.2, -0.6)
+  // was nowhere near the bouncer (poi.bouncer = -4, 0.8, 40) — the camera was
+  // framing empty floor in the middle of the room while the narration was
+  // about the bouncer. Now we focus tightly on the bouncer by the door so the
+  // audience reads him cracking his knuckles. yaw=-π*0.5 looks along -z toward
+  // the door wall (z=ZF=+43) from inside the room.
   const bc = h.tavernActors.bouncer;
-  h.iso.desiredYaw = -0.05; h.iso.desiredDist = 6.8; h.iso.desiredPitch = 0.46;
-  h.iso.focus(new THREE.Vector3(-2.0, 1.2, -0.6));
+  h.iso.desiredYaw = -Math.PI * 0.5; h.iso.desiredDist = 3.4; h.iso.desiredPitch = 0.42;
+  h.iso.focus(poi.bouncer.clone().add(new THREE.Vector3(0, 0.6, 0)));
   if (bc) bc.anim.mode = 'crack';
+  await h.cineDelay(400);   // brief settle onto the bouncer before the line lands
   await h.narrate('narr_bounce', 'By the door, the bouncer cracks his knuckles - a retired warlord who took this job for the peace and quiet. Greg reads the room perfectly, and climbs onto the table.', 7400);
   if (bc) bc.anim.mode = 'idle';
   if (h.introSkipped) { finishIntro(h); return; }
@@ -186,7 +223,12 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.desiredYaw = -Math.PI * 0.15; h.iso.desiredDist = 4.6; h.iso.desiredPitch = 0.36;
   h.iso.focus(poi.gregHead.clone().add(new THREE.Vector3(0, 0.7, 0)));
   hv.rig.anim.mode = 'idle'; hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 0;
-  hv.rig.group.position.set(0, 0.99, 1.35);   // up on the tabletop (feet flush on the top)
+  // FIX 10: this was hardcoded to z=1.35 — a leftover from before Greg's table
+  // was moved out to z=18 (poi.gregSeat/gregHead). That left Greg ~16 units
+  // away from his own table and from where the camera was focused (gregHead),
+  // so he visibly teleported off-camera the moment he stood up. Anchor to
+  // seat.z (his table's actual z) and keep the small forward offset.
+  hv.rig.group.position.set(0, 0.99, seat.z + 1.35);   // up on the tabletop (feet flush on the top)
   hv.rig.anim.lunge = 1;
   await h.cineDelay(700);
 
@@ -220,7 +262,10 @@ export async function playIntroCutscene(h: CutsceneHost) {
   for (const [lx, lz] of [[-0.12, -0.12], [0.12, -0.12], [-0.12, 0.12], [0.12, 0.12]] as const) {
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.24, 0.06), stoolWoodD); leg.position.set(lx, 0.08, lz); stool.add(leg);
   }
-  stool.position.set(0, 0.55, 1.9); h.scene.add(stool);
+  // FIX 10: same stale-coordinate bug as Greg's table position above — this
+  // needs to start near Greg at his real table (z=18), not near the old z≈2
+  // location, or the stool visibly flies in from empty space.
+  stool.position.set(0, 0.55, seat.z + 1.9); h.scene.add(stool);
   const stoolTarget = poi.wizard.clone().add(new THREE.Vector3(-0.2, 0.2, 0.3));
   h.animateTo(() => stool.position.x, (val) => { stool.position.x = val; }, stoolTarget.x, 0.5);
   h.animateTo(() => stool.position.y, (val) => { stool.position.y = val; }, stoolTarget.y, 0.5);
@@ -230,13 +275,19 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.15);
   await h.cineDelay(260);
 
-  // FIX 6: 3-SECOND STAGED CAST \u2014 staff raise (1.4 s) \u2192 aim at Greg (0.8 s)
-  // \u2192 fire + particle burst (0.8 s). Replaces the old 350 ms flick.
+  // FIX 6 + 3b: 3-SECOND STAGED CAST with a STEADY camera. The previous
+  // version tightened dist twice (4.6 -> 3.6 -> 5.6) AND bumped iso.shake 3
+  // times in under 2 s while focus jumped from wizard to Greg — that's what
+  // produced the "bouncing / rotating like crazy" the user reported. Now we
+  // lock the camera on the wizard for the whole 3 s and do ONE clean pan +
+  // ONE shake burst at the moment of FIRE.
   const wiz = h.tavernActors.wizard;
   const to2 = hv.rig.group.position.clone().add(new THREE.Vector3(0, 1.0, 0));
-  h.iso.desiredYaw = 0.85; h.iso.desiredDist = 4.6; h.iso.desiredPitch = 0.38;
-  h.iso.focus(poi.wizard.clone().add(new THREE.Vector3(0, 0.4, 0)));
-  // STAGE A: STAFF RAISE (1.4 s) \u2014 wizard's forearmLOffset rotates his staff
+  // PRE-SET the wizard framing ONCE and keep it (no per-stage dist changes):
+  h.iso.desiredYaw = 0.85; h.iso.desiredDist = 3.8; h.iso.desiredPitch = 0.40;
+  h.iso.focus(poi.wizard.clone().add(new THREE.Vector3(0, 0.5, 0)));
+  await h.cineDelay(300);   // let the iso.lerp ease onto the wizard before the cast
+  // STAGE A: STAFF RAISE (1.4 s) — wizard's forearmROffset rotates his staff
   // up from rest to vertical, like an orchestra conductor raising a baton.
   if (wiz) {
     wiz.anim.forearmROffset = 0;       // reset before animating
@@ -245,30 +296,32 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.audio.play('dice', 0.4);           // soft "summoning" sound as staff rises
   await h.cineDelay(1400);
   if (h.introSkipped) { finishIntro(h); return; }
-  // STAGE B: AIM AT GREG (0.8 s) \u2014 camera tightens onto wizard's hands, a
-  // small purple mote blooms at the staff tip.
-  h.iso.desiredDist = 3.6;
-  await h.cineDelay(500);
-  // Charging motes around the staff tip
+  // STAGE B: AIM (0.8 s) — camera stays on the wizard. Charging motes bloom
+  // at the staff tip (no focus/distance change — the camera finally settled
+  // onto the wizard in STAGE A; if we touch the focus here we restart the
+  // iso.lerp ease and the whole shot jitters).
   const wizardTip = poi.wizard.clone().add(new THREE.Vector3(0.15, 1.6, 0.05));
   h.particles.burst({ pos: wizardTip, count: 14, color: [0xc084fc, 0xe9d5ff], speed: [0.2, 0.8], life: [0.5, 1.0], size: [0.3, 0.6], gravity: -0.4, endScale: 0.2 });
-  await h.cineDelay(300);
+  await h.cineDelay(800);
   if (h.introSkipped) { finishIntro(h); return; }
-  // STAGE C: FIRE (0.8 s) \u2014 wizard snaps forward, camera whips back to Greg,
-  // the polymorph particle burst blooms where Greg was, hero light tints purple.
+  // STAGE C: FIRE (0.8 s) — wizard snaps forward, single whip-pan to Greg + a
+  // SINGLE shake burst at the polymorph moment (NO second shake during the pan
+  // itself — that was the cause of the "bouncing around" feel).
   if (wiz) { wiz.anim.lunge = 1; }
   h.audio.play('magic_missile', 0.9);
-  h.iso.shake = Math.max(h.iso.shake ?? 0, 0.12);
-  await h.cineDelay(120);
-  h.iso.focus(hv.rig.group.position.clone().add(new THREE.Vector3(0, 0.8, 0))); h.iso.desiredDist = 5.6;
-  await h.cineDelay(220);
+  h.iso.focus(hv.rig.group.position.clone().add(new THREE.Vector3(0, 0.8, 0)));
+  h.iso.desiredDist = 5.2;            // gentle pull-back so the burst fits in frame
+  await h.cineDelay(260);
   if (wiz) wiz.anim.lunge = 0;
   // FIX 6: PARTICLE SPELL (replaces launchMagicMissile's cube orb).
   // The wizard's hand is the burst origin so the spell visually EMANATES
   // from him rather than flying across the room.
   h.fx.polymorph(h.particles, to2);
-  h.iso.shake = Math.max(h.iso.shake ?? 0, 0.22);
-  if (h.heroLight) h.heroLight.color.setHex(0x8a4af0);
+  h.iso.shake = Math.max(h.iso.shake ?? 0, 0.18);   // ONE shake, at the burst
+  // FIX 9: lift the per-frame override for the flash window and let the light
+  // show through, recolored purple for the spell impact.
+  heroLightFlash = true;
+  if (h.heroLight) { h.heroLight.visible = true; h.heroLight.intensity = 0.6; h.heroLight.color.setHex(0x8a4af0); }
   await h.cineDelay(460);
   // SHEEP POLYMORPH (the punchline of the spell)
   const sheep = h.buildSheep();
@@ -281,6 +334,9 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.narrate('narr_baa', "A stool takes flight. The wizard squeaks a word he'll regret. Purple light - and for four glorious seconds, Greg the Grim is the loudest sheep the Dirty Mug has ever heard.", 7400);
   hv.rig.group.visible = true;
   h.tavern!.remove(sheep);
+  // FIX 9: flash is over — hand control back to the per-frame override, which
+  // will force it off again on the very next frame.
+  heroLightFlash = false;
   if (h.heroLight) h.heroLight.color.setHex(0xffb060);
   // reset wizard so the cast pose doesn't stick
   if (wiz) { wiz.anim.mode = 'idle'; wiz.anim.lunge = 0; }
@@ -302,18 +358,29 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.audio.play('dice', 0.5);
   await h.cineDelay(600);
 
-  // FIX 7: GREG FALLS OFF THE STOOL. The previous code went straight from
+  // FIX 7 + 4: GREG FALLS OFF THE STOOL. The previous code went straight from
   // flinch -> passOut without any visible FALL — Greg should literally drop
   // off the stool, hit the floor face-first, then pass out. We animate his
-  // rig.position.y from seated height (0.4) down to floor (0.0) over 1.0 s
+  // rig.position.y from seated height (0.4) down to floor (0.0) over 0.9 s
   // while rotating him sideways (the "ragdoll on the floorboards" pose).
-  // The animateTo helper lerps; the wobble adds physicality.
+  // CRITICAL (user report): the camera was still focused at poi.gregHead
+  // (y=1.55, stool-seat height) — once Greg is on the floor the camera points
+  // HIGHER than him and we don't see him. We pip the focus TO the floor at
+  // Greg's feet (y≈0.35) AND lower the iso pitch so the camera tilts down to
+  // read him lying flat. The focus is a live Vector3 so it tracks Greg's
+  // floor position as the animateTo() lerps him down.
   hv.rig.anim.flinch = 1;
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.16);
-  h.animateTo(() => hv.rig.group.position.y, (v) => { hv.rig.group.position.y = v; }, 0.0, 0.9);
+  h.iso.desiredPitch = 0.30;                 // tilt camera DOWN toward the floor but not below it
+  h.iso.desiredDist = 3.8;                   // back-off from presenting only his falling hand
+  // animate focus Y in lockstep with Greg's falling body so the camera
+  // *follows* him down rather than looking past him.
+  const _fallFocus = hv.rig.group.position.clone();
+  h.iso.focus(_fallFocus);
+  h.animateTo(() => _fallFocus.y, (v) => { _fallFocus.y = v; }, 0.65, 0.9);  // focus lands on his head
+  h.animateTo(() => hv.rig.group.position.y, (v) => { hv.rig.group.position.y = v; }, -0.15, 0.9); // he sags a hair past floor to lie properly
   h.animateTo(() => hv.rig.group.rotation.z, (v) => { hv.rig.group.rotation.z = v; }, -Math.PI * 0.5, 0.9);
   h.animateTo(() => hv.rig.group.rotation.x, (v) => { hv.rig.group.rotation.x = v; }, -0.45, 0.9);
-  // thud FX: impact dust on the floor at Greg's feet
   h.fx.impactDust(h.particles, hv.rig.group.position.clone().setY(0), []);
   h.audio.play('sword_hit', 0.4, 0.5);   // dull thud
   await h.cineDelay(900);
@@ -333,6 +400,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.scene.remove(h.tavern); h.tavern = null; h.tavernRigs = []; h.tavernActors = {}; h.iso.box = null;
   h.worldGroup.visible = true;
   h.propsGroup.visible = true;
+  if (h.dressingGroup) h.dressingGroup.visible = true;
   h.scene.fog = new THREE.Fog(0x08080e, 4, 24);
   h.inTavern = false;
   for (const [id, v] of h.visuals) { if (id !== hero.id) v.rig.group.visible = true; }
@@ -388,6 +456,7 @@ export function finishIntro(h: CutsceneHost) {
   h.inTavern = false;
   h.worldGroup.visible = true;
   h.propsGroup.visible = true;
+  if (h.dressingGroup) h.dressingGroup.visible = true;
   h.audio.stopTavernMusic(); h.audio.playMusic('music_ambient');
   const hero = h.combat.living('party')[0];
   for (const [id, v] of h.visuals) { if (!hero || id !== hero.id) v.rig.group.visible = true; }
@@ -400,12 +469,14 @@ export function finishIntro(h: CutsceneHost) {
       hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 0; hv.rig.group.rotation.set(0, Math.PI, 0);
       hv.yaw = hv.targetYaw = Math.PI;
       if (hero.weapon) h.setWeapon(hv.rig, hero.weapon, hero.scheme.accent);
-      if (!h.heroLight) h.attachHeroTorch(hv.rig);
+      // suspend hero torch attachment — now a no-op
     }
   }
   // reveal the bonfire checkpoint behind Greg as the respawn point + grace window
   h.setBonfireCheckpoint(h.structures?.checkpoint ?? { x: 5, z: 5 });
   h.armIntroGrace(2.5);
+  // hero torch phenomenon permanently disabled
+
   h.iso.lerp = 7;
   h.busy = false;
   h.phase = 'explore';
