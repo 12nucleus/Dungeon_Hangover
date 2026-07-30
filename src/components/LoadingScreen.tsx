@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
-import { buildCharacter, updateRig } from '@/game/characters';
+import { buildCharacter, bakePassedOut } from '@/game/characters';
 
 /**
  * Loading overlay — a single full-screen black canvas with a naked Greg
@@ -153,6 +153,8 @@ function useGregScene(host: HTMLDivElement | null) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.setClearColor(0x000000, 0);   // transparent — the page CSS provides the black BG
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     host.appendChild(renderer.domElement);
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.width = '100%';
@@ -173,24 +175,31 @@ function useGregScene(host: HTMLDivElement | null) {
       bulk: 2.1,         // 2× the previous (1.05) size
     }, 'unarmed');
 
-    // ── 2. Dead ragdoll pose ──
-    // Reuse the engine's own collapse solver: set the rig to `dead` and bake
-    // ~4 s of simulation up front so Greg is already a settled heap on the
-    // floor by the time the first frame paints (no standing-then-toppling).
-    rig.group.userData.baseY = 0;   // feet sit at y=0; required by the solver
-    // randomise the collapse: topple face-down ('dead') or settle on his back ('lie')
-    rig.anim.mode = Math.random() < 0.5 ? 'dead' : 'lie';
-    for (let i = 0; i < 260; i++) updateRig(rig, 1 / 60);
-
-    // ── 3. Centre the collapsed body, then drop it on a pivot at GREG_POS ──
+    // ── 2. Passed-out pose ──
+    // bakePassedOut hand-keys a flat "drunk sprawled on his back" pose directly
+    // onto the rig's rotations, then switches the rig to `mode = 'idle'` so
+    // updateRig never overwrites it. No ragdoll solver, no spring, no fold.
+    rig.group.userData.baseY = 0;   // feet sit at y=0 in the local rig frame
+    bakePassedOut(rig);
+    // The rig's local origin is at the FEET (y=0). When the rig is rotated to
+    // lie on its back the feet stay put and the rest of the body extends along
+    // -Z. So we measure the depth of the lying body and shift Greg so his
+    // HEAD end (z = -depth) sits at the cobblestone surface — the body then
+    // lies ON the cobbles, head at the surface, feet floating out at z = +depth.
     rig.group.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(rig.group);
     const center = box.getCenter(new THREE.Vector3());
+    const lyingHeight = (box.max.y - box.min.y);     // full height of the lying body (head↔feet when flat)
     // Greg sits in the lower-right of the frame; the cone of light is centred on him.
     const GREG_POS = new THREE.Vector3(2.6, 0, 1.8);
-    // centre the body at the local origin (feet on y=0) so a random yaw spins him
-    // in place around his own centre — a different facing each time the screen shows.
-    rig.group.position.set(-center.x, -box.min.y, -center.z);
+    const COBBLE_TOP = 0.2;
+    // Centre the body in XZ around its own midpoint (so a random yaw spins him
+    // in place) and put his BACK at the cobblestone surface (he lies ON the
+    // cobbles, not floating above and not buried into them). Sink him a touch
+    // (≈11 voxels = 1.21 world units) so he's visibly resting on the cobbles
+    // rather than perched on top of them.
+    const VOXEL = 0.11;
+    rig.group.position.set(-center.x, COBBLE_TOP + lyingHeight / 2 - box.min.y - 11 * VOXEL, -center.z);
     const pivot = new THREE.Group();
     pivot.position.copy(GREG_POS);
     pivot.rotation.y = Math.random() * Math.PI * 2;   // random ragdoll facing
@@ -200,8 +209,11 @@ function useGregScene(host: HTMLDivElement | null) {
     // ── 4. Voxel cobblestone road (lit only inside the spotlight cone) ──
     // Cubes are laid out across a wide patch; the near-black ambient means only
     // the ones the spotlight hits are visible, so the cone reads as a pool of light.
-    const ground = makeVoxelCobbles(GREG_POS, 9);
+    // Only lay cobbles INSIDE the spotlight cone — everything outside is left
+    // unbuilt, so it simply isn't there (invisible) instead of a dark smear.
+    const ground = makeVoxelCobbles(GREG_POS, 3.3);
     scene.add(ground);
+    ground.receiveShadow = true;
 
     // ── 5. Light cone — centred on Greg (handled by the spotlight below) ──
 
@@ -209,12 +221,20 @@ function useGregScene(host: HTMLDivElement | null) {
     // Ambient is almost zero so only the cobbles the spotlight hits are visible;
     // everything outside the cone fades quickly to black.
     scene.add(new THREE.AmbientLight(0xb0a8a0, 0.04));
+    // No fog — the user finds the haze ugly. The near-black ambient already
+    // makes everything outside the spotlight cone fade to black, so the lit
+    // pool still reads as a cone of light without any atmospheric fog.
     const cone = new THREE.SpotLight(0xfff0d8, 2.8, 0, Math.PI / 6, 0.35, 0);
     cone.decay = 0;                                  // constant intensity across the cone
     cone.position.set(GREG_POS.x, 6, GREG_POS.z + 0.3);
     cone.target.position.set(GREG_POS.x, 0, GREG_POS.z);
     scene.add(cone);
     scene.add(cone.target);
+    cone.castShadow = true;
+    cone.shadow.mapSize.set(1024, 1024);
+    cone.shadow.camera.near = 0.5;
+    cone.shadow.camera.far = 20;
+    cone.shadow.bias = -0.0006;
     // a faint rim so Greg doesn't go totally black at the edges
     scene.add(new THREE.DirectionalLight(0xff9966, 0.25).translateZ(-1));
     // warm pool of light on the cobbles to sell the spotlight
@@ -224,7 +244,9 @@ function useGregScene(host: HTMLDivElement | null) {
     glow.rotation.x = -Math.PI / 2;
     glow.position.set(GREG_POS.x, 0.24, GREG_POS.z);
     scene.add(glow);
-
+    // (Beam cone removed — the faint additive cone mesh read as a gray haze
+    // that the user kept seeing as "fog". The bright spotlight + near-black
+    // ambient already give a clear pool-of-light without it.)
     // ── 7. Camera — orbits Greg once per minute, keeping him in the lower-right ──
     const orbitR = 13.5;         // distance from Greg (pulled back for the 2× size)
     const camHeight = 7.0;       // height above the floor
@@ -270,6 +292,8 @@ function useGregScene(host: HTMLDivElement | null) {
       const now = performance.now();
       const dt = Math.min((now - last) / 1000, 0.1); last = now;
       theta += dt * (Math.PI * 2 / 60);   // one full rotation per minute
+      // (No gravity drop — bakePassedOut puts Greg flat on the cobbles from
+      // frame 0, and updateRig is never called so the pose stays put.)
       placeCamera();
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);

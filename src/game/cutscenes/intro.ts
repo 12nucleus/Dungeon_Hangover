@@ -445,16 +445,27 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.worldGroup.visible = true;
   h.propsGroup.visible = true;
   if (h.dressingGroup) h.dressingGroup.visible = true;
-  h.scene.fog = new THREE.Fog(0x08080e, 4, 24);
+  // No fog in the dungeon wake-up scene — the cobblestone + props are fully
+  // visible without the ugly atmospheric haze. (Fog was making the floor read
+  // as a muddy void and obscured the props behind Greg.)
+  h.scene.fog = null;
   h.inTavern = false;
   for (const [id, v] of h.visuals) { if (id !== hero.id) v.rig.group.visible = true; }
   h.setWeapon(hv.rig, hero.weapon ?? 'unarmed', hero.scheme.accent);
 
+  // Spawn Greg standing upright, feet planted directly on the cobblestone.
+  // unitWorld already returns the floor-surface Y (heights + 0.5), so a
+  // standing idle rig sits flush on the pebbles — no floating, no falling,
+  // and none of the old folded-on-the-floor collapse that made him look
+  // crumpled above the cobblestone.
   const floorWp = h.unitWorld(h.combat.units[0].pos);
   hv.rig.group.position.copy(floorWp);
   hv.rig.group.rotation.set(0, Math.PI, 0);
   hv.yaw = hv.targetYaw = Math.PI;
-  hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 1; hv.rig.anim.mode = 'floor';
+  hv.rig.anim.death = undefined; // clear any leftover collapse state
+  hv.rig.anim.mode = 'idle';
+  hv.rig.anim.crouch = 0;
+  hv.rig.anim.flinch = 0;
   // strip Greg back to his underwear for the dungeon spawn ("in your underwear")
   unequipAll(hv.rig);
   if (mugHand) mugHand.remove(mug);
@@ -473,13 +484,10 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.narrate('narr_premise', 'A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that probably won\'t last. The only way out is up.', 6600);
   if (h.introSkipped) { finishIntro(h); return; }
 
-  hv.rig.group.rotation.x = -Math.PI / 2;
-  hv.rig.anim.mode = 'getup';
-  hv.rig.anim.crouch = 1.3;
-  h.iso.desiredDist = 5.5; h.iso.focus(floorWp.clone().add(new THREE.Vector3(0, 1.4, 0)));
-  h.animateTo(() => hv.rig.group.rotation.x, (val) => { hv.rig.group.rotation.x = val; }, 0, 0.7);
-  await delay(700);
-  h.animateTo(() => hv.rig.anim.crouch, (val) => { hv.rig.anim.crouch = val; }, 0, 0.8);
+  // Greg is already standing on the cobblestone — keep him upright and
+  // settle the camera in. (The old get-up-from-the-floor roll/crouch tween
+  // is gone: he no longer crumples onto the floor, so there's nothing to
+  // get up from.)
   for (let i = 0; i < 3; i++) { h.spawnStars(starPos); await delay(450); }
   await delay(700);
   hv.rig.anim.mode = 'idle'; hv.rig.anim.crouch = 0;

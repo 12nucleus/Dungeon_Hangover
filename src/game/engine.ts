@@ -287,8 +287,11 @@ export class GameEngine {
     // lights ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ cave (dim ambient + no sun + crystal/torch fills)
     const hemi = new THREE.HemisphereLight(0x93a8d0, 0x3a3226, L.ambient);
     this.scene.add(hemi);
-    if (L.sun > 0) {
-      const sun = new THREE.DirectionalLight(0xffc890, L.sun);
+    {
+      // Always present so the dungeon (L.sun === 0) still gets a dim key light
+      // and real shadows for every character/object. Bright levels keep their
+      // full sun intensity; dark caves fall back to a soft minimum.
+      const sun = new THREE.DirectionalLight(0xffc890, L.sun > 0 ? L.sun : 0.22);
       sun.position.set(20, 30, 10);
       sun.castShadow = true;
       sun.shadow.mapSize.set(2048, 2048);

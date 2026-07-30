@@ -11,6 +11,7 @@ import type { CharacterScheme, WeaponKind, EquipSlot } from './types';
 import type { Item } from './items';
 import { playClipOnRig } from '../animationEditor/AnimationRuntime';
 import { gregDrinkClip } from '../animationData/gregDrinkClip';
+import { POSE_PRESETS } from './poseEditor';
 
 // Soft-body / ragdoll collapse state, created the first frame a rig dies.
 // Every joint is a critically-under-damped spring that swings toward a
@@ -1336,23 +1337,30 @@ function initDeath(rig: Rig): DeathState {
     d.pt[name] = new THREE.Vector3(tx, ty, tz);
     d.pv[name] = new THREE.Vector3(rand(-3, 3), rand(-3, 3), rand(-3, 3)); // impact jolt
   };
-  set('legL', rand(-1.6, -0.8), rand(-0.4, 0.4), rand(0.3, 0.9));   // buckle + splay out
-  set('legR', rand(-1.6, -0.8), rand(-0.4, 0.4), rand(-0.9, -0.3));
-  set('shinL', rand(0.4, 1.2), rand(-0.3, 0.3), rand(-0.3, 0.3));   // lower leg flops
-  set('shinR', rand(0.4, 1.2), rand(-0.3, 0.3), rand(-0.3, 0.3));
-  set('armL', rand(0.5, 1.4), 0, rand(0.7, 1.6));                   // flung out + droop
-  set('armR', rand(0.5, 1.4), 0, rand(-1.6, -0.7));
-  set('foreL', rand(0.3, 1.0), 0, rand(-0.3, 0.3));
-  set('foreR', rand(0.3, 1.0), 0, rand(-0.3, 0.3));
-  set('handL', rand(0.3, 0.9), 0, rand(0.4, 1.0));
-  set('handR', rand(0.3, 0.9), 0, rand(-1.0, -0.4));
-  set('head', rand(0.5, 1.2) * fwd, rand(-0.5, 0.5), rand(-0.7, 0.7)); // head lolls
-  set('torso', rand(-0.22, 0.22), 0, rand(-0.28, 0.28));
-  set('hair', rand(0.2, 0.7), 0, rand(-0.3, 0.3));
-  set('hood', rand(0.2, 0.6), 0, 0);
-  set('hoodTip', rand(0.4, 0.9), 0, 0);
-  set('padL', rand(0.2, 0.7), 0, rand(0.2, 0.7));
-  set('padR', rand(0.2, 0.7), 0, rand(-0.7, -0.2));
+  // gravity-rest targets: limbs hang DOWN once the body is flat. A limb whose
+  // free end points +Y (arms/fore/hand/head/hair) rests at π-gtx; one whose free
+  // end points -Y (legs/shin) rests at -gtx. Small random variation keeps it organic.
+  // gravity-rest targets. Limbs whose free end points -Y (legs, arms, hands)
+  // hang straight down at world pitch 0 → local rest = -gtx. Limbs whose free
+  // end points +Y (head, hair, hood) hang at world pitch π → local rest = π-gtx.
+  const restArm = Math.PI - d.gtx, restLeg = -d.gtx;
+  set('legL', restLeg + rand(-0.25, 0.25), rand(-0.3, 0.3), rand(0.2, 0.6));   // buckle + slight splay
+  set('legR', restLeg + rand(-0.25, 0.25), rand(-0.3, 0.3), rand(-0.6, -0.2));
+  set('shinL', restLeg + rand(-0.15, 0.15), rand(-0.2, 0.2), rand(-0.2, 0.2)); // lower leg flops
+  set('shinR', restLeg + rand(-0.15, 0.15), rand(-0.2, 0.2), rand(-0.2, 0.2));
+  set('armL', restLeg + rand(-0.25, 0.25), 0, rand(0.15, 0.5));                // rest near the body, hanging down
+  set('armR', restLeg + rand(-0.25, 0.25), 0, rand(-0.5, -0.15));
+  set('foreL', restLeg + rand(-0.15, 0.15), 0, rand(-0.2, 0.2));
+  set('foreR', restLeg + rand(-0.15, 0.15), 0, rand(-0.2, 0.2));
+  set('handL', restLeg + rand(-0.15, 0.15), 0, rand(0.1, 0.4));
+  set('handR', restLeg + rand(-0.15, 0.15), 0, rand(-0.4, -0.1));
+  set('head', restArm + rand(-0.3, 0.3), rand(-0.4, 0.4), rand(-0.5, 0.5));    // head lolls
+  set('torso', rand(-0.18, 0.18), 0, rand(-0.22, 0.22));
+  set('hair', restArm + rand(-0.25, 0.25), 0, rand(-0.25, 0.25));             // hair flops under gravity
+  set('hood', restArm + rand(-0.2, 0.2), 0, 0);
+  set('hoodTip', restArm + rand(-0.2, 0.2), 0, 0);
+  set('padL', rand(0.15, 0.5), 0, rand(0.15, 0.5));
+  set('padR', rand(0.15, 0.5), 0, rand(-0.5, -0.15));
   return d;
 }
 
@@ -1379,22 +1387,119 @@ function initCollapse(rig: Rig, lie: boolean): DeathState {
     d.pt[name] = new THREE.Vector3(tx, ty, tz);
     d.pv[name] = new THREE.Vector3(rand(-2, 2), rand(-2, 2), rand(-2, 2));
   };
-  set('legL', rand(-0.6, -0.2), rand(-0.3, 0.3), rand(0.5, 1.0));   // splayed + slack
-  set('legR', rand(-0.6, -0.2), rand(-0.3, 0.3), rand(-1.0, -0.5));
-  set('shinL', rand(0.2, 0.8), 0, rand(-0.2, 0.2));
-  set('shinR', rand(0.2, 0.8), 0, rand(-0.2, 0.2));
-  set('armL', rand(0.6, 1.4), 0, rand(0.8, 1.6));                 // flung out, resting on ground
-  set('armR', rand(0.6, 1.4), 0, rand(-1.6, -0.8));
-  set('foreL', rand(0.3, 1.0), 0, rand(-0.3, 0.3));
-  set('foreR', rand(0.3, 1.0), 0, rand(-0.3, 0.3));
-  set('handL', rand(0.3, 0.9), 0, rand(0.4, 1.0));
-  set('handR', rand(0.3, 0.9), 0, rand(-1.0, -0.4));
-  set('head', rand(0.2, 0.6), rand(-0.4, 0.4), rand(-0.6, 0.6));  // head lolls
-  set('torso', rand(-0.15, 0.15), 0, rand(-0.2, 0.2));
-  set('hair', rand(0.1, 0.5), 0, rand(-0.2, 0.2));
-  set('hood', rand(0.1, 0.4), 0, 0); set('hoodTip', rand(0.2, 0.6), 0, 0);
-  set('padL', rand(0.1, 0.5), 0, rand(0.1, 0.5)); set('padR', rand(0.1, 0.5), 0, rand(-0.5, -0.1));
+  // gravity-rest targets: limbs hang DOWN once the body is flat (see initDeath).
+  const restArm = Math.PI - d.gtx, restLeg = -d.gtx;
+  set('legL', restLeg + rand(-0.15, 0.15), rand(-0.25, 0.25), rand(0.2, 0.5));   // splayed + slack
+  set('legR', restLeg + rand(-0.15, 0.15), rand(-0.25, 0.25), rand(-0.5, -0.2));
+  set('shinL', restLeg + rand(-0.1, 0.1), 0, rand(-0.15, 0.15));
+  set('shinR', restLeg + rand(-0.1, 0.1), 0, rand(-0.15, 0.15));
+  set('armL', restLeg + rand(-0.15, 0.15), 0, rand(0.15, 0.45));                 // rest near body, hanging down
+  set('armR', restLeg + rand(-0.15, 0.15), 0, rand(-0.45, -0.15));
+  set('foreL', restLeg + rand(-0.1, 0.1), 0, rand(-0.2, 0.2));
+  set('foreR', restLeg + rand(-0.1, 0.1), 0, rand(-0.2, 0.2));
+  set('handL', restLeg + rand(-0.1, 0.1), 0, rand(0.1, 0.35));
+  set('handR', restLeg + rand(-0.1, 0.1), 0, rand(-0.35, -0.1));
+  set('head', restArm + rand(-0.2, 0.2), rand(-0.35, 0.35), rand(-0.5, 0.5));    // head lolls
+  set('torso', rand(-0.12, 0.12), 0, rand(-0.18, 0.18));
+  set('hair', restArm + rand(-0.15, 0.15), 0, rand(-0.2, 0.2));                 // hair flops under gravity
+  set('hood', restArm + rand(-0.1, 0.1), 0, 0); set('hoodTip', restArm + rand(-0.1, 0.1), 0, 0);
+  set('padL', rand(0.1, 0.4), 0, rand(0.1, 0.4)); set('padR', rand(0.1, 0.4), 0, rand(-0.4, -0.1));
   return d;
+}
+
+/**
+ * Bake a pre-settled "passed out" pose onto a rig and pre-simulate it so it
+ * renders as a calm heap from the very first frame (used by the loading
+ * screen). Unlike {@link initDeath} / {@link initCollapse}, the leg + torso
+ * targets are constrained so the body settles FLAT and SPLAYED — the torso
+ * and the legs can never curl back onto each other into a "folded in half"
+ * heap. The thighs are kept extended (resting flat along the ground, not
+ * folded up toward the chest), the shins stay roughly in line with the
+ * thighs, the arms rest out to the sides, and the head lolls gently.
+ *
+ * Must be called with the rig already placed (feet at the desired rest Y,
+ * `rig.group.userData.baseY` set to that Y). Uses the engine's own collapse
+ * solver (mode `'lie'`) so the group ends up lying flat on its back.
+ */
+/**
+ * Bake a static "passed out flat on the back" pose directly onto the rig's
+ * node rotations and switch the rig to `mode = 'idle'` so the per-frame pose
+ * solver leaves it alone. This is NOT a ragdoll — there is no spring
+ * simulation, no gravity pendulum, no crumple. The pose is just hand-keyed
+ * flat-on-back angles and stays there forever (the caller doesn't need to
+ * call `updateRig`).
+ *
+ * Why static instead of the collapse solver? The collapse solver targets the
+ * limbs' world-pitch at zero gravity-rest, which when the body lies on its
+ * back (group.rotation.x = -π/2) means the thighs would target local x = π/2
+ * — i.e. the legs point STRAIGHT UP from the hip, and any spring over-/
+ * undershoot from there collapses the leg back over the torso. Hand-keying
+ * the local rotations bypasses the solver entirely and gives the reliable
+ * "drunk sprawled on the cobbles" pose the loading screen wants.
+ */
+export function bakePassedOut(rig: Rig): void {
+  const p = rig.parts;
+  // Lie flat on the back. Small per-instance variation so successive loads
+  // don't all look identical, but kept tiny (±0.04 rad ≈ 2.3°) so the body
+  // never tips onto its side or rolls over.
+  rig.group.rotation.x = -Math.PI / 2 + (Math.random() - 0.5) * 0.08;
+  rig.group.rotation.z = (Math.random() - 0.5) * 0.08;
+  rig.group.rotation.y = 0;
+  rig.group.position.y = (rig.group.userData.baseY as number) ?? rig.group.position.y;
+  const rand = (a: number, b: number) => a + Math.random() * (b - a);
+  const set = (name: string, x: number, y: number, z: number) => {
+    const m = p[name]; if (!m) return;
+    m.rotation.set(x, y, z);
+  };
+  // Joint angles come from the `loading_passout` entry in POSE_PRESETS so
+  // the pose editor (?pose) becomes the single source of truth: tweak a joint
+  // in the editor → reload the game → the loading screen reflects it.
+  const preset = POSE_PRESETS.find((x) => x.name === 'loading_passout')?.joints;
+  if (preset) {
+    // Torso first so head/hair/arm conversion (flat→local) is consistent.
+    if (p.torso && preset.torso) p.torso.rotation.set(preset.torso.x, preset.torso.y, preset.torso.z);
+    const tx = p.torso ? p.torso.rotation.x : 0;
+    const ty = p.torso ? p.torso.rotation.y : 0;
+    const tz = p.torso ? p.torso.rotation.z : 0;
+    const isTorsoChild = (n: string) => n === 'head' || n === 'hair' || n === 'hood' || n === 'hoodTip' || n === 'armL' || n === 'armR';
+    for (const name of Object.keys(preset)) {
+      if (name === 'torso') continue;
+      const obj = p[name]; if (!obj) continue;
+      const j = preset[name];
+      const c = isTorsoChild(name);
+      obj.rotation.set(c ? j.x - tx : j.x, c ? j.y - ty : j.y, c ? j.z - tz : j.z);
+    }
+  } else {
+    // Preset missing — fall back to the original hard-coded pose so the
+    // loading screen still renders something sensible.
+    set('legL', 0, 0, rand(0.18, 0.30));
+    set('legR', 0, 0, rand(-0.30, -0.18));
+    set('shinL', rand(0.05, 0.18), 0, 0);
+    set('shinR', rand(0.05, 0.18), 0, 0);
+    set('armL', 0, 0, rand(1.05, 1.25));
+    set('armR', -Math.PI / 2, 0, rand(-0.15, 0.15));
+    set('foreL', rand(-0.30, -0.10), 0, 0);
+    set('foreR', rand(0.85, 1.05), 0, 0);
+    set('handL', rand(-0.20, 0.05), 0, 0);
+    set('handR', rand(-0.20, 0.05), 0, 0);
+    set('torso', rand(-0.04, 0.04), 0, rand(-0.04, 0.04));
+    const headYaw = (Math.random() < 0.5 ? -1 : 1) * rand(0.45, 0.75);
+    set('head', 0, headYaw, 0);
+    set('hair', 0, headYaw * 0.6, 0);
+  }
+  if (p.hood) set('hood', 0, 0, 0);
+  if (p.hoodTip) set('hoodTip', 0, 0, 0);
+  // Pads (shoulder pads on the player rig) follow the arms.
+  set('padL', 0, 0, 1.15);
+  set('padR', 0, 0, -1.15);
+  // Lock the rig in the 'idle' rest branch with NO death state — this
+  // guarantees `updateRig` will never touch the rotations again as long as
+  // the caller doesn't switch the mode or call updateRig.
+  rig.anim.death = undefined;
+  rig.anim.mode = 'idle';
+  rig.anim.t = 0;
+  rig.anim.crouch = 0;
+  rig.anim.flinch = 0;
 }
 
 // one step of a semi-implicit damped spring; returns [newValue, newVelocity]
@@ -1434,6 +1539,10 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
       [p.torso.rotation.z, tv.z] = springStep(p.torso.rotation.z, d.pt.torso.z, tv.z, h, STIFF, DAMP);
     }
     const torsoPitch = hierD && p.torso ? p.torso.rotation.x : 0;
+    const gx = g.rotation.x;                       // body topple angle
+    const GRAV = 9;                                // limbs (and hair) swing down under gravity
+    // -Y limbs (legs, arms, hands) hang at world pitch 0; +Y limbs (hair) at π.
+    const limbSign = (n: string) => (n.startsWith('leg') || n.startsWith('shin') || n.startsWith('arm') || n.startsWith('fore') || n.startsWith('hand')) ? -1 : 1;
     for (const name in d.pt) {
       if (hierD && name === 'torso') continue;   // already handled above
       const m = p[name]; if (!m) continue;
@@ -1442,6 +1551,15 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
       [m.rotation.x, v.x] = springStep(m.rotation.x, lx, v.x, h, STIFF, DAMP);
       [m.rotation.y, v.y] = springStep(m.rotation.y, t.y, v.y, h, STIFF, DAMP);
       [m.rotation.z, v.z] = springStep(m.rotation.z, t.z, v.z, h, STIFF, DAMP);
+      // gravity pendulum: pull each limb's WORLD pitch toward hanging straight
+      // down (no sticking-up poses). +Y limbs (arms/hair) rest at world π,
+      // -Y limbs (legs) at world 0; torque ∝ sin(worldPitch).
+      if (name === 'legL' || name === 'legR' || name === 'shinL' || name === 'shinR' ||
+          name === 'armL' || name === 'armR' || name === 'foreL' || name === 'foreR' ||
+          name === 'handL' || name === 'handR' || name === 'hair') {
+        const worldX = (hierD && torsoChild(name)) ? gx + torsoPitch + m.rotation.x : gx + m.rotation.x;
+        v.x += limbSign(name) * GRAV * Math.sin(worldX) * h;
+      }
     }
     // squash-and-stretch: decaying jiggle on death, gentle breathing when passed out
     let wob: number;
@@ -1923,6 +2041,27 @@ function buildPiece(def: EquipVisual): { part: string; mesh: THREE.Mesh }[] {
   return out;
 }
 
+/**
+ * Find the body Mesh a rig part points at.
+ *
+ * For FLAT rigs (chibi/bat/skeleton/…) `rig.parts[name]` IS the body mesh, so
+ * it's returned as-is. For the hierarchical humanoid rig, `rig.parts[name]`
+ * points at a pivot Group that wraps the actual body mesh (see
+ * `buildHierarchy`): the equipment is built in the body mesh's LOCAL grid
+ * space (origin at the part's grid pivot, matching `PART_PIVOTS`), so it must
+ * be attached to the body MESH — not the pivot Group — or it ends up offset
+ * to the joint (hip/knee/wrist) instead of centred on the limb/torso.
+ *
+ * Returns the first Mesh descendant of `part` (depth-first), or `part` itself
+ * if it is already a Mesh.
+ */
+function bodyMeshOf(part: THREE.Object3D): THREE.Object3D {
+  if ((part as THREE.Mesh).isMesh) return part;
+  let found: THREE.Object3D | null = null;
+  part.traverse((o) => { if (!found && (o as THREE.Mesh).isMesh) found = o; });
+  return found ?? part;
+}
+
 /** Equip a piece onto a rig (replacing any existing piece in the same slot). */
 export function equip(rig: Rig, def: EquipVisual): void {
   unequip(rig, def.slot);
@@ -1931,7 +2070,12 @@ export function equip(rig: Rig, def: EquipVisual): void {
   for (const { part, mesh } of pieces) {
     const target = rig.parts[part];
     if (!target) { mesh.geometry.dispose(); continue; }
-    target.add(mesh);
+    // Attach to the body MESH, not the pivot Group: equipment voxels are built
+    // in the body mesh's local grid space (origin = PART_PIVOTS[part]), so they
+    // only line up with the body when parented to the mesh itself. Parenting
+    // to the hierarchy pivot Group would drop the gear to the joint (hip /
+    // knee / wrist) and misdraw the shirt / pants / boots.
+    bodyMeshOf(target).add(mesh);
     stored.push(mesh);
   }
   if (!rig.equipped) rig.equipped = {};
@@ -1969,6 +2113,7 @@ export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisua
     else if (n.includes('amulet')) slot = 'amulet';
     else return null;
   }
+  if (slot.startsWith('ring')) slot = 'ring';   // ring1/ring2 share one visual slot
   if (slot === 'weapon' || slot === 'cloak') return null;
   const s = slot as EquipSlot;
   const n = item.name.toLowerCase();

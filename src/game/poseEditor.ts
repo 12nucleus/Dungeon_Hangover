@@ -67,6 +67,29 @@ export const POSE_PRESETS: { name: string; label: string; joints: PoseJoints }[]
     name: 'point', label: 'point — pointing with right arm',
     joints: { ...blankPose(), armR: j(-1.422, 0, -0.212), foreL: j(-0.732, 0, -0.062) },
   },
+  {
+    // Flat (world) joint values lifted directly from the user's hand-authored
+    // updateRig snippet `else if (a.mode === 'myPose')`. bakePassedOut() applies
+    // these through the same flat→local conversion the editor uses, so what
+    // you see at `?pose` is exactly what the loading screen renders.
+    name: 'loading_passout', label: 'loading_passout — myPose on the cobblestones',
+    joints: {
+      ...blankPose(),
+      torso:  j( 0.018,  0.018, -0.502),
+      head:   j( 0.178,  0.778, -0.822),
+      hip:    j(-0.242, -0.152, -0.042),
+      armL:   j(-0.112, -3.092,  0.668),
+      armR:   j(-1.942, -1.492,  0.668),
+      foreL:  j(-1.322, -0.242, -1.342),
+      foreR:  j(-0.172, -0.522,  0.348),
+      wristL: j( 0,      0,      0),
+      wristR: j( 0,      0,      0),
+      legL:   j( 0.018, -0.232, -0.432),
+      legR:   j(-0.212,  0.258,  0.218),
+      shinL:  j( 0.12,   0,      0.068),
+      shinR:  j( 0.868,  0.278,  0),
+    },
+  },
 ];
 
 export function blankPose(): PoseJoints {
