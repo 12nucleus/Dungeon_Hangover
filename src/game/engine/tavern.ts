@@ -297,11 +297,13 @@ export function buildTavern(hooks: TavernHooks): THREE.Group {
   // retired-orc bouncer by the door
   addNpc(buildCharacter({ skin: 0x5f7a3a, cloth: 0x2a1f1a, accent: 0x1a0f0a, hair: 0x101010, hood: false, kind: 'bouncer', bulk: 1.4 }),
     3.75, -0.1, -1.092, 'idle', 'bouncer');
-  // a patron nursing a drink by the fire
-  addNpc(buildCharacter({ skin: 0x8a6a4a, cloth: 0x4a4a2a, accent: 0x2a2a2a, hair: 0x3a2a1a, hood: false, style: 'normal' }),
+  // a patron nursing a drink by the fire — buzz cut + stubble beard so he reads
+  // as a different man than the sleeper and Greg's flashback double.
+  addNpc(buildCharacter({ skin: 0x8a6a4a, cloth: 0x4a4a2a, accent: 0x2a2a2a, hair: 0x3a2a1a, hood: false, hairStyle: 'buzz', beard: true, style: 'normal' }),
     1.3, -2.5, faceYaw(1.3, -2.5), 'cross', 'patron');
-  // a patron lying asleep at the side table (comic background)
-  const snoozerRig = buildCharacter({ skin: 0x9a7a55, cloth: 0x3a4a5a, accent: 0x2a2a2a, hair: 0x140f0f, hood: false, style: 'normal' });
+  // a patron lying asleep at the side table (comic background) — balding and
+  // grey-bearded so he doesn't share Greg's tavern look.
+  const snoozerRig = buildCharacter({ skin: 0x9a7a55, cloth: 0x3a4a5a, accent: 0x2a2a2a, hair: 0x9a9a9a, hood: false, hairStyle: 'balding', beard: true, style: 'normal' });
   addNpc(snoozerRig, -0.8, -2.35, 1.708, 'sleep', 'snoozer', -0.65);
   hooks.spawnDrunkStars(snoozerRig);
 

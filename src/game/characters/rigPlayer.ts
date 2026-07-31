@@ -225,6 +225,14 @@ export function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Ri
   box(-1, 59, 6, 1, 59, 6, 0x8a3a30);
   putM(2, 60, 6, 0xb05a4a);
   put(0, 58, 6, skinD);
+  if (scheme.beard) {
+    // full beard from the jaw down in the hair colour, darker at the chin
+    for (let y = 54; y <= 58; y++) {
+      const w = Math.max(0, Math.round((y - 54) * 0.9));
+      const z = 6 + Math.round((58 - y) * 0.25);
+      for (let x = -w; x <= w; x++) put(x, y, z, y >= 57 ? hairD : hair);
+    }
+  }
 
   // ═══ HAIR ═══
   cur = buckets.hair;
@@ -237,45 +245,88 @@ export function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Ri
     return hair;
   };
   const HR_CY = 66;
-  for (let x = -8; x <= 8; x++) for (let y = 63; y <= 82; y++) for (let z = -8; z <= 8; z++) {
-    const dx = x / 7.2, dy = (y - HR_CY) / 9.0, dz = z / 7.0;
-    const d = dx * dx + dy * dy + dz * dz;
-    if (d > 1.05 || d < 0.62) continue;
-    if (z > 2 && y < 68) continue;
-    if (z > 4 && y < 71) continue;
-    put(x, y, z, hairShade(x, y, z));
-  }
-  ellipsoid(0, 70, 0, 6.6, 6.0, 6.4, hair, 0.55);
-  const fringe: [number, number, number][] = [[-5,70,6],[-4,69,6],[-4,68,7],[-3,70,7],[-2,68,7],[0,69,7],[2,68,7],[3,70,7],[4,68,7],[4,69,6],[5,70,6]];
-  for (const [x, y, z] of fringe) put(x, y, z, hair);
-  const sHI: [number, number, number][] = [[-6,72,3],[-4,74,4],[-2,75,3],[0,76,2],[2,75,4],[4,74,3],[6,72,2],[-5,72,5],[-3,71,6],[3,71,6],[5,72,5],[-1,74,5],[1,74,5],[-6,70,1],[6,70,1],[-3,75,1],[3,75,1]];
-  for (const [x, y, z] of sHI) put(x, y, z, hairHI);
-  const sHL: [number, number, number][] = [[-2,76,2],[2,76,2],[0,75,3],[-4,74,3],[4,74,3],[-1,75,4],[1,75,4]];
-  for (const [x, y, z] of sHL) put(x, y, z, hairHL);
-  const sD: [number, number, number][] = [[-7,68,-2],[7,68,-2],[-6,66,-3],[6,66,-3],[-5,71,-5],[5,71,-5],[-4,73,-6],[4,73,-6],[0,74,-6]];
-  for (const [x, y, z] of sD) put(x, y, z, hairD);
-  const tufts: [number, number, number][] = [[-2,76,1],[2,76,1],[-1,76,-1],[1,76,-2],[3,75,0],[-3,75,0],[0,76,0]];
-  for (const [x, y, z] of tufts) put(x, y, z, hair);
-  put(0, 77, 0, hairHI);
-  for (let y = 49; y <= 62; y++) {
-    const t = (y - 49) / 13;
-    const halfW = Math.round(3 + t * 3);
-    for (let x = -halfW; x <= halfW; x++) {
-      const edge = 1 - Math.abs(x) / (halfW + 0.6);
-      const back = -5 - Math.round(edge * 2);
-      put(x, y, back, hairShade(x, y, back));
-      put(x, y, back + 1, hairShade(x, y, back + 1));
-      put(x, y, back + 2, hairShade(x, y, back + 2));
+  const hairStyle = scheme.hairStyle ?? 'mop';
+  if (hairStyle === 'mop') {
+    for (let x = -8; x <= 8; x++) for (let y = 63; y <= 82; y++) for (let z = -8; z <= 8; z++) {
+      const dx = x / 7.2, dy = (y - HR_CY) / 9.0, dz = z / 7.0;
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d > 1.05 || d < 0.62) continue;
+      if (z > 2 && y < 68) continue;
+      if (z > 4 && y < 71) continue;
+      put(x, y, z, hairShade(x, y, z));
     }
-    put(0, y, -5, y % 3 === 0 ? hairHI : hair);
+    ellipsoid(0, 70, 0, 6.6, 6.0, 6.4, hair, 0.55);
+    const fringe: [number, number, number][] = [[-5,70,6],[-4,69,6],[-4,68,7],[-3,70,7],[-2,68,7],[0,69,7],[2,68,7],[3,70,7],[4,68,7],[4,69,6],[5,70,6]];
+    for (const [x, y, z] of fringe) put(x, y, z, hair);
+    const sHI: [number, number, number][] = [[-6,72,3],[-4,74,4],[-2,75,3],[0,76,2],[2,75,4],[4,74,3],[6,72,2],[-5,72,5],[-3,71,6],[3,71,6],[5,72,5],[-1,74,5],[1,74,5],[-6,70,1],[6,70,1],[-3,75,1],[3,75,1]];
+    for (const [x, y, z] of sHI) put(x, y, z, hairHI);
+    const sHL: [number, number, number][] = [[-2,76,2],[2,76,2],[0,75,3],[-4,74,3],[4,74,3],[-1,75,4],[1,75,4]];
+    for (const [x, y, z] of sHL) put(x, y, z, hairHL);
+    const sD: [number, number, number][] = [[-7,68,-2],[7,68,-2],[-6,66,-3],[6,66,-3],[-5,71,-5],[5,71,-5],[-4,73,-6],[4,73,-6],[0,74,-6]];
+    for (const [x, y, z] of sD) put(x, y, z, hairD);
+    const tufts: [number, number, number][] = [[-2,76,1],[2,76,1],[-1,76,-1],[1,76,-2],[3,75,0],[-3,75,0],[0,76,0]];
+    for (const [x, y, z] of tufts) put(x, y, z, hair);
+    put(0, 77, 0, hairHI);
+    for (let y = 49; y <= 62; y++) {
+      const t = (y - 49) / 13;
+      const halfW = Math.round(3 + t * 3);
+      for (let x = -halfW; x <= halfW; x++) {
+        const edge = 1 - Math.abs(x) / (halfW + 0.6);
+        const back = -5 - Math.round(edge * 2);
+        put(x, y, back, hairShade(x, y, back));
+        put(x, y, back + 1, hairShade(x, y, back + 1));
+        put(x, y, back + 2, hairShade(x, y, back + 2));
+      }
+      put(0, y, -5, y % 3 === 0 ? hairHI : hair);
+    }
+    const tips: [number, number, number][] = [[-3,48,-6],[0,47,-6],[3,48,-6],[-2,48,-5],[2,47,-5],[-4,49,-6],[4,49,-6]];
+    for (const [x, y, z] of tips) { put(x, y, z, hairShade(x, y, z)); put(x, y, z - 1, hairShade(x, y, z - 1)); }
+    for (const s of [-1, 1]) {
+      for (let y = 53; y <= 67; y++) { put(s * 6, y, -2, hair); put(s * 6, y, -4, hair); put(s * 7, y, -3, hairD); put(s * 5, y, -5, hair); }
+      put(s * 6, 52, -3, hair); put(s * 5, 51, -4, hairD); put(s * 6, 66, 3, hairHI);
+    }
+    for (const s of [-1, 1]) { box(Math.min(s * 6, s * 7), 66, 3, Math.max(s * 6, s * 7), 68, 4, hair); put(s * 7, 67, 4, hairHI); }
+  } else if (hairStyle === 'bald') {
+    // a faint sheen on the bare pate
+    put(0, 70, -3, hairHL); put(1, 69, -2, hairHL); put(-1, 69, -2, hairHL);
+  } else if (hairStyle === 'buzz') {
+    // close-cropped crop hugging the skull; the forehead stays clear
+    for (let y = 66; y <= 73; y++) {
+      const t = (y - 66) / 7;
+      const r = Math.round(6 - t * 2.4);
+      for (let x = -r; x <= r; x++) for (let z = -r; z <= r; z++) {
+        const rr = Math.sqrt(x * x + z * z);
+        if (rr > r + 0.2) continue;
+        if (z > 0 && y < 69) continue;
+        put(x, y, z, hairShade(x, y, z));
+      }
+    }
+  } else if (hairStyle === 'balding') {
+    // horseshoe fringe around the sides + back with a bare crown
+    for (let y = 63; y <= 72; y++) {
+      const r = Math.round(5.5 - (y - 63) * 0.18);
+      for (let x = -r; x <= r; x++) for (let z = -r; z <= r; z++) {
+        const rr = Math.sqrt(x * x + z * z);
+        if (rr < r * 0.55 || rr > r) continue;
+        if (z > 2 && y < 68) continue;
+        put(x, y, z, hairShade(x, y, z));
+      }
+    }
+    // a few comb-over strands across the crown
+    for (const [x, z] of [[-3, 1], [-1, 2], [1, 1], [3, 0], [0, 3], [-2, -2], [2, -2]]) put(x, 69, z, hairD);
+  } else if (hairStyle === 'bun') {
+    // shoulder-length sweep pulled into a bun on top
+    for (let y = 63; y <= 76; y++) { const w = Math.round(5 - (y - 63) * 0.2); for (let x = -w; x <= w; x++) for (let z = -5; z <= 1; z++) put(x, y, z, hairShade(x, y, z)); }
+    ellipsoid(0, 78, -2, 3, 3, 3, hair);
+  } else if (hairStyle === 'mohawk') {
+    // centre ridge from the brow to the nape, tapering to a point
+    for (let y = 66; y <= 80; y++) {
+      const t = (y - 66) / 14;
+      const w = Math.max(0, Math.round(5.5 * (1 - t * 0.5)));
+      for (let z = -w; z <= w; z++) put(0, y, z, hairShade(0, y, z));
+    }
+    put(0, 80, 0, hairHI);
   }
-  const tips: [number, number, number][] = [[-3,48,-6],[0,47,-6],[3,48,-6],[-2,48,-5],[2,47,-5],[-4,49,-6],[4,49,-6]];
-  for (const [x, y, z] of tips) { put(x, y, z, hairShade(x, y, z)); put(x, y, z - 1, hairShade(x, y, z - 1)); }
-  for (const s of [-1, 1]) {
-    for (let y = 53; y <= 67; y++) { put(s * 6, y, -2, hair); put(s * 6, y, -4, hair); put(s * 7, y, -3, hairD); put(s * 5, y, -5, hair); }
-    put(s * 6, 52, -3, hair); put(s * 5, 51, -4, hairD); put(s * 6, 66, 3, hairHI);
-  }
-  for (const s of [-1, 1]) { box(Math.min(s * 6, s * 7), 66, 3, Math.max(s * 6, s * 7), 68, 4, hair); put(s * 7, 67, 4, hairHI); }
 
   for (const k of [...buckets.hair.keys()]) if (buckets.head.has(k)) buckets.hair.delete(k);
 

@@ -3,7 +3,7 @@
 // ═════════════════════════════════════════════════════════════
 import * as THREE from 'three';
 import type { CutsceneHost } from './types';
-import { buildCharacter, equip, unequipAll } from '../characters';
+import { buildCharacter } from '../characters';
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -20,7 +20,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // for the tavern so the cutscene has the same normal humanoid silhouette as
   // the snoozer, then restore the gameplay rig when the dungeon is revealed.
   const gameplayRig = hv.rig;
-  hv.rig = buildCharacter({ skin: 0x9a7a55, cloth: 0xf2efe6, accent: 0x24508f, hair: 0x140f0f, hood: false, naked: true, style: 'normal' }, 'unarmed');
+  hv.rig = buildCharacter({ skin: 0x9a7a55, cloth: 0xf2efe6, accent: 0x24508f, hair: 0x140f0f, hood: false, style: 'normal' }, 'unarmed');
   gameplayRig.group.parent?.remove(gameplayRig.group);
   h.scene.add(hv.rig.group);
   (hv as unknown as { introGameplayRig?: typeof gameplayRig }).introGameplayRig = gameplayRig;
@@ -98,12 +98,10 @@ export async function playIntroCutscene(h: CutsceneHost) {
   }
   h.setWeapon(hv.rig, null, hero.scheme.accent);
 
-  // dress Greg for the tavern flashback — the rig is built naked (briefs
-  // only), so we layer his normal clothes on top via the equipment system.
-  // He gets stripped again when he wakes in the dungeon (see below).
-  equip(hv.rig, { slot: 'chest', color: 0xf2efe6, style: 'shirt' });
-  equip(hv.rig, { slot: 'legs', color: 0x24508f, style: 'pants' });
-  equip(hv.rig, { slot: 'boots', color: 0x3a2a20, style: 'boots' });
+  // The tavern rig is built FULLY CLOTHED (see the scheme at the top of this
+  // function) — a white shirt + blue trousers in the normal rig's detailed
+  // style — so no equipment needs to be layered on. We swap back to Greg's
+  // underwear-only gameplay rig when he wakes in the dungeon (see below).
 
   // companion torch removed permanently per user request – no more hero light at all.
   // (the hero torch is never created by attachHeroTorch which is now a no-op)
@@ -454,6 +452,16 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // and none of the old folded-on-the-floor collapse that made him look
   // crumpled above the cobblestone.
   const floorWp = h.unitWorld(h.combat.units[0].pos);
+  // Swap the fully-clothed tavern rig back to Greg's actual gameplay rig — his
+  // underwear-only dungeon rig — so the "wake in your underwear" gag still
+  // lands (the tavern copy is built clothed now, so there's nothing to strip).
+  const introGameplayRig = (hv as unknown as { introGameplayRig?: typeof gameplayRig }).introGameplayRig;
+  if (introGameplayRig) {
+    hv.rig.group.parent?.remove(hv.rig.group);
+    hv.rig = introGameplayRig;
+    hv.rig.group.visible = true;
+    h.scene.add(hv.rig.group);
+  }
   hv.rig.group.position.copy(floorWp);
   hv.rig.group.rotation.set(0, Math.PI, 0);
   hv.yaw = hv.targetYaw = Math.PI;
@@ -461,8 +469,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   hv.rig.anim.mode = 'idle';
   hv.rig.anim.crouch = 0;
   hv.rig.anim.flinch = 0;
-  // strip Greg back to his underwear for the dungeon spawn ("in your underwear")
-  unequipAll(hv.rig);
   if (mugHand) mugHand.remove(mug);
 
   h.iso.desiredYaw = Math.PI * 0.25; h.iso.desiredPitch = 0.62; h.iso.desiredDist = 8;

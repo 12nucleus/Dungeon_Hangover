@@ -34,6 +34,13 @@ export interface CharacterScheme {
    * dungeon has a sense of humour"). Cloth + accent become the boxer/bra trim.
    */
   naked?: boolean;
+  /**
+   * Hair style variant for the normal (buildPlayerRig) humanoids — used to give
+   * tavern NPCs (patron, snoozer, …) distinct silhouettes. Defaults to 'mop'.
+   */
+  hairStyle?: 'mop' | 'bald' | 'buzz' | 'balding' | 'bun' | 'mohawk';
+  /** Full beard under the jaw, rendered in the hair colour. */
+  beard?: boolean;
 }
 
 export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club' | 'torch' | 'unarmed';
