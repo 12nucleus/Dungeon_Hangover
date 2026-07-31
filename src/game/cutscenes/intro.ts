@@ -3,11 +3,7 @@
 // ═════════════════════════════════════════════════════════════
 import * as THREE from 'three';
 import type { CutsceneHost } from './types';
-import { equip, unequipAll } from '../characters';
-// Real tavern room bounds — used to size the cinematic camera clamp (h.iso.box)
-// so it matches the actual room instead of a stale, undersized box.
-// Adjust this import path if your project layout differs.
-import { RX, ZB, ZF, WH } from '../engine/tavern';
+import { buildCharacter, equip, unequipAll } from '../characters';
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -20,9 +16,26 @@ export async function playIntroCutscene(h: CutsceneHost) {
   if (!hero) return;
   const hv = h.visuals.get(hero.id);
   if (!hv) return;
+  // Greg's gameplay rig is intentionally underwear-only. Use a separate copy
+  // for the tavern so the cutscene has the same normal humanoid silhouette as
+  // the snoozer, then restore the gameplay rig when the dungeon is revealed.
+  const gameplayRig = hv.rig;
+  hv.rig = buildCharacter({ ...hero.scheme, naked: false, style: 'normal' }, 'unarmed');
+  gameplayRig.group.parent?.remove(gameplayRig.group);
+  h.scene.add(hv.rig.group);
+  (hv as unknown as { introGameplayRig?: typeof gameplayRig }).introGameplayRig = gameplayRig;
   h.busy = true;
   h.introActive = true;
   h.introSkipped = false;
+  // endTitleSequence just called clearCine() (which flips cinematic=false)
+  // right before chaining into us — re-assert it so the HUD's main-menu
+  // overlay (`phase === 'menu' && !cinematic`) can't flash over the tavern
+  // before the first narrate() re-enables it.
+  h.cinematic = true;
+  // clearCine() emitted a snapshot with cinematic=false; push a fresh one so
+  // the HUD immediately re-renders with the flag set (otherwise the stale
+  // snapshot keeps the main-menu overlay on screen until the first narrate).
+  h.emitSnapshot();
 
   // ── build the tavern flashback, drop the dungeon behind it ──
   h.inTavern = true;
@@ -52,20 +65,18 @@ export async function playIntroCutscene(h: CutsceneHost) {
   hv.rig.anim.mode = 'sit'; hv.rig.anim.crouch = 0; hv.rig.anim.lunge = 0; hv.rig.anim.flinch = 0;
   hv.rig.group.scale.setScalar(1);
 
-  // FIX 2: voxel tankard clamped under Greg's LEFT FOREARM (not in the hand)
-  // so it sits lower — resting against his elbow / mid-forearm. Same prop anim
-  // (counter-rotating against the host's world pitch) keeps it visually level.
+  // Attach the tankard to Greg's hand, not the forearm. The hand is the final
+  // joint in the hierarchy, so the mug follows the grip instead of floating at
+  // the elbow when the drinking pose bends the arm.
   const mug = new THREE.Group();
   const mugBody = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.24, 0.20), new THREE.MeshLambertMaterial({ color: 0x8a5a2e }));
   const mugFoam = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.22), new THREE.MeshLambertMaterial({ color: 0xf2ead2 }));
   mugFoam.position.y = 0.14; mug.add(mugBody, mugFoam);
   // host: forearm if available (hierarchical rig), otherwise fall back to hand
-  const hand = hv.rig.parts.foreL ?? hv.rig.parts.handL ?? hv.rig.parts.armL;
+  const hand = hv.rig.parts.handL ?? hv.rig.parts.wristL ?? hv.rig.parts.foreL ?? hv.rig.parts.armL;
   let mugHand: THREE.Object3D | null = null;
   if (hand) {
-    // Local offset places the mug on the *outer* side of the forearm, level with
-    // the wrist. With foreL as parent, position is in forearm-local space.
-    mug.position.set(0, -0.04, 0.18);
+    mug.position.set(0, 0.02, 0.12);
     hand.add(mug);
     mugHand = hand;
   }
@@ -90,11 +101,9 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // dress Greg for the tavern flashback — the rig is built naked (briefs
   // only), so we layer his normal clothes on top via the equipment system.
   // He gets stripped again when he wakes in the dungeon (see below).
-  const sc = hero.scheme;
-  equip(hv.rig, { slot: 'chest', color: sc.cloth, style: 'shirt' });
-  equip(hv.rig, { slot: 'legs', color: sc.accent, style: 'pants' });
-  equip(hv.rig, { slot: 'boots', color: 0x5c3d22, style: 'boots' });
-  equip(hv.rig, { slot: 'gloves', color: sc.cloth, style: 'shirt' });
+  equip(hv.rig, { slot: 'chest', color: 0xf2efe6, style: 'shirt' });
+  equip(hv.rig, { slot: 'legs', color: 0x24508f, style: 'pants' });
+  equip(hv.rig, { slot: 'boots', color: 0x3a2a20, style: 'boots' });
 
   // companion torch removed permanently per user request – no more hero light at all.
   // (the hero torch is never created by attachHeroTorch which is now a no-op)
@@ -122,12 +131,13 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // to follow the barmaid/wizard/bouncer/Greg. Clamp to the real room
   // interior instead, with a small margin so the camera never pokes through
   // a wall.
-  h.iso.lerp = 2.0;
-  // WORLD-UNIT clamp: RX/ZB/ZF/WH are tavern GRID coordinates (1 grid = 0.11
-  // world). Using them raw made the box ~10x bigger than the room, so the
-  // "clamp" let the camera fly straight through every wall.
-  const CU = 0.11;
-  h.iso.box = { minX: -(RX - 3) * CU, maxX: (RX - 3) * CU, minZ: (ZB + 3) * CU, maxZ: (ZF - 3) * CU, minY: 0.25, maxY: (WH - 3) * CU };
+  // Slow camera interpolation prevents hard snaps when the subject changes;
+  // the shot timings below leave enough room for each composition to settle.
+  h.iso.lerp = 1.35;
+  // Keep the camera well inside the wall thickness. The previous clamp only
+  // removed three grid cells, which is not enough when a cinematic distance
+  // is several metres and the target is near a wall.
+  h.iso.box = { minX: -3.25, maxX: 3.25, minZ: -2.65, maxZ: 3.45, minY: 0.55, maxY: 2.9 };
   h.iso.desiredYaw = Math.PI * 0.78; h.iso.desiredPitch = 0.44; h.iso.desiredDist = 5.4;
   h.iso.focus(poi.gregHead);
   h.fadeTo(0);
@@ -137,7 +147,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
 
   // FIX 4: WIDE establishing shot first so the audience reads the WHOLE room
   // (back wall, hearth, doorway, bouncer) before we tighten in on Greg.
-  h.iso.desiredYaw = -Math.PI * 0.18; h.iso.desiredPitch = 0.50; h.iso.desiredDist = 9.5;
+  h.iso.desiredYaw = -Math.PI * 0.18; h.iso.desiredPitch = 0.50; h.iso.desiredDist = 5.4;
   h.iso.focus(new THREE.Vector3(0, 1.4, 0));
   await h.cineDelay(700);
 
@@ -171,7 +181,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // == BEAT 3: slow pan across the unimpressed room ==
   // FIX 4: WIDER shot so the audience reads the patron tables and the wizard
   // corner simultaneously.
-  h.iso.desiredYaw = -Math.PI * 0.45; h.iso.desiredPitch = 0.55; h.iso.desiredDist = 8.0;
+  h.iso.desiredYaw = -Math.PI * 0.45; h.iso.desiredPitch = 0.55; h.iso.desiredDist = 5.2;
   h.iso.focus(new THREE.Vector3(-1.0, 1.5, -1.4));
   await h.cineDelay(600);
   await h.narrate('narr_room', 'There is no shadow. There is only Greg, a table he has declared a sovereign kingdom, and a room full of people quietly praying he leaves first.', 7400);
@@ -244,38 +254,25 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // tavern.ts:127) while the exterior uses TIMBER + IRON hinges; future
   // polish should make them visually identical \u2014 for now both are
   // recognisably "tavern door + 2 windows".
-  h.iso.desiredYaw = -Math.PI * 0.5; h.iso.desiredDist = 7.5; h.iso.desiredPitch = 0.30;
+  h.iso.desiredYaw = -Math.PI * 0.5; h.iso.desiredDist = 5.2; h.iso.desiredPitch = 0.30;
   // ZF is the back-side wall (front from the camera's POV when looking at
   // the door). Focus on the door's height so the camera reads it as the
   // subject, not Greg.
   // poi.doorZ is a Vector3; use its z component (ZF-1 = 42) as the focus point.
-  const doorFocus = poi.doorZ ?? new THREE.Vector3(0, 1.6, 42);
-  h.iso.focus(new THREE.Vector3(0, doorFocus.y, doorFocus.z));
+  // poi.doorZ is retained as a grid-space marker for the set builder. Never
+  // aim the camera at that raw wall coordinate: it pulls the look target
+  // through the front wall and makes the camera appear to clip during this
+  // shot. Use the safe interior side of the doorway instead.
+  const doorFocus = poi.doorZ;
+  h.iso.focus(new THREE.Vector3(0, doorFocus ? Math.min(doorFocus.y, 1.8) : 1.6, 3.0));
   await h.cineDelay(800);
   // Now SWING BACK to Greg on the table for the spell impact.
   h.iso.desiredYaw = -Math.PI * 0.15; h.iso.desiredDist = 4.6; h.iso.desiredPitch = 0.36;
   h.iso.focus(poi.gregHead.clone().add(new THREE.Vector3(0, 0.7, 0)));
   await h.cineDelay(400);
 
-  // == CHAOS: a voxel stool flies, the wizard casts Polymorph, SHEEP ==
-  const stool = new THREE.Group();
-  const stoolWood = new THREE.MeshLambertMaterial({ color: 0x5a3e26 });
-  const stoolWoodD = new THREE.MeshLambertMaterial({ color: 0x3a2818 });
-  const stoolSeat = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.34), stoolWood); stoolSeat.position.y = 0.2; stool.add(stoolSeat);
-  for (const [lx, lz] of [[-0.12, -0.12], [0.12, -0.12], [-0.12, 0.12], [0.12, 0.12]] as const) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.24, 0.06), stoolWoodD); leg.position.set(lx, 0.08, lz); stool.add(leg);
-  }
-  // FIX 10: same stale-coordinate bug as Greg's table position above — this
-  // needs to start near Greg at his real table (z=18), not near the old z≈2
-  // location, or the stool visibly flies in from empty space.
-  stool.position.set(0, 0.55, seat.z + 1.9); h.scene.add(stool);
-  const stoolTarget = poi.wizard.clone().add(new THREE.Vector3(-0.2, 0.2, 0.3));
-  h.animateTo(() => stool.position.x, (val) => { stool.position.x = val; }, stoolTarget.x, 0.5);
-  h.animateTo(() => stool.position.y, (val) => { stool.position.y = val; }, stoolTarget.y, 0.5);
-  h.animateTo(() => stool.position.z, (val) => { stool.position.z = val; }, stoolTarget.z, 0.5);
-  const spinStart = performance.now();
-  h.propAnims.push(() => { stool.rotation.x += 0.3; stool.rotation.z += 0.24; return performance.now() - spinStart > 520; });
-  h.iso.shake = Math.max(h.iso.shake ?? 0, 0.15);
+  // The old flying-stool gag read as a second stool attached to the wizard's
+  // arm in the tight casting shot. Keep the cast readable and character-led.
   await h.cineDelay(260);
 
   // FIX 6 + 3b: 3-SECOND STAGED CAST with a STEADY camera. The previous
@@ -292,10 +289,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.cineDelay(300);   // let the iso.lerp ease onto the wizard before the cast
   // STAGE A: STAFF RAISE (1.4 s) — wizard's forearmROffset rotates his staff
   // up from rest to vertical, like an orchestra conductor raising a baton.
-  if (wiz) {
-    wiz.anim.forearmROffset = 0;       // reset before animating
-    wiz.anim.mode = 'crack';            // crack pose = both fists raised
-  }
+  if (wiz) wiz.anim.mode = 'point';
   h.audio.play('dice', 0.4);           // soft "summoning" sound as staff rises
   await h.cineDelay(1400);
   if (h.introSkipped) { finishIntro(h); return; }
@@ -361,7 +355,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // The wizard's hand is the burst origin so the spell visually EMANATES
   // from him rather than flying across the room.
   h.fx.polymorph(h.particles, to2);
-  h.iso.shake = Math.max(h.iso.shake ?? 0, 0.18);   // ONE shake, at the burst
+  h.iso.shake = Math.max(h.iso.shake ?? 0, 0.06);   // restrained impact shake
   // FIX 9: lift the per-frame override for the flash window and let the light
   // show through, recolored purple for the spell impact.
   heroLightFlash = true;
@@ -384,8 +378,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   if (h.heroLight) h.heroLight.color.setHex(0xffb060);
   // reset wizard so the cast pose doesn't stick
   if (wiz) { wiz.anim.mode = 'idle'; wiz.anim.lunge = 0; }
-  h.scene.remove(stool);
-  stool.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
   if (h.introSkipped) { finishIntro(h); return; }
 
   // -- Greg, human again and thoroughly rattled, drops back onto his stool --
@@ -414,7 +406,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // read him lying flat. The focus is a live Vector3 so it tracks Greg's
   // floor position as the animateTo() lerps him down.
   hv.rig.anim.flinch = 1;
-  h.iso.shake = Math.max(h.iso.shake ?? 0, 0.16);
+  h.iso.shake = Math.max(h.iso.shake ?? 0, 0.05);
   h.iso.desiredPitch = 0.30;                 // tilt camera DOWN toward the floor but not below it
   h.iso.desiredDist = 3.8;                   // back-off from presenting only his falling hand
   // animate focus Y in lockstep with Greg's falling body so the camera
@@ -517,6 +509,17 @@ export function finishIntro(h: CutsceneHost) {
   if (hero) {
     const hv = h.visuals.get(hero.id);
     if (hv) {
+      const state = hv as unknown as { introGameplayRig?: typeof hv.rig };
+      if (state.introGameplayRig) {
+        const tavernRig = hv.rig;
+        hv.rig = state.introGameplayRig;
+        state.introGameplayRig = undefined;
+        tavernRig.group.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.geometry) m.geometry.dispose();
+          if (m.material) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
+        });
+      }
       hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 0; hv.rig.group.rotation.set(0, Math.PI, 0);
       // skip-safety: if the intro was skipped while Greg was "plain", restore pads
       if (hv.rig.parts.padL) hv.rig.parts.padL.visible = true;

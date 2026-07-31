@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Large TTS model weights (6.7 GB) - do not commit, use Git LFS or external storage
+Qwen3-TTS-12Hz-0.6B-Base/
+Qwen3-TTS-12Hz-1.7B-VoiceDesign/
+qwen3-tts/
+
+# Junk / temp files
+$null
+ts-errors.txt
+this.spawnDrunkStars(rig)

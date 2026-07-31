@@ -72,8 +72,9 @@ export function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | u
       colf(cx, 0, 0, 34, 3, 3, cloth);
     } else if (feat.dress) {
       box(cx - 3, 0, -4, cx + 3, 2, 6, 0x3a2a1a);
-      colf(cx, 0.5, 2, 34, 3.2, 3.4, cloth);
-      for (let y = 4; y <= 33; y += 3) put(cx, y, 4, clothD);
+      // Broad skirt volume follows each leg; do not add a fixed centre column,
+      // which looked like a rigid pillar through the moving leg.
+      colf(cx, 0.5, 2, 34, 3.8, 4.1, cloth);
     } else {
       box(cx - 3, 0, -4, cx + 3, 2, 6, 0x3a2a1a);
       colf(cx, 0.5, 2, 34, 3.2, 3.4, pant);
@@ -93,8 +94,8 @@ export function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | u
         rx = 6.5 + 5.0 * (1 - s);
         rz = 6.5 + 5.7 * (1 - s);
       } else {
-        rx = feat.robe ? 5.2 : 5.6 - y * 0.05;
-        rz = feat.robe ? 4.2 : 4.0;
+        rx = feat.robe ? 5.2 : (feat.dress ? 7.4 - y * 0.035 : 5.6 - y * 0.05);
+        rz = feat.robe ? 4.2 : (feat.dress ? 5.6 : 4.0);
       }
       colf(0, 0, y, y, Math.max(2, rx), rz, (feat.dress || y >= 33) ? cloth : pant);
     }

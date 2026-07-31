@@ -260,11 +260,13 @@ export class GameEngine {
   public container: HTMLDivElement;
   public overlay: HTMLDivElement;
   public onSnapshot: (s: UISnapshot) => void;
+  public onReady: (() => void) | null = null;
 
-  constructor(container: HTMLDivElement, overlay: HTMLDivElement, onSnapshot: (s: UISnapshot) => void) {
+  constructor(container: HTMLDivElement, overlay: HTMLDivElement, onSnapshot: (s: UISnapshot) => void, onReady?: () => void) {
     this.container = container;
     this.overlay = overlay;
     this.onSnapshot = onSnapshot;
+    this.onReady = onReady ?? null;
   }
 
   // -- setup -------------------------------------------------
@@ -483,6 +485,7 @@ export class GameEngine {
     };
     this.raf = requestAnimationFrame(loop);
     this.emitSnapshot();
+    this.onReady?.();
   }
 
   public spawnUnits() {

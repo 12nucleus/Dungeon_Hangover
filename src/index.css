@@ -453,7 +453,7 @@ html, body, #root {
   will-change: transform;
   transform: translateZ(0);
 }
-.splash--hide { opacity: 0; pointer-events: none; }
+.splash--hide { opacity: 0; visibility: hidden; pointer-events: none; }
 .splash__vignette {
   position: absolute; inset: 0; pointer-events: none;
   /* a radial-gradient is far cheaper to composite than a 240px box-shadow

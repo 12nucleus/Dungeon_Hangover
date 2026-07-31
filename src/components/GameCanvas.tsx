@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameEngine } from '@/game/engine';
 import type { UISnapshot } from '@/game/types';
 import { HUD } from './HUD';
@@ -21,39 +21,25 @@ export function GameCanvas() {
   // the background; we just cover it until it's safe to play.
   const [loadingVisible, setLoadingVisible] = useState(true);
   const [loadingReady, setLoadingReady] = useState(false);
-  // Auto-mark ready after a short delay (asset decode + first render). The
-  // engine has already started building the title scene behind this overlay.
-  useEffect(() => {
-    if (!loadingVisible) return;
-    const id = window.setTimeout(() => setLoadingReady(true), 1100);
-    return () => window.clearTimeout(id);
-  }, [loadingVisible]);
   const showLoadingBriefly = () => {
     setLoadingReady(false);
     setLoadingVisible(true);
     // re-ready after a short beat so the player sees the thought change
-    window.setTimeout(() => setLoadingReady(true), 900);
   };
 
-  useEffect(() => {
-    if (!hostRef.current || !overlayRef.current || engineRef.current) return;
-    const engine = new GameEngine(hostRef.current, overlayRef.current, setSnap);
-    engineRef.current = engine;
-    // Defer the heavy engine.init() until AFTER the loading screen has had a
-    // chance to paint (its own THREE scene). This avoids blocking the first
-    // frame where Greg should appear instantly. We yield to the browser with
-    // requestAnimationFrame so the loading screen renders once before the
-    // engine constructs its WebGLRenderer, lights, and defers the world build.
-    let rafId = requestAnimationFrame(() => {
-      if (!engine.disposed) engine.init();
-      // in ?debug mode skip the splash + intro director; build the idle tavern
-      if (isDebug) engine.enterEditorMode();
-      rafId = 0; // mark as fired
+  const startEngineAfterLoadingScene = useCallback(() => {
+    if (engineRef.current?.renderer || !hostRef.current || !overlayRef.current) return;
+    const engine = new GameEngine(hostRef.current, overlayRef.current, setSnap, () => {
+      setLoadingReady(true);
     });
+    engineRef.current = engine;
+    engine.init();
+    if (isDebug) engine.enterEditorMode();
+  }, [isDebug]);
+
+  useEffect(() => {
     return () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      // engine.init() may not have run yet (renderer undefined) — guard it.
-      if (engine.renderer) engine.dispose();
+      if (engineRef.current?.renderer) engineRef.current.dispose();
       engineRef.current = null;
     };
   }, [isDebug]);
@@ -67,9 +53,12 @@ export function GameCanvas() {
   };
 
   const handleLoad = (slotId: string) => {
-    engineRef.current?.loadGame(slotId);
+    const loaded = engineRef.current?.loadGame(slotId) ?? false;
     setSplashVisible(false);
     showLoadingBriefly();     // same on load — different floor, different thought
+    // loadGame restores the complete world synchronously. Do not leave the
+    // overlay in an indeterminate state after that work has finished.
+    if (loaded) setLoadingReady(true);
   };
 
   const handleResume = () => {
@@ -101,17 +90,20 @@ export function GameCanvas() {
       <div ref={overlayRef} className="fx-layer" />
       <HUD snap={snap} engine={engineRef.current} />
       {isDebug && <DebugPanel engine={engineRef.current} />}
-      <SplashScreen
-        visible={splashVisible}
-        onNewGame={handleNewGame}
-        onLoad={handleLoad}
-        onExit={handleExit}
-        engineRef={engineRef}
-      />
+      {splashVisible && (
+        <SplashScreen
+          visible
+          onNewGame={handleNewGame}
+          onLoad={handleLoad}
+          onExit={handleExit}
+          engineRef={engineRef}
+        />
+      )}
       <LoadingScreen
         visible={loadingVisible}
         ready={loadingReady}
         onContinue={() => { if (loadingReady) setLoadingVisible(false); }}
+        onSceneReady={startEngineAfterLoadingScene}
       />
       <PauseMenu
         visible={!!snap?.paused}

@@ -72,6 +72,8 @@ interface LoadingScreenProps {
   ready: boolean;
   /** Called when the user clicks "Click to continue". */
   onContinue: () => void;
+  /** Called after the loading scene has rendered its first animated frame. */
+  onSceneReady: () => void;
 }
 
 /** Render an indeterminate progress message ("Loading", "Loading.", "Loading..", "Loading..."). */
@@ -146,7 +148,7 @@ function makeGlowTexture(): THREE.Texture {
 }
 
 /** Build a self-contained THREE scene with naked Greg ragdolled on a cobblestone road. */
-function useGregScene(host: HTMLDivElement | null) {
+function useGregScene(host: HTMLDivElement | null, onSceneReady: () => void) {
   useEffect(() => {
     if (!host) return;
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -299,6 +301,7 @@ function useGregScene(host: HTMLDivElement | null) {
       raf = requestAnimationFrame(tick);
     };
     tick();
+    onSceneReady();
 
     return () => {
       cancelAnimationFrame(raf);
@@ -321,10 +324,10 @@ function useGregScene(host: HTMLDivElement | null) {
       renderer.dispose();
       if (renderer.domElement.parentNode === host) host.removeChild(renderer.domElement);
     };
-  }, [host]);
+  }, [host, onSceneReady]);
 }
 
-export function LoadingScreen({ visible, ready, onContinue }: LoadingScreenProps) {
+export function LoadingScreen({ visible, ready, onContinue, onSceneReady }: LoadingScreenProps) {
   const [thought, setThought] = useState<string>(LOADING_THOUGHTS[0]);
   useEffect(() => {
     if (!visible) return;
@@ -340,7 +343,7 @@ export function LoadingScreen({ visible, ready, onContinue }: LoadingScreenProps
   // canvas element actually exists in the DOM — a plain ref is null on the
   // first render and the effect would otherwise never fire.
   const [stageHost, setStageHost] = useState<HTMLDivElement | null>(null);
-  useGregScene(stageHost);
+  useGregScene(stageHost, onSceneReady);
 
   // Static CSS — memoised so React doesn't churn the inline tag on every state change
   const css = useMemo(() => `
@@ -408,7 +411,7 @@ export function LoadingScreen({ visible, ready, onContinue }: LoadingScreenProps
 
       <div className="stage" ref={setStageHost} />
 
-      <div className="loading-text">Loading{loadingText}</div>
+      {!ready && <div className="loading-text">Loading{loadingText}</div>}
 
       <button
         type="button"
