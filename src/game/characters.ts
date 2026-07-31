@@ -1098,25 +1098,19 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
   for (const s of [-1, 1] as const) {
     cur = s < 0 ? buckets.legL : buckets.legR;
     const cx = s * LEG_X;
-    if (feat.robe) {
-      colf(cx, 0, 0, 34, 3, 3, cloth);                 // hidden inside the robe
-    } else if (feat.dress) {
-      // dress: paint the legs with the dress (cloth) color so when she walks
-      // the swinging legs read as the robe/dress hem moving.
-      box(cx - 3, 0, -4, cx + 3, 2, 6, 0x3a2a1a);      // boot
-      colf(cx, 0.5, 2, 34, 3.2, 3.4, cloth);            // dress-coloured leg
-      for (let y = 4; y <= 33; y += 3) put(cx, y, 4, clothD);
+    if (feat.robe || feat.dress) {
+      colf(cx, 0, 0, 34, 3, 3, cloth);                 // hidden inside the robe/dress
     } else {
       box(cx - 3, 0, -4, cx + 3, 2, 6, 0x3a2a1a);      // boot
       colf(cx, 0.5, 2, 34, 3.2, 3.4, pant);            // trouser leg
       for (let y = 4; y <= 33; y += 3) put(cx, y, 4, pantD);
     }
   }
-  // robe fully encloses the legs — drop the hidden leg voxels so they don't
-  // coincide with the robe column (that overlap was z-fighting on the wizard).
-  // Dress keeps its leg voxels (filled with cloth above) so the skirt moves
-  // with the leg animation instead of being a rigid torso block.
-  if (feat.robe) { buckets.legL.clear(); buckets.legR.clear(); }
+  // robe and dress both fully enclose the legs — drop the hidden leg voxels so
+  // they don't coincide with the robe/dress column (that overlap was
+  // z-fighting on the wizard; on the barmaid the A-line skirt now reaches the
+  // floor and hides them anyway).
+  if (feat.robe || feat.dress) { buckets.legL.clear(); buckets.legR.clear(); }
 
   // ── TORSO ──
   cur = buckets.torso;
@@ -1124,7 +1118,21 @@ function buildHumanoidRig(scheme: CharacterScheme, weapon: WeaponKind | undefine
     const top = feat.robe ? 56 : 44;
     for (let y = 0; y <= top; y++) {
       let rx: number, rz: number;
-      if (feat.robe && y <= 33) {
+      if (feat.dress && y <= 33) {
+        // full A-line skirt: a wide flared hem at the ankles tapering to a
+        // fitted waist — covers BOTH legs entirely. The generous flare (plus
+        // the hip band below) is what keeps it reading as a dress rather than
+        // a rigid floor-to-chest pillar.
+        const s = y / 33;                                       // 0 at hem, 1 at waist
+        rx = 8.8 - 3.8 * s;                                     // 8.8 hem → 5.0 waist
+        rz = 5.8 - 2.2 * s;                                     // 5.8 hem → 3.6 waist
+      } else if (feat.dress && y <= 36) {
+        // fitted hip band above the skirt seam so the hip bulge stays covered;
+        // z is kept under 4 so the dark belt (z 4-5) reads cleanly on top.
+        const t = (y - 34) / 2;                                 // 0 at hip, 1 at seam
+        rx = 7.2 - 1.6 * t;                                     // 7.2 hip → 5.6 seam
+        rz = 3.4;
+      } else if (feat.robe && y <= 33) {
         // skirt below the belt: flares from the waist out to a wide hem at the feet
         const s = y / 33;                                       // 0 at feet, 1 at belt
         rx = 6.5 + 5.0 * (1 - s);                               // 5.5 at belt → 8.5 at feet

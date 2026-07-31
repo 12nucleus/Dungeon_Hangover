@@ -20,7 +20,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // for the tavern so the cutscene has the same normal humanoid silhouette as
   // the snoozer, then restore the gameplay rig when the dungeon is revealed.
   const gameplayRig = hv.rig;
-  hv.rig = buildCharacter({ ...hero.scheme, naked: false, style: 'normal' }, 'unarmed');
+  hv.rig = buildCharacter({ skin: 0x9a7a55, cloth: 0xf2efe6, accent: 0x24508f, hair: 0x140f0f, hood: false, naked: true, style: 'normal' }, 'unarmed');
   gameplayRig.group.parent?.remove(gameplayRig.group);
   h.scene.add(hv.rig.group);
   (hv as unknown as { introGameplayRig?: typeof gameplayRig }).introGameplayRig = gameplayRig;
@@ -134,30 +134,32 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // Slow camera interpolation prevents hard snaps when the subject changes;
   // the shot timings below leave enough room for each composition to settle.
   h.iso.lerp = 1.35;
-  // Keep the camera well inside the wall thickness. The previous clamp only
-  // removed three grid cells, which is not enough when a cinematic distance
-  // is several metres and the target is near a wall.
-  h.iso.box = { minX: -3.25, maxX: 3.25, minZ: -2.65, maxZ: 3.45, minY: 0.55, maxY: 2.9 };
-  h.iso.desiredYaw = Math.PI * 0.78; h.iso.desiredPitch = 0.44; h.iso.desiredDist = 5.4;
-  h.iso.focus(poi.gregHead);
+  // Keep the camera well inside the wall thickness. The room interior spans
+  // x -4.62..4.62, z -3.85..4.73 (walls at RX=42 / ZB=-35 / ZF=43 grid, CUBE
+  // 0.11), with ceiling joists at world y 3.41+. This box tracks the interior
+  // with a safe margin so wider shots can actually pull back without being
+  // clamped into a tight close-up or poking through a wall.
+  h.iso.box = { minX: -4.2, maxX: 4.2, minZ: -3.6, maxZ: 4.45, minY: 0.55, maxY: 3.3 };
+  // SNAP to the WIDE establishing shot instead of easing in from the title's
+  // exterior signboard framing — the fade-in is completely still, and Beat 1
+  // makes ONE calm swing onto Greg. (Previously the camera lurched exterior →
+  // Greg → room → Greg within the first two seconds, reading as "swinging
+  // wildly left and right" the moment the scene revealed.)
+  h.iso.desiredYaw = -Math.PI * 0.18; h.iso.desiredPitch = 0.50; h.iso.desiredDist = 6.0;
+  h.iso.focus(new THREE.Vector3(0, 1.4, 0));
+  h.iso.yaw = h.iso.desiredYaw; h.iso.pitch = h.iso.desiredPitch; h.iso.dist = h.iso.desiredDist;
+  h.iso.target.copy(h.iso.desiredTarget);
   h.fadeTo(0);
   h.audio.stopMusic(); h.audio.stopTavernMusic(); h.audio.playTavernMusic();
-  await h.cineDelay(900);
+  await h.cineDelay(1100);   // hold the establishing shot while the fade completes
   if (h.introSkipped) { finishIntro(h); return; }
 
-  // FIX 4: WIDE establishing shot first so the audience reads the WHOLE room
-  // (back wall, hearth, doorway, bouncer) before we tighten in on Greg.
-  h.iso.desiredYaw = -Math.PI * 0.18; h.iso.desiredPitch = 0.50; h.iso.desiredDist = 5.4;
-  h.iso.focus(new THREE.Vector3(0, 1.4, 0));
-  await h.cineDelay(700);
-
   // == BEAT 1: establishing - the warm, dingy room; Greg mid-bender ==
-  // FIX 4: tight medium close-up on Greg (was 5.4 dist — too far to read
-  // his face). Face him from the front-right so the audience can see the
-  // mug + his expression.
-  h.iso.desiredYaw = Math.PI * 0.78; h.iso.desiredPitch = 0.36; h.iso.desiredDist = 3.2;
+  // Medium-wide front-right shot on Greg so the audience reads his mug + the
+  // room around him without an uncomfortable zoom.
+  h.iso.desiredYaw = Math.PI * 0.78; h.iso.desiredPitch = 0.36; h.iso.desiredDist = 5.0;
   h.iso.focus(poi.gregHead);
-  await h.cineDelay(400);
+  await h.cineDelay(900);    // smooth single swing from the wide shot onto Greg
   await h.narrate('t_open', 'The Dirty Mug. Last call came and went two hours ago. Nobody has found the courage to tell Greg.', 5200);
   if (h.introSkipped) { finishIntro(h); return; }
   // Greg takes a long, theatrical sip: a single 3-second keyframed animation
@@ -169,9 +171,9 @@ export async function playIntroCutscene(h: CutsceneHost) {
   hv.rig.anim.mode = 'sit';
 
   // == BEAT 2: Greg holds court ==
-  // FIX 4: face Greg head-on at close range so we read his expression as he
-  // bangs the table.
-  h.iso.desiredYaw = Math.PI; h.iso.desiredPitch = 0.32; h.iso.desiredDist = 3.0;
+  // Head-on medium shot so we read his expression while still seeing the
+  // room behind him.
+  h.iso.desiredYaw = Math.PI; h.iso.desiredPitch = 0.32; h.iso.desiredDist = 5.0;
   h.iso.focus(poi.gregHead);
   await h.cineDelay(500);
   hv.rig.anim.lunge = 0.7;
@@ -181,16 +183,16 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // == BEAT 3: slow pan across the unimpressed room ==
   // FIX 4: WIDER shot so the audience reads the patron tables and the wizard
   // corner simultaneously.
-  h.iso.desiredYaw = -Math.PI * 0.45; h.iso.desiredPitch = 0.55; h.iso.desiredDist = 5.2;
+  h.iso.desiredYaw = -Math.PI * 0.45; h.iso.desiredPitch = 0.55; h.iso.desiredDist = 6.0;
   h.iso.focus(new THREE.Vector3(-1.0, 1.5, -1.4));
   await h.cineDelay(600);
   await h.narrate('narr_room', 'There is no shadow. There is only Greg, a table he has declared a sovereign kingdom, and a room full of people quietly praying he leaves first.', 7400);
   if (h.introSkipped) { finishIntro(h); return; }
 
   // == BEAT 4: Greg picks a fight with the furniture ==
-  // FIX 4: tight close-up, low angle — we should feel Greg leaning INTO the
-  // confrontation with Norris.
-  h.iso.desiredYaw = Math.PI * 0.95; h.iso.desiredPitch = 0.30; h.iso.desiredDist = 3.4;
+  // Low-angle medium shot — we should feel Greg leaning INTO the
+  // confrontation with Norris without crowding the frame.
+  h.iso.desiredYaw = Math.PI * 0.95; h.iso.desiredPitch = 0.30; h.iso.desiredDist = 5.0;
   h.iso.focus(poi.gregHead);
   await h.cineDelay(500);
   hv.rig.anim.lunge = 1;
@@ -201,7 +203,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // FIX 4: face the BARMAID (was facing the wrong angle). The bartender is
   // the subject of this beat; we should see her face, not Greg's shoulder.
   const bar = h.tavernActors.barmaid;
-  h.iso.desiredYaw = -0.3; h.iso.desiredDist = 3.8; h.iso.desiredPitch = 0.42;
+  h.iso.desiredYaw = -0.3; h.iso.desiredDist = 5.4; h.iso.desiredPitch = 0.42;
   h.iso.focus(poi.barmaid.clone().add(new THREE.Vector3(0, 0.2, 0)));
   if (bar) h.barmaidServe(bar);
   await h.narrate('narr_maid', 'The barmaid has poured this exact drink for this exact man forty-seven times. She stopped making eye contact somewhere around the thirtieth. It is safer that way.', 7600);
@@ -210,7 +212,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // == BEAT 6: the nervous wizard in the corner ==
   // FIX 4: face the wizard from the front (not profile). The wizard is small;
   // we need a closer shot so we can read the nervous arithmetic on his face.
-  h.iso.desiredYaw = 0.85; h.iso.desiredDist = 3.6; h.iso.desiredPitch = 0.40;
+  h.iso.desiredYaw = 0.85; h.iso.desiredDist = 5.4; h.iso.desiredPitch = 0.40;
   h.iso.focus(poi.wizard.clone().add(new THREE.Vector3(0, 0.1, 0)));
   await h.cineDelay(500);
   await h.narrate('narr_wiz', 'Over in the corner, a very small wizard is doing a very large amount of nervous arithmetic. The kind you do right before you turn a problem into a farm animal.', 7400);
@@ -224,24 +226,24 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // audience reads him cracking his knuckles. yaw=-π*0.5 looks along -z toward
   // the door wall (z=ZF=+43) from inside the room.
   const bc = h.tavernActors.bouncer;
-  h.iso.desiredYaw = -Math.PI * 0.5; h.iso.desiredDist = 3.4; h.iso.desiredPitch = 0.42;
+  h.iso.desiredYaw = -Math.PI * 0.5; h.iso.desiredDist = 5.4; h.iso.desiredPitch = 0.42;
   h.iso.focus(poi.bouncer.clone().add(new THREE.Vector3(0, 0.6, 0)));
   if (bc) bc.anim.mode = 'crack';
   await h.cineDelay(400);   // brief settle onto the bouncer before the line lands
   await h.narrate('narr_bounce', 'By the door, the bouncer cracks his knuckles - a retired warlord who took this job for the peace and quiet. Greg reads the room perfectly, and climbs onto the table.', 7400);
   if (bc) bc.anim.mode = 'idle';
   if (h.introSkipped) { finishIntro(h); return; }
-  // FIX 4: tighter shot for Greg on the table — we want to feel his theatrical
-  // stance before the wizard fires.
-  h.iso.desiredYaw = -Math.PI * 0.15; h.iso.desiredDist = 4.6; h.iso.desiredPitch = 0.36;
-  h.iso.focus(poi.gregHead.clone().add(new THREE.Vector3(0, 0.7, 0)));
+  // FIX 4: wide shot for Greg on the table — we want to feel his theatrical
+  // stance AND read the room while the wizard lines up the spell.
   hv.rig.anim.mode = 'idle'; hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 0;
-  // FIX 10: this was hardcoded to z=1.35 — a leftover from before Greg's table
-  // was moved out to z=18 (poi.gregSeat/gregHead). That left Greg ~16 units
-  // away from his own table and from where the camera was focused (gregHead),
-  // so he visibly teleported off-camera the moment he stood up. Anchor to
-  // seat.z (his table's actual z) and keep the small forward offset.
-  hv.rig.group.position.set(0, 0.99, seat.z + 1.35);   // up on the tabletop (feet flush on the top)
+  // Stand him ON his table, not 2.25 units in front of it. The top slab sits
+  // at grid gy 7-8 → world y 0.88, centred at poi.table (0, ., 1.1). The old
+  // seat.z + 1.35 offset placed Greg at z 3.35 — floating off the tabletop and
+  // away from where the camera was focused (gregHead at z 2.0).
+  hv.rig.group.position.set(poi.table.x, 0.88, poi.table.z);
+  const tableStandFocus = hv.rig.group.position.clone().add(new THREE.Vector3(0, 1.85, 0));
+  h.iso.desiredYaw = -Math.PI * 0.15; h.iso.desiredDist = 5.6; h.iso.desiredPitch = 0.36;
+  h.iso.focus(tableStandFocus);
   hv.rig.anim.lunge = 1;
   await h.cineDelay(700);
 
@@ -254,7 +256,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // tavern.ts:127) while the exterior uses TIMBER + IRON hinges; future
   // polish should make them visually identical \u2014 for now both are
   // recognisably "tavern door + 2 windows".
-  h.iso.desiredYaw = -Math.PI * 0.5; h.iso.desiredDist = 5.2; h.iso.desiredPitch = 0.30;
+  h.iso.desiredYaw = -Math.PI * 0.5; h.iso.desiredDist = 6.0; h.iso.desiredPitch = 0.30;
   // ZF is the back-side wall (front from the camera's POV when looking at
   // the door). Focus on the door's height so the camera reads it as the
   // subject, not Greg.
@@ -267,8 +269,8 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.focus(new THREE.Vector3(0, doorFocus ? Math.min(doorFocus.y, 1.8) : 1.6, 3.0));
   await h.cineDelay(800);
   // Now SWING BACK to Greg on the table for the spell impact.
-  h.iso.desiredYaw = -Math.PI * 0.15; h.iso.desiredDist = 4.6; h.iso.desiredPitch = 0.36;
-  h.iso.focus(poi.gregHead.clone().add(new THREE.Vector3(0, 0.7, 0)));
+  h.iso.desiredYaw = -Math.PI * 0.15; h.iso.desiredDist = 5.6; h.iso.desiredPitch = 0.36;
+  h.iso.focus(tableStandFocus);
   await h.cineDelay(400);
 
   // The old flying-stool gag read as a second stool attached to the wizard's
@@ -284,7 +286,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   const wiz = h.tavernActors.wizard;
   const to2 = hv.rig.group.position.clone().add(new THREE.Vector3(0, 1.0, 0));
   // PRE-SET the wizard framing ONCE and keep it (no per-stage dist changes):
-  h.iso.desiredYaw = 0.85; h.iso.desiredDist = 3.8; h.iso.desiredPitch = 0.40;
+  h.iso.desiredYaw = 0.85; h.iso.desiredDist = 5.2; h.iso.desiredPitch = 0.40;
   h.iso.focus(poi.wizard.clone().add(new THREE.Vector3(0, 0.5, 0)));
   await h.cineDelay(300);   // let the iso.lerp ease onto the wizard before the cast
   // STAGE A: STAFF RAISE (1.4 s) — wizard's forearmROffset rotates his staff
@@ -311,7 +313,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   if (wiz) { wiz.anim.lunge = 1; }
   h.audio.play('magic_missile', 0.9);
   h.iso.focus(hv.rig.group.position.clone().add(new THREE.Vector3(0, 0.8, 0)));
-  h.iso.desiredDist = 5.2;            // gentle pull-back so the burst fits in frame
+  h.iso.desiredDist = 5.8;            // gentle pull-back so the burst fits in frame
 
   // ── MAGIC RAY: a visible beam from the staff tip to Greg, with a bright
   // core, traveling sparkles, and a 0.6 s fade. This replaces the old
@@ -386,7 +388,8 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.cineDelay(600);
 
   // == FINALE: one last drink, then Greg LITERALLY falls off the stool ==
-  h.iso.desiredDist = 3.4; h.iso.desiredYaw = -Math.PI * 0.1; h.iso.desiredPitch = 0.34;
+  // Wide diagonal from the left-front so Greg + the bar/room read together.
+  h.iso.desiredDist = 5.0; h.iso.desiredYaw = -Math.PI * 0.35; h.iso.desiredPitch = 0.34;
   h.iso.focus(poi.gregHead);
   hv.rig.anim.crouch = 0;
   hv.rig.anim.mode = 'drink'; await h.cineDelay(700); hv.rig.anim.mode = 'sit';
@@ -408,7 +411,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   hv.rig.anim.flinch = 1;
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.05);
   h.iso.desiredPitch = 0.30;                 // tilt camera DOWN toward the floor but not below it
-  h.iso.desiredDist = 3.8;                   // back-off from presenting only his falling hand
+  h.iso.desiredDist = 5.4;                   // pull back so the fall reads in the room
   // animate focus Y in lockstep with Greg's falling body so the camera
   // *follows* him down rather than looking past him.
   const _fallFocus = hv.rig.group.position.clone();
