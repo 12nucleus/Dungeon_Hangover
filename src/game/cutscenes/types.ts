@@ -149,4 +149,14 @@ export interface CutsceneHost {
   armIntroGrace: (secs: number) => void;
   /** called once the intro cutscene fully completes (engine drops an initial autosave) */
   onIntroComplete: () => void;
+
+  // ── character creation (the dungeon wake) ──
+  /**
+   * Flip the engine into `phase='creation'` so the React overlay can run the
+   * stat/class/skill builder. Resolves once the player confirms (engine calls
+   * `resolveCreation`). Intro stays busy/cinematic until it resolves.
+   */
+  requestCreation: () => Promise<void>;
+  /** the engine calls this from confirmCharacterCreation() to release the intro */
+  resolveCreation: () => void;
 }

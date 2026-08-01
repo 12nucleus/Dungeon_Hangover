@@ -17,7 +17,8 @@ import { effMaxHp } from './stats';
 import { SaveManager, SettingsManager, type GameSettings, type SaveData, type SaveSlotMeta } from './save';
 import { canUnlock, treeFor } from './skilltree';
 import { TrapManager } from './traps';
-import type { CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot } from './types';
+import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot } from './types';
+import { classById } from './classes';
 import { NPCS, type NPCDef } from './npc';
 import { QuestLog } from './quest';
 import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes/index';
@@ -101,7 +102,12 @@ export class GameEngine {
   public hermitPos: GridPos | null = null;
   public showDialogue: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null = null;
   public sneaking = false;
+  public running = false;
   public crouchLerp = 0;
+  /** when true the player has queued a throw (uses inventory item as projectile) */
+  public throwing = false;
+  /** bonfire loadout editor open (only reachable while resting at a bonfire) */
+  public showBonfireLoadout = false;
   public torchLit = true;
   public torchLight: THREE.PointLight | null = null;
   public bonfireGroup: THREE.Group | null = null;
@@ -256,6 +262,12 @@ export class GameEngine {
   /** one-time window listener that resumes audio + starts the tavern theme on
    *  the first interaction anywhere on the splash (autoplay needs a gesture) */
   public splashAudioHandler: (() => void) | null = null;
+
+  // -- character creation (dungeon wake) ----------------------
+  /** resolver for the pending `requestCreation()` promise (released by confirm). */
+  private creationResolver: (() => void) | null = null;
+  /** the confirmed build (null until creation completes). */
+  public creationBuild: CharacterBuild | null = null;
 
   public container: HTMLDivElement;
   public overlay: HTMLDivElement;
@@ -591,6 +603,10 @@ export class GameEngine {
       setBonfireCheckpoint: (pos) => { self.bonfirePos = { ...pos }; },
       armIntroGrace: (secs) => { self.introGraceUntil = (performance.now() / 1000) + secs; },
       onIntroComplete: () => self.onIntroComplete(),
+
+      // -- character creation --
+      requestCreation: () => self.requestCreation(),
+      resolveCreation: () => self.resolveCreation(),
     };
   }
 
@@ -1326,10 +1342,74 @@ export class GameEngine {
 
   /** (re)create the bonfire flame + glow light (idempotent) */
 
-  /** called by the intro cutscene once it finishes ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ drops an initial
-   *  autosave into the active slot so "Continue" works immediately */
+  /** called by the intro cutscene once it finishes. NO save happens here — the
+   *  first save is written only when the player interacts with the bonfire
+   *  (lightBonfire / restAtBonfire). */
   onIntroComplete() {
-    if (this.currentSlotId) this.saveGame(this.currentSlotId, 'New Game');
+    // intentionally no save on spawn
+  }
+
+  // -- character creation -------------------------------------
+  /** flip into the creation phase and return a promise released on confirm. */
+  requestCreation(): Promise<void> {
+    this.phase = 'creation';
+    this.busy = true;
+    this.cinematic = true;
+    this.emitSnapshot();
+    return new Promise<void>((resolve) => {
+      this.creationResolver = resolve;
+    });
+  }
+
+  /** release the pending creation promise (called internally by confirm). */
+  resolveCreation() {
+    if (this.creationResolver) {
+      this.creationResolver();
+      this.creationResolver = null;
+    }
+  }
+
+  /** apply the confirmed character build to Greg (called by the React overlay). */
+  confirmCharacterCreation(build: CharacterBuild) {
+    const hero = this.combat.units.find((u) => u.team === 'party');
+    if (hero) {
+      hero.classes = [...build.classes];
+      hero.abilities = { ...build.abilities };
+      hero.allocatedStats = {};
+      // hydrate knownSkills with every Tier-1 skill from the chosen classes so
+      // the bonfire loadout editor can assign any of them to the 12 hotbar slots.
+      const pool: string[] = [];
+      for (const cid of build.classes) {
+        const def = classById(cid);
+        for (const skid of def?.tier1Skills ?? []) pool.push(skid);
+      }
+      hero.knownSkills = [...new Set([...build.skills, ...pool])];
+      hero.equippedSkills = [...build.skills];
+      hero.hotbarLoadout = [...build.hotbarLoadout];
+    }
+    this.creationBuild = build;
+    this.audio.play('dice', 0.7);
+    // Drop out of the 'creation' phase immediately so the React creation overlay
+    // unmounts and the intro's get-up animation is visible. `busy` stays true
+    // (set in requestCreation) so floor clicks / input remain blocked until
+    // finishIntro releases them — the player watches Greg stand up, then gets
+    // control.
+    this.phase = 'explore';
+    this.resolveCreation();
+    this.emitSnapshot();
+  }
+
+  /**
+   * Play a class's narrator summary (class_<id>.mp3) during character creation.
+   * Fire-and-forget audio — no subtitle, no blocking. Used when the player
+   * clicks a class card in the creation browser.
+   */
+  playClassNarration(classId: string) {
+    try {
+      const a = new Audio(`${import.meta.env.BASE_URL}audio/narration/class_${classId}.mp3`);
+      a.volume = 1;
+      a.play().catch(() => {});
+    } catch { /* asset missing → silently ignore */ }
   }
 
   // -- sneak (called from React HUD) --------------------------
@@ -1349,7 +1429,68 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
+  /** BG3-style default hotbar actions: walk/run/jump/throw/attack. */
+  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack') {
+    this.audio.play('ui_click', 0.5);
+    switch (action) {
+      case 'walk':
+        this.sneaking = false;
+        this.running = false;
+        this.pushLog('Walking pace.', 'system');
+        break;
+      case 'run':
+        this.running = !this.running;
+        this.sneaking = false;
+        this.pushLog(this.running ? 'Running!' : 'Walking.', 'system');
+        break;
+      case 'jump': {
+        const leader = this.combat.living('party')[0];
+        if (leader) {
+          // hop one tile if the target is walkable; otherwise a small flourish.
+          this.audio.play('sword_hit', 0.4, 1.4);
+          this.pushLog('Greg hops in place, full of misplaced confidence.', 'system');
+        }
+        break;
+      }
+      case 'throw':
+        if (this.phase !== 'explore') { this.setHoverInfoOnce('Throwing is an exploration action.'); return; }
+        this.throwing = !this.throwing;
+        this.pushLog(this.throwing ? 'Select a tile to throw something at it.' : 'Throwing cancelled.', 'system');
+        break;
+      case 'attack': {
+        const a = this.combat.active;
+        if (a && a.team === 'party' && this.phase === 'combat') {
+          const first = a.equippedSkills.find((id) => {
+            const s = SKILLS[id]; return s && s.damageDice && !s.targetsAllies && !s.selfCentered && s.aoeRadius === 0;
+          });
+          if (first) { this.selectSkill(first); return; }
+        }
+        this.setHoverInfoOnce('No basic attack available.');
+        return;
+      }
+    }
+    this.emitSnapshot();
+  }
+
   closeDialogue() { this.showDialogue = null; this.emitSnapshot(); }
+
+  // -- hotbar loadout (bonfire-only) --------------------------
+  /** toggle the bonfire loadout editor (only usable while resting). */
+  toggleBonfireLoadout() {
+    if (!this.restingAtBonfire) { this.setHoverInfoOnce('You can only rearrange your skills while resting at a bonfire.'); return; }
+    this.showBonfireLoadout = !this.showBonfireLoadout;
+    this.audio.play('ui_click', 0.5);
+    this.emitSnapshot();
+  }
+  /** replace the party leader's 12-slot hotbar loadout. */
+  setHotbarLoadout(loadout: (string | null)[]) {
+    const hero = this.combat.units.find((u) => u.team === 'party');
+    if (!hero) return;
+    hero.hotbarLoadout = [...loadout.slice(0, 12)];
+    hero.equippedSkills = hero.hotbarLoadout.filter((x): x is string => !!x);
+    this.audio.play('ui_click', 0.5);
+    this.emitSnapshot();
+  }
 
   lightBonfire() {
     if (!this.bonfireGroup || this.bonfireLit) return;
@@ -1506,6 +1647,16 @@ export class GameEngine {
     }
     this.audio.play('ui_click', 0.7);
     this.pushLog(`${u.name} equips ${item.icon} ${item.name}.`, 'system');
+    this.emitSnapshot();
+  }
+
+  /** discard an item from the party bag entirely (inventory drop button). */
+  dropItem(itemId: string) {
+    const idx = this.inventory.findIndex((i) => i.id === itemId);
+    if (idx < 0) return;
+    const [item] = this.inventory.splice(idx, 1);
+    this.audio.play('ui_click', 0.5);
+    this.pushLog(`You drop ${item.icon} ${item.name}.`, 'system');
     this.emitSnapshot();
   }
 
@@ -1985,7 +2136,7 @@ export class GameEngine {
         } else {
           d.normalize();
           v.targetYaw = Math.atan2(d.x, d.z);
-          const walkSpeed = (this.sneaking ? 2.5 : 4.6);
+          const walkSpeed = this.sneaking ? 2.5 : (this.running ? 7.0 : 4.6);
           pos.addScaledVector(d, Math.min(dist, dt * walkSpeed));
           pos.y += (target.y - pos.y) * Math.min(1, dt * 8);
         }
@@ -2173,6 +2324,8 @@ export class GameEngine {
       showInventory: this.showInventory,
       showSkillTree: this.showSkillTree,
       sneaking: this.sneaking,
+      running: this.running,
+      throwing: this.throwing,
       torchLit: this.torchLit,
       torchEquipped: this.combat?.living('party')[0]?.weapon === 'torch',
       bigMessage: this.bigMessage,
@@ -2180,6 +2333,7 @@ export class GameEngine {
       paused: this.paused,
       minimapTiles: { walk: minimapWalk, heights: minimapHeights, units: minimapUnits },
       showBonfireUI: this.showBonfireUI,
+      showBonfireLoadout: this.showBonfireLoadout,
       showFullMap: this.showFullMap,
       hermitTalk: this.hermitPos ? this.combat.living('party').some(p => Combat.dist(p.pos, this.hermitPos!) <= 3) : false,
       showDialogue: this.showDialogue,

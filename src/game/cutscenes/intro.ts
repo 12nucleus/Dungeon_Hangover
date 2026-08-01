@@ -3,7 +3,7 @@
 // ═════════════════════════════════════════════════════════════
 import * as THREE from 'three';
 import type { CutsceneHost } from './types';
-import { buildCharacter } from '../characters';
+import { buildCharacter, bakePassedOut } from '../characters';
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -444,11 +444,11 @@ export async function playIntroCutscene(h: CutsceneHost) {
   for (const [id, v] of h.visuals) { if (id !== hero.id) v.rig.group.visible = true; }
   h.setWeapon(hv.rig, hero.weapon ?? 'unarmed', hero.scheme.accent);
 
-  // Spawn Greg standing upright, feet planted directly on the cobblestone.
-  // unitWorld already returns the floor-surface Y (heights + 0.5), so a
-  // standing idle rig sits flush on the pebbles — no floating, no falling,
-  // and none of the old folded-on-the-floor collapse that made him look
-  // crumpled above the cobblestone.
+  // Greg wakes LYING on the dungeon floor, sprawled in the exact same
+  // `loading_passout` pose as the loading screen (via bakePassedOut). unitWorld
+  // returns the floor-surface Y, and bakePassedOut rests the body flat on it —
+  // no standing, no float, no crumple. He stays in the 'lie' collapse pose while
+  // the character-creation overlay runs, then stands up on confirm.
   const floorWp = h.unitWorld(h.combat.units[0].pos);
   // Swap the fully-clothed tavern rig back to Greg's actual gameplay rig — his
   // underwear-only dungeon rig — so the "wake in your underwear" gag still
@@ -461,16 +461,22 @@ export async function playIntroCutscene(h: CutsceneHost) {
     h.scene.add(hv.rig.group);
   }
   hv.rig.group.position.copy(floorWp);
-  hv.rig.group.rotation.set(0, Math.PI, 0);
-  hv.yaw = hv.targetYaw = Math.PI;
+  hv.rig.group.userData.baseY = floorWp.y;
+  hv.yaw = hv.targetYaw = 0;
   hv.rig.anim.death = undefined; // clear any leftover collapse state
-  hv.rig.anim.mode = 'idle';
   hv.rig.anim.crouch = 0;
   hv.rig.anim.flinch = 0;
+  bakePassedOut(hv.rig);         // same sprawled pose as the loading screen
+  // bakePassedOut leaves mode='idle', which the per-frame updateRig would
+  // reset → standing Greg. Pin it to the static 'passout' mode so updateRig
+  // leaves the baked pose completely alone until the player confirms.
+  hv.rig.anim.mode = 'passout';
   if (mugHand) mugHand.remove(mug);
 
-  h.iso.desiredYaw = Math.PI * 0.25; h.iso.desiredPitch = 0.62; h.iso.desiredDist = 8;
-  h.iso.focus(floorWp.clone().add(new THREE.Vector3(0, 1.2, 0)));
+  // camera dips low to read Greg flat on the floor, then holds him while he
+  // mutters to himself.
+  h.iso.desiredYaw = Math.PI * 0.25; h.iso.desiredPitch = 0.55; h.iso.desiredDist = 7;
+  h.iso.focus(floorWp.clone().add(new THREE.Vector3(0, 0.7, 0)));
   h.canvas.style.filter = 'none';
   if (h.fadeEl) h.fadeEl.style.transition = '';
   h.fadeTo(0);
@@ -478,18 +484,37 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.narrate('narr_wake', 'You wake at the bottom of a fifty floor dungeon. In your underwear. With a headache that could crush a small kingdom.', 6200);
   if (h.introSkipped) { finishIntro(h); return; }
 
+  // Greg comes to — cursing, confused, no idea where or who he is.
+  await h.narrate('greg_wake_1', "Urgh… wha… where the bloody hell am I? …Stone ceiling. Right. Not the tavern, then.", 5200);
+  if (h.introSkipped) { finishIntro(h); return; }
+  await h.narrate('greg_wake_2', "Who… who am I? …Greg. I'm Greg. The Dim. Probably. …Wait, that don't feel right neither.", 5200);
+  if (h.introSkipped) { finishIntro(h); return; }
+  await h.narrate('narr_create', 'The world swims into focus. Somewhere in the muck of your skull, a thought forms: you can\'t climb fifty floors as a nameless lump. Time to remember what you are.', 6200);
+  if (h.introSkipped) { finishIntro(h); return; }
+
   const starPos = floorWp.clone().add(new THREE.Vector3(0, 1.7, 0));
   h.spawnStars(starPos);
   await h.narrate('narr_premise', 'A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that probably won\'t last. The only way out is up.', 6600);
   if (h.introSkipped) { finishIntro(h); return; }
 
-  // Greg is already standing on the cobblestone — keep him upright and
-  // settle the camera in. (The old get-up-from-the-floor roll/crouch tween
-  // is gone: he no longer crumples onto the floor, so there's nothing to
-  // get up from.)
+  // ── character creation: stats, 2 classes, 2 starting skills ──
+  // The React overlay renders on phase='creation'. requestCreation resolves
+  // only once the player confirms (engine.confirmCharacterCreation). Greg
+  // stays sprawled on the floor the whole time.
+  h.clearCine();        // hide the last narrator line so it doesn't linger over the UI
+  await h.requestCreation();
+  if (h.introSkipped) { finishIntro(h); return; }
+
+  // ── Greg gets up ──
   for (let i = 0; i < 3; i++) { h.spawnStars(starPos); await delay(450); }
-  await delay(700);
-  hv.rig.anim.mode = 'idle'; hv.rig.anim.crouch = 0;
+  hv.rig.anim.death = undefined;
+  hv.rig.anim.mode = 'getup';
+  await delay(650);
+  hv.rig.anim.mode = 'idle';
+  hv.rig.anim.crouch = 0;
+  hv.rig.group.rotation.set(0, Math.PI, 0);
+  h.iso.focus(floorWp.clone().add(new THREE.Vector3(0, 1.4, 0)));
+  h.iso.desiredPitch = 0.62;
   h.spawnStars(starPos);
   await delay(900);
   await h.narrate('narr_floor', 'Floor one of the Warren. The bonfire behind you is the last warm thing you\'ll see for a long, long time. Get up, Greg. We\'ve got fifty floors of regret to climb.', 6800);

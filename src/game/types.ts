@@ -5,8 +5,18 @@
 // ─────────────────────────────────────────────────────────────
 
 export type Team = 'party' | 'enemy';
-export type GamePhase = 'menu' | 'explore' | 'combat' | 'victory' | 'defeat';
+export type GamePhase = 'menu' | 'explore' | 'combat' | 'victory' | 'defeat' | 'creation';
 export type Ability = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+
+/**
+ * The 15 class skill pools from the design bible. Every playable class is
+ * selectable in character creation (pick 2) and contributes its own skill list.
+ */
+export type ClassId =
+  | 'bar_bouncer' | 'gutter_rogue' | 'karaoke_bard' | 'sommelier'
+  | 'barista' | 'accountant' | 'dentist' | 'plumber'
+  | 'wedding_planner' | 'tabloid_reporter' | 'haunted_chef' | 'shaman'
+  | 'zoologist' | 'insurance_adjuster' | 'mortician';
 export type DamageType =
   | 'slashing' | 'piercing' | 'bludgeoning'
   | 'fire' | 'cold' | 'radiant' | 'force' | 'poison';
@@ -46,6 +56,18 @@ export interface CharacterScheme {
 export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club' | 'torch' | 'unarmed';
 export type Klass = 'fighter' | 'wizard' | 'cleric' | 'goblin';
 
+/** Result of the character-creation builder, applied to Greg on confirm. */
+export interface CharacterBuild {
+  /** the 2 chosen class pools */
+  classes: [ClassId, ClassId];
+  /** final ability scores after point-buy (all 6 present) */
+  abilities: Record<Ability, number>;
+  /** the 2 chosen starting skill ids */
+  skills: string[];
+  /** the 12-slot hotbar loadout (skill ids / null). */
+  hotbarLoadout: (string | null)[];
+}
+
 export type ParticleFX =
   | 'slash' | 'fire' | 'heal' | 'arcane' | 'ice'
   | 'arrow' | 'holy' | 'bash' | 'buff' | 'blood';
@@ -74,6 +96,32 @@ export interface SkillDef {
   targetsAllies?: boolean;   // heal / buff
   selfOnly?: boolean;        // caster-only (second wind, arcane shield)
   allAllies?: boolean;       // hits every living ally (mass heal)
+
+  // ── design-bible additions (all 750 class skills) ──
+  classId?: ClassId;          // owning class pool
+  tier?: 1 | 2 | 3 | 4 | 5;   // unlock tier (1..5 + capstone=5)
+  levelReq?: number;          // character level required to unlock (0 = always)
+  passive?: boolean;          // passive (0 AP, persistent) vs active
+  apCost?: number;            // action-point cost (design-bible AP system)
+  procsOncePerTurn?: boolean; // proc effects trigger once per turn
+  stacking?: string;          // stacking notes (combo metadata)
+  combo?: string[];           // [COMBO] partner skill ids
+  capstone?: boolean;         // level-50 capstone skill
+}
+
+/** A playable class from the design bible (15 total). */
+export interface ClassDef {
+  id: ClassId;
+  name: string;
+  icon: string;
+  tagline: string;          // short pitch
+  role: string;             // combat role label
+  lore: string;             // class lore (from bible)
+  pros: string[];           // what it's good at
+  cons: string[];           // weaknesses
+  /** CharacterScheme (+weapon) used to render the in-engine voxel portrait */
+  portrait: { scheme: CharacterScheme; weapon: WeaponKind };
+  tier1Skills: string[];    // skill ids offered as starting choices
 }
 
 export interface Condition {
@@ -114,6 +162,14 @@ export interface Unit {
   scheme: CharacterScheme;
   weapon?: WeaponKind;
   xpValue: number;        // used by the loot/XP hooks
+
+  // ── character-creation additions (party units) ──
+  /** up to 2 chosen class pools (design-bible classes). Empty for enemies. */
+  classes?: ClassId[];
+  /** bonus ability points from creation point-buy (added on top of base). */
+  allocatedStats?: Partial<Record<Ability, number>>;
+  /** 12-slot hotbar loadout (skill ids or null for empty). Only party uses it. */
+  hotbarLoadout?: (string | null)[];
   // ── dungeon encounter fields (optional) ──
   dormant?: boolean;      // not yet aggroed — excluded from combat until its group activates
   groupId?: string;       // enemies sharing a groupId aggro together
@@ -144,6 +200,8 @@ export interface UISnapshot {
   showInventory: boolean;
   showSkillTree: boolean;
   sneaking: boolean;
+  running: boolean;
+  throwing: boolean;
   torchLit: boolean;
   torchEquipped: boolean;
   bigMessage: string | null;
@@ -152,6 +210,7 @@ export interface UISnapshot {
   paused?: boolean;
   minimapTiles?: { walk: boolean[][]; heights: number[][]; units: { x: number; z: number; team: 'party' | 'enemy'; }[] };
   showBonfireUI?: boolean;
+  showBonfireLoadout?: boolean;
   showFullMap?: boolean;
   hermitTalk?: boolean;
   showDialogue?: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null;

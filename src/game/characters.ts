@@ -30,7 +30,7 @@ export interface Rig {
   group: THREE.Group;
   parts: Record<string, THREE.Object3D>;
   anim: {
-    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'drink' | 'drink_anim' | 'crack' | 'cross' | 'getup' | 'sit_cross' | 'sleep' | 'point' | 'wipe';
+    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'passout' | 'drink' | 'drink_anim' | 'crack' | 'cross' | 'getup' | 'sit_cross' | 'sleep' | 'point' | 'wipe';
     t: number;
     lunge: number;
     flinch: number;
@@ -1521,6 +1521,11 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   a.t += dt * speed;
   const p = rig.parts;
   const P = rig.pivots;
+
+  // 'passout' is a fully static baked pose (loading screen / dungeon wake).
+  // The bake already set every node rotation; leave them completely alone so
+  // the per-frame solver can't stand Greg back up while the game runs.
+  if (a.mode === 'passout') return;
 
   if (a.mode === 'dead' || a.mode === 'floor' || a.mode === 'lie') {
     const d = a.death ?? (a.death = (a.mode === 'dead' ? initDeath(rig) : initCollapse(rig, a.mode === 'lie')));

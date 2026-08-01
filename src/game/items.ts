@@ -165,7 +165,7 @@ export function generateLoot(opts?: { minTier?: Tier; maxTier?: Tier; rarityBoos
 }
 
 // ── per-source loot tables ───────────────────────────────────
-export type LootSource = 'crate' | 'barrel' | 'vase' | 'chest' | 'boss' | 'goblin' | 'goldenkey' | 'secret' | 'beast' | 'undead';
+export type LootSource = 'crate' | 'barrel' | 'vase' | 'chest' | 'boss' | 'goblin' | 'goldenkey' | 'secret' | 'beast' | 'undead' | 'starting';
 
 export function rollLootTable(source: LootSource): { items: Item[]; gold: number } {
   const items: Item[] = [];
@@ -218,6 +218,14 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
       items.push(generateLoot({ minTier: 2, maxTier: 3, rarityBoost: 2.5 }));
       items.push(makeItem('potion_greater'));
       gold = g(120, 200);
+      break;
+    case 'starting':
+      // Greg's starter satchel, looted at the dungeon wake: the rusty dagger,
+      // a lit torch, and a healing potion. Fixed drop, always the same kit.
+      items.push(makeItem('dagger1'));
+      items.push(makeItem('torch1'));
+      items.push(makeItem('potion'));
+      gold = 0;
       break;
   }
   return { items, gold };

@@ -102,6 +102,11 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const p = rig.parts;
   const P = rig.pivots;
 
+  // 'passout' is a fully static baked pose (loading screen / dungeon wake).
+  // The bake already set every node rotation; leave them completely alone so
+  // the per-frame solver can't stand Greg back up while the game runs.
+  if (a.mode === 'passout') return;
+
   if (a.mode === 'dead' || a.mode === 'floor' || a.mode === 'lie') {
     const d = a.death ?? (a.death = (a.mode === 'dead' ? initDeath(rig) : initCollapse(rig, a.mode === 'lie')));
     const g = rig.group;

@@ -33,6 +33,9 @@ export const DESTRUCTIBLE_DEFS: Record<string, DestructibleDef> = {
   chest_small: { id: 'chest', name: 'Small Chest', icon: '🧰', hp: 12, model: 'chest', palette: paletteOf('chest') },
   sack: { id: 'crate', name: 'Sack', icon: '💰', hp: 5, model: 'sack', palette: paletteOf('sack') },
   urn: { id: 'vase', name: 'Ash Urn', icon: '⚱️', hp: 4, model: 'urn', palette: paletteOf('urn') },
+  // Greg's starter satchel at the dungeon wake — always drops the starting kit
+  // (rusty dagger, lit torch, healing potion) via the 'starting' loot source.
+  starting_bag: { id: 'starting', name: 'Bag of Supplies', icon: '🎒', hp: 3, model: 'sack', palette: paletteOf('sack') },
 };
 
 // ── placement (hand-authored) ────────────────────────────────
@@ -86,6 +89,11 @@ export class DestructibleManager {
   inBlast(center: GridPos, radius: number): Destructible[] {
     return this.list.filter((p) => p.alive
       && Math.max(Math.abs(p.pos.x - center.x), Math.abs(p.pos.z - center.z)) <= radius);
+  }
+
+  /** place a destructible of `defId` at (x, z), nudging to a free walkable tile. */
+  placeAt(defId: string, x: number, z: number) {
+    this.place(defId, x, z);
   }
 
   private place(defId: string, x: number, z: number) {

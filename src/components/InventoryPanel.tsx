@@ -4,6 +4,7 @@ import type { UISnapshot } from '@/game/types';
 import type { Item, Rarity } from '@/game/items';
 import { ENCHANTS } from '@/game/items';
 import { effAC, effMaxHp, xpProgress } from '@/game/stats';
+import { GregDoll } from './GregDoll';
 
 const RARITY_COLOR: Record<Rarity, string> = {
   common: '#9ca3af', uncommon: '#4ade80', rare: '#60a5fa', epic: '#c084fc',
@@ -80,6 +81,9 @@ export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: Gam
             <span className="paper-doll-sub">Lv {u.level} · HP {u.hp}/{effMaxHp(u)} · AC {effAC(u)}</span>
             <div className="xp-bar" title={`${xp.cur}/${xp.need} XP`}><i style={{ width: `${xp.pct * 100}%` }} /></div>
           </div>
+          <div className="paper-doll-model">
+            <GregDoll unit={u} width={130} height={205} />
+          </div>
           <div className="paper-doll-slots">
             {PAPER_DOLL_SLOTS.map((slot) => {
               const it = (u.equipment as Record<string, Item | undefined>)[slot];
@@ -113,7 +117,12 @@ export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: Gam
       {sel && (
         <div className="inv-selbar" style={{ borderColor: RARITY_COLOR[sel.rarity] }}>
           <span>{sel.icon} <b style={{ color: RARITY_COLOR[sel.rarity] }}>{sel.name}</b> — {sel.desc}</span>
-          <span className="inv-sel-hint">{sel.kind === 'consumable' ? '🥤 click a hero to drink' : '🦸 click a slot to equip'} · click item again to cancel</span>
+          <div className="inv-sel-actions">
+            <span className="inv-sel-hint">{sel.kind === 'consumable' ? '🥤 click a hero to drink' : '🦸 click a slot to equip'} · click item again to cancel</span>
+            <button className="inv-drop-btn" onClick={() => { engine.dropItem(sel.id); setSelId(null); }}>
+              🗑 Drop
+            </button>
+          </div>
         </div>
       )}
     </div>

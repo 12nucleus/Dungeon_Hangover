@@ -48,6 +48,19 @@ export function setupDungeon(engine: any, L: any) {
   if (!st) return;
   engine.structures = st;
 
+  // Greg's starter satchel — placed on a free tile right next to where he wakes.
+  // Smashing it (click) grants the starting kit: rusty dagger, torch, potion.
+  {
+    const near = [
+      { x: st.partySpawn.x + 1, z: st.partySpawn.z },
+      { x: st.partySpawn.x - 1, z: st.partySpawn.z },
+      { x: st.partySpawn.x, z: st.partySpawn.z + 1 },
+      { x: st.partySpawn.x, z: st.partySpawn.z - 1 },
+    ];
+    const bagSpot = near.find((t) => engine.world.inBounds(t.x, t.z) && !engine.world.blocked[t.x][t.z] && engine.world.isWalkable(t.x, t.z));
+    if (bagSpot) engine.props.placeAt('starting_bag', bagSpot.x, bagSpot.z);
+  }
+
   // iron door
   const axis: 'x' | 'z' = (engine.world.isWalkable(st.bossDoor.x - 1, st.bossDoor.z) || engine.world.isWalkable(st.bossDoor.x + 1, st.bossDoor.z)) ? 'z' : 'x';
   engine.ironDoor = buildIronDoor(axis);

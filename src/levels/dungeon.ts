@@ -80,6 +80,12 @@ function buildDungeon(seed: number) {
   const partySpawn: GridPos = centers[0];
   const checkpoint: GridPos = insideRoom(rooms[0], 2, 2);
   weld(walk, checkpoint);
+  // lit braziers in the opposite corners of the starter room so it's bright
+  // before the player lights the bonfire checkpoint (adds light to the room).
+  const starterBrazier: GridPos = insideRoom(rooms[0], -3, -3);
+  weld(walk, starterBrazier);
+  const starterBrazier2: GridPos = insideRoom(rooms[0], 3, 3);   // opposite corner
+  weld(walk, starterBrazier2);
 
   const bossRect = rooms[bossRoomIndex];
   const bossBath = insideRoom(bossRect, 0, 0);
@@ -158,7 +164,8 @@ function buildDungeon(seed: number) {
 
   // ── reserved tiles (don't drop blocking props on top of these) ──
   const reserved = new Set<string>([
-    `${partySpawn.x},${partySpawn.z}`, `${checkpoint.x},${checkpoint.z}`, `${bossDoor.x},${bossDoor.z}`,
+    `${partySpawn.x},${partySpawn.z}`, `${checkpoint.x},${checkpoint.z}`, `${starterBrazier.x},${starterBrazier.z}`, `${starterBrazier2.x},${starterBrazier2.z}`,
+    `${bossDoor.x},${bossDoor.z}`,
     `${secretLever.x},${secretLever.z}`, `${bossBath.x},${bossBath.z}`, `${goldenChest.x},${goldenChest.z}`,
     `${secretChest.x},${secretChest.z}`,
     ...[bossSpawn, secretSpawn, baronGnaw, ...rats, ...bats, ...skeletons, ...hub, ...rabid, ...bossGuards]
@@ -180,6 +187,8 @@ function buildDungeon(seed: number) {
   };
   rooms.forEach(roomTorch);
   put('bonfire', checkpoint.x, checkpoint.z, 0.5);
+  put('brazier', starterBrazier.x, starterBrazier.z, 0.5);  // first-room corner light
+  put('brazier', starterBrazier2.x, starterBrazier2.z, 0.5); // opposite corner light
   put('brazier', bossDoor.x - 1, bossDoor.z - 1, 0.5);
   put('brazier', bossDoor.x - 1, bossDoor.z + 1, 0.5);
   put('crystal_blue', centers[secretIdx].x, centers[secretIdx].z, 0.4);

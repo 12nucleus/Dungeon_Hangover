@@ -5,6 +5,9 @@ import { SKILLS } from '@/game/skills';
 import { effMaxHp } from '@/game/stats';
 import { InventoryPanel } from './InventoryPanel';
 import { SkillTreePanel } from './SkillTreePanel';
+import { CharacterCreationPanel } from './CharacterCreationPanel';
+import { Hotbar } from './Hotbar';
+import { BonfireLoadout } from './BonfireLoadout';
 
 interface Props { snap: UISnapshot | null; engine: GameEngine | null; }
 
@@ -143,6 +146,11 @@ export function HUD({ snap, engine }: Props) {
         </div>
       )}
 
+      {/* ══ CHARACTER CREATION (dungeon wake) ══ */}
+      {phase === 'creation' && engine && (
+        <CharacterCreationPanel engine={engine} />
+      )}
+
       {/* ══ VICTORY / DEFEAT ══ */}
       {(phase === 'victory' || phase === 'defeat') && (
         <div className={`overlay-screen ${phase}`}>
@@ -223,7 +231,10 @@ export function HUD({ snap, engine }: Props) {
             <p className="bonfire-rest-desc">The flames warm your bones. The dungeon stirs beyond the light.</p>
             <div className="bonfire-rest-actions">
               <button className="btn-primary" onClick={() => engine?.toggleSkillTree()} style={{ fontSize: 14, padding: '8px 24px' }}>
-                📜 Skill Tree & Loadout
+                📜 Skill Tree
+              </button>
+              <button className="btn-primary" onClick={() => engine?.toggleBonfireLoadout()} style={{ fontSize: 14, padding: '8px 24px' }}>
+                🎛 Loadout
               </button>
               <button className="btn-primary" onClick={() => engine?.toggleInventory()} style={{ fontSize: 14, padding: '8px 24px' }}>
                 🎒 Inventory
@@ -235,6 +246,11 @@ export function HUD({ snap, engine }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ══ BONFIRE LOADOUT EDITOR ══ */}
+      {snap.showBonfireLoadout && engine && (
+        <BonfireLoadout snap={snap} engine={engine} />
       )}
 
       {/* ══ COMBAT LOG ══ */}
@@ -278,52 +294,8 @@ export function HUD({ snap, engine }: Props) {
             </div>
           )}
 
-          {/* permanent skill bar — always visible */}
-          {active && active.team === 'party' && (
-            <div className="hotbar-permanent">
-              {phase === 'combat' && (
-                <div className="action-pips" title="Action / Bonus action">
-                  <span className={`pip ${active.hasAction ? 'on' : ''}`}>⚡</span>
-                  <span className={`pip bonus ${active.hasBonus ? 'on' : ''}`}>🔸</span>
-                  <span className="move-pip">👟 {active.movementLeft}</span>
-                </div>
-              )}
-              {/* default attack button */}
-              <button
-                className="skill-btn default-attack"
-                onClick={() => engine?.selectSkill(active.equippedSkills[0] ?? 'slash')}
-                title="Default Attack"
-              >
-                <span className="skill-icon">⚔️</span>
-              </button>
-              {/* 12 skill slots */}
-              {Array.from({ length: 12 }).map((_, i) => {
-                const sid = active.equippedSkills[i];
-                const s = sid ? SKILLS[sid] : null;
-                const cd = sid ? (active.cooldowns[sid] ?? 0) : 0;
-                const unavailable = sid && phase === 'combat' ? ((s?.cost === 'action' && !active.hasAction) || (s?.cost === 'bonus' && !active.hasBonus) || cd > 0) : false;
-                const keyLabel = i < 9 ? `${i + 1}` : i === 9 ? '0' : i === 10 ? '-' : '=';
-                return (
-                  <button
-                    key={i}
-                    className={`skill-btn ${sid && snap.selectedSkill === sid ? 'selected' : ''} ${unavailable ? 'disabled' : ''} ${!sid ? 'empty' : ''}`}
-                    onClick={() => sid ? engine?.selectSkill(sid) : undefined}
-                    title={s ? `${s.name} — ${s.desc}${s.cooldown ? ` (CD ${s.cooldown})` : ''} [${keyLabel}]` : `Empty slot [${keyLabel}]`}
-                  >
-                    <span className="skill-icon">{s?.icon ?? ''}</span>
-                    <span className="skill-key">{keyLabel}</span>
-                    {s?.cost === 'bonus' && <span className="skill-cost">B</span>}
-                    {cd > 0 && <span className="skill-cd">{cd}</span>}
-                  </button>
-                );
-              })}
-              {phase === 'combat' && (
-                <button className="end-turn" onClick={() => engine?.endTurn()} title="End turn [Space]">
-                  END<br />TURN
-                </button>
-              )}
-            </div>
-          )}
+          {/* BG3-style bottom hotbar (default actions + 12 skill slots) */}
+          {active && active.team === 'party' && <Hotbar snap={snap} engine={engine!} />}
           {phase === 'combat' && active && active.team === 'enemy' && (
             <div className="enemy-turn-banner">⚔ {active.name} is acting…</div>
           )}
