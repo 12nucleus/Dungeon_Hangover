@@ -35,7 +35,6 @@ export class AnimationScene {
   private _mugHand: THREE.Object3D | null = null;
   private _mugEnabled = false;
   private _tmpQ = new THREE.Quaternion();
-  private _tmpE = new THREE.Euler();
 
   constructor(host: HTMLDivElement) {
     const scene = new THREE.Scene();
@@ -107,12 +106,12 @@ export class AnimationScene {
         }
       }
 
-      // Keep the tankard level by counter-rotating it against the hand's
-      // world pitch (hierarchy-agnostic, same trick as the intro cutscene).
-      if (this._mug && this._mugHand) {
+      // Keep the tankard EXACTLY upright while at rest (full world-orientation
+      // cancel, same as the intro cutscene), but let it ride the hand freely
+      // while a clip (e.g. drink_anim) is loaded so it tilts with the arm.
+      if (this._mug && this._mugHand && !this._clip) {
         this._mugHand.getWorldQuaternion(this._tmpQ);
-        this._tmpE.setFromQuaternion(this._tmpQ, 'XYZ');
-        this._mug.rotation.x = -this._tmpE.x;
+        this._mug.quaternion.copy(this._tmpQ.invert());
       }
 
       const orbit = 1.6 * dt, zoom = 4.0 * dt;

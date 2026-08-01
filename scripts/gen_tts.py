@@ -1,11 +1,13 @@
-# Generates narrator voice lines for the "Dungeon Hangover" intro cutscene
-# using Qwen3-TTS with CUSTOM VOICE DESIGN (1.7B models, local ModelScope download).
+# Generates narrator + Greg voice lines for the "Dungeon Hangover" intro cutscene
+# using Qwen3-TTS 1.7B-Base with VOICE CLONING from the provided samples in
+# Voice_sample_for_tts_cloning/ (Narrator.mp3, Greg.mp3).
 #
-# Pipeline (recommended workflow from the Qwen3-TTS usage guide):
-#   1. Design a unique voice for each character from a free-text description
-#      (VoiceDesign model -> short reference clip).
-#   2. Turn that reference into a reusable clone prompt (Base model).
-#   3. Synthesize every line for that character via voice cloning, so the
+# Pipeline:
+#   1. Load the 1.7B Base model (local ModelScope download).
+#   2. Build a voice-clone prompt per character from its sample audio using
+#      x_vector_only_mode=True (speaker-embedding only) — so NO reference
+#      transcript is required.
+#   3. Synthesize every line for that character through its clone prompt so the
 #      voice stays consistent across all its lines.
 #
 # Output: public/audio/narration/<id>.mp3  (same files the engine already plays)
@@ -17,39 +19,28 @@ import torch, soundfile as sf
 from qwen_tts import Qwen3TTSModel
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "public", "audio", "narration")
+SAMPLES = os.path.join(os.path.dirname(__file__), "..", "Voice_sample_for_tts_cloning")
 os.makedirs(OUT, exist_ok=True)
 
-# Local ModelScope downloads (no HuggingFace network needed).
-DESIGN_DIR = r"F:\qwen3tts\Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+# Local ModelScope download (no HuggingFace network needed).
 BASE_DIR = r"F:\qwen3tts\Qwen3-TTS-12Hz-1.7B-Base"
 DEVICE = "cuda:0"
 DTYPE = torch.bfloat16
 MP3_BITRATE = "128k"
 
-# ── custom voice designs (free-text descriptions for VoiceDesign) ──
-VOICES = {
-    # the dry, snarky third-person narrator — "Dungeon Crawler Carl" energy
-    "narrator": (
-        "Middle-aged male narrator, crisp British Received Pronunciation accent, "
-        "dry and wry, calm measured pacing with subtle sardonic warmth, clear "
-        "articulate consonants, like a seasoned audiobook host reading a dark comedy."
-    ),
-    # Greg — drunken brawny hero, blustering and indignant
-    "greg": (
-        "Rough thirtysomething working-class Scottish man, loud and boisterous, "
-        "slightly slurred from drink, broad hearty chest voice with a gravelly edge, "
-        "indignant and blustering, like a drunken warrior bragging in a tavern."
-    ),
-}
-
-# seed lines used only to mint each designed voice (not shipped as audio)
-REF_TEXT = {
-    "narrator": "Right then. Let us begin where every good story begins: slightly drunk, and vastly overestimating himself.",
-    "greg": "Barkeep! Another round for the both of us, and none of your lip about it!",
+# ── voice sample per character (used for cloning) ──
+VOICE_SAMPLES = {
+    "narrator": os.path.join(SAMPLES, "Narrator.mp3"),
+    "greg": os.path.join(SAMPLES, "Greg.mp3"),
 }
 
 # (id, character, text) — the engine plays these under the subtitles.
 LINES = [
+    # — Act 0: title card (tavern exterior) —
+    ("title_1", "narrator",
+     "In a tavern far, far away..."),
+    ("title_2", "narrator",
+     "Actually, not that far. Just around the corner from the village..."),
     # — Act 1: "The Dirty Mug" — Greg being a belligerent idiot —
     ("t_open", "narrator",
      "The Dirty Mug. Last call came and went two hours ago. Nobody has found the courage to tell Greg."),
@@ -59,18 +50,18 @@ LINES = [
      "I said the WHOLE table's mine, Norris! Every splinter of it! Come and take it, if yeh think yer hard enough!"),
     # — the room reacts —
     ("narr_room", "narrator",
-     "There is no shadow. There is only Greg, a table he has declared a sovereign kingdom, and a room full of people quietly praying he leaves first."),
+     "There is no shadow. There is only Greg, a table he has declared a sovereign kingdom, and a room full of people quietly praying he leaves the premises."),
     ("narr_maid", "narrator",
      "The barmaid has poured this exact drink for this exact man forty-seven times. She stopped making eye contact somewhere around the thirtieth. It is safer that way."),
     ("narr_wiz", "narrator",
-     "Over in the corner, a very small wizard is doing a very large amount of nervous arithmetic. The kind you do right before you turn a problem into a farm animal."),
+     "Over in the corner, a wizard barely taller than his own staff is counting on his fingers, very quietly, very nervously. It's the face of a man about to cast something he hasn't practiced in a while."),
     # — the escalation —
     ("narr_bounce", "narrator",
      "By the door, the bouncer cracks his knuckles - a retired warlord who took this job for the peace and quiet. Greg reads the room perfectly, and climbs onto the table."),
     ("narr_baa", "narrator",
-     "A stool takes flight. The wizard squeaks a word he'll regret. Purple light - and for four glorious seconds, Greg the Grim is the loudest sheep the Dirty Mug has ever heard."),
+     "The wizard mumbles the wrong half of the right spell. A flash of purple light swallows the room - and for four glorious seconds, Greg the Dim, bleat louder than he ever bellowed"),
     ("narr_thud", "narrator",
-     "The magic wears off. The ale, sadly, does not. Greg salutes a chair, mistakes the floor for the chair, and meets both at considerable speed."),
+     "The magic wears off. The ale, sadly, does not. Greg salutes the crowd, mistakes the floor for the chair, and meets both at considerable speed."),
     # — Act 2 -> bridge (narrator, over black) —
     ("narr_bridge", "narrator",
      "He drank the tavern dry, insulted a man with a sword, challenged a wizard to a fistfight, and spent four seconds as livestock. Then the floor rose up to introduce itself."),
@@ -81,9 +72,6 @@ LINES = [
      "A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that probably won't last. The only way out is up."),
     ("narr_floor", "narrator",
      "Floor one of the Warren. The bonfire behind you is the last warm thing you'll see for a long, long time. Get up, Greg. We've got fifty floors of regret to climb."),
-    # — a snarky beat as he stands in his smallclothes —
-    ("narr_small", "narrator",
-     "Yes. Underwear. The dungeon, it seems, has a sense of humour. Try not to lose the potion before the first rat, hmm?"),
 ]
 
 
@@ -97,36 +85,31 @@ def to_mp3(wav_path: str, mp3_path: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true", help="regenerate even if the mp3 already exists")
+    ap.add_argument("--ids", nargs="*", default=None,
+                    help="only generate these line ids (e.g. --ids narr_baa)")
     args = ap.parse_args()
 
-    # 1) design a reference voice per character
-    print(f"loading VoiceDesign model from {DESIGN_DIR} ...")
-    design = Qwen3TTSModel.from_pretrained(
-        DESIGN_DIR, device_map=DEVICE, dtype=DTYPE, attn_implementation="sdpa")
-
-    refs = {}
-    for char, instruct in VOICES.items():
-        print(f"designing voice: {char}")
-        wavs, sr = design.generate_voice_design(
-            text=REF_TEXT[char], language="English", instruct=instruct, do_sample=True)
-        refs[char] = (wavs[0], sr)
-
-    del design
-    torch.cuda.empty_cache()
-
-    # 2) turn each reference into a reusable clone prompt (Base model)
-    print(f"loading Base model from {BASE_DIR} ...")
+    # 1) load the 1.7B Base model (voice clone)
+    print(f"loading 1.7B Base model from {BASE_DIR} ...")
     base = Qwen3TTSModel.from_pretrained(
         BASE_DIR, device_map=DEVICE, dtype=DTYPE, attn_implementation="sdpa")
 
+    # 2) build a clone prompt per character from its sample audio.
+    #    x_vector_only_mode=True uses only the speaker embedding, so no
+    #    reference transcript is required.
     prompts = {}
-    for char, (wav, sr) in refs.items():
+    for char, sample in VOICE_SAMPLES.items():
+        print(f"building clone prompt for {char} from {sample}")
         prompts[char] = base.create_voice_clone_prompt(
-            ref_audio=(wav, sr), ref_text=REF_TEXT[char])
+            ref_audio=sample,
+            x_vector_only_mode=True,
+        )
 
     # 3) synthesize each character's lines through its clone prompt
+    #    (optionally restricted to --ids)
+    lines = [l for l in LINES if not args.ids or l[0] in args.ids]
     by_char: dict[str, list[tuple[str, str]]] = {}
-    for fid, char, text in LINES:
+    for fid, char, text in lines:
         by_char.setdefault(char, []).append((fid, text))
 
     for char, items in by_char.items():

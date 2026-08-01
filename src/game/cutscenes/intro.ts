@@ -81,18 +81,16 @@ export async function playIntroCutscene(h: CutsceneHost) {
     mugHand = hand;
   }
   if (mugHand) {
-    // Counter-rotate the tankard against the host's world pitch so it stays
-    // visually upright regardless of arm/forearm pose. World-orientation read
-    // makes this hierarchy-agnostic (works for legacy flat rigs AND the new
-    // hierarchical skeleton).
+    // Keep the tankard EXACTLY upright at rest (full world-orientation cancel),
+    // but let it ride the hand freely during the drink clip so it tilts with
+    // the arm as Greg raises it to his mouth.
     const handObj = hand;
     const tmpQ = new THREE.Quaternion();
-    const tmpE = new THREE.Euler();
     h.propAnims.push(() => {
       if (!h.tavern) return true;
+      if (hv.rig.anim.mode === 'drink_anim') return false;   // mug follows the hand untouched
       handObj.getWorldQuaternion(tmpQ);
-      tmpE.setFromQuaternion(tmpQ, 'XYZ');
-      mug.rotation.x = -tmpE.x;
+      mug.quaternion.copy(tmpQ.invert());                    // local = world⁻¹ ⇒ world = identity (upright)
       return false;
     });
   }
@@ -184,7 +182,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.desiredYaw = -Math.PI * 0.45; h.iso.desiredPitch = 0.55; h.iso.desiredDist = 6.0;
   h.iso.focus(new THREE.Vector3(-1.0, 1.5, -1.4));
   await h.cineDelay(600);
-  await h.narrate('narr_room', 'There is no shadow. There is only Greg, a table he has declared a sovereign kingdom, and a room full of people quietly praying he leaves first.', 7400);
+  await h.narrate('narr_room', 'There is no shadow. There is only Greg, a table he has declared a sovereign kingdom, and a room full of people quietly praying he leaves the premises.', 7400);
   if (h.introSkipped) { finishIntro(h); return; }
 
   // == BEAT 4: Greg picks a fight with the furniture ==
@@ -213,7 +211,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.desiredYaw = 0.85; h.iso.desiredDist = 5.4; h.iso.desiredPitch = 0.40;
   h.iso.focus(poi.wizard.clone().add(new THREE.Vector3(0, 0.1, 0)));
   await h.cineDelay(500);
-  await h.narrate('narr_wiz', 'Over in the corner, a very small wizard is doing a very large amount of nervous arithmetic. The kind you do right before you turn a problem into a farm animal.', 7400);
+  await h.narrate('narr_wiz', "Over in the corner, a wizard barely taller than his own staff is counting on his fingers, very quietly, very nervously. It's the face of a man about to cast something he hasn't practiced in a while.", 7400);
   if (h.introSkipped) { finishIntro(h); return; }
 
   // == BEAT 7: the bouncer cracks his knuckles; Greg mounts the table ==
@@ -369,7 +367,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   sheep.scale.setScalar(0.45);
   h.tavern!.add(sheep);
   hv.rig.group.visible = false;
-  await h.narrate('narr_baa', "A stool takes flight. The wizard squeaks a word he'll regret. Purple light - and for four glorious seconds, Greg the Grim is the loudest sheep the Dirty Mug has ever heard.", 7400);
+  await h.narrate('narr_baa', "The wizard mumbles the wrong half of the right spell. A flash of purple light swallows the room - and for four glorious seconds, Greg the Dim, bleat louder than he ever bellowed", 7400);
   hv.rig.group.visible = true;
   h.tavern!.remove(sheep);
   // FIX 9: flash is over — hand control back to the per-frame override, which
@@ -422,7 +420,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.audio.play('sword_hit', 0.4, 0.5);   // dull thud
   await h.cineDelay(900);
 
-  await h.narrate('narr_thud', 'The magic wears off. The ale, sadly, does not. Greg salutes a chair, mistakes the floor for the chair, and meets both at considerable speed.', 6800);
+  await h.narrate('narr_thud', 'The magic wears off. The ale, sadly, does not. Greg salutes the crowd, mistakes the floor for the chair, and meets both at considerable speed.', 6800);
   if (h.introSkipped) { finishIntro(h); return; }
 
   // FIX 7 (continued): PASS OUT — full-screen blur to black, tavern music
@@ -492,7 +490,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   for (let i = 0; i < 3; i++) { h.spawnStars(starPos); await delay(450); }
   await delay(700);
   hv.rig.anim.mode = 'idle'; hv.rig.anim.crouch = 0;
-  await h.narrate('narr_small', 'Yes. Underwear. The dungeon, it seems, has a sense of humour. Try not to lose the potion before the first rat, hmm?', 6000);
   h.spawnStars(starPos);
   await delay(900);
   await h.narrate('narr_floor', 'Floor one of the Warren. The bonfire behind you is the last warm thing you\'ll see for a long, long time. Get up, Greg. We\'ve got fifty floors of regret to climb.', 6800);
