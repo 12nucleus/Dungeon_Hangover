@@ -47,6 +47,8 @@ export interface Rig {
     /** random per-rig phase offset so idle breathing / arm sway isn't in lockstep */
     phase?: number;
     /** persistent vertical offset for the head assembly */
+    /** timestamp (anim.t) when a 'getup' rise started — for the stand-up curve. */
+    getupStart?: number;
     headYOffset?: number;
     /** persistent vertical offset for the hair part */
     hairYOffset?: number;

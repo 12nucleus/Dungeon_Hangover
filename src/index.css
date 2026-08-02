@@ -294,6 +294,49 @@ html, body, #root {
   display: flex; justify-content: space-between; gap: 10px; align-items: center; background: rgba(18,20,34,0.8);
 }
 .inv-sel-hint { color: #ffd76b; font-size: 11.5px; white-space: nowrap; }
+
+/* ── detailed character stats panel ── */
+.stats-panel {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(620px, 94vw); max-height: 88vh; overflow-y: auto;
+  background: rgba(10,12,20,0.97); border: 1px solid #3d465e;
+  border-radius: 14px; padding: 14px 16px; color: #c6cddf; font-size: 13px;
+  pointer-events: auto; box-shadow: 0 14px 50px rgba(0,0,0,0.8); z-index: 30;
+}
+.stats-title { color: #c9a227; letter-spacing: 2px; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.stats-title button { background: none; border: none; color: #8a93a8; cursor: pointer; font-size: 14px; }
+.stats-hero { text-align: center; margin-bottom: 12px; }
+.stats-hero-name b { color: #f3e9c8; font-size: 16px; }
+.stats-hero-name em { color: #c9a227; font-style: italic; margin-left: 6px; }
+.stats-xp { width: 100%; margin: 8px auto 2px; }
+.stats-xp-label { font-size: 11px; color: #9aa3b8; letter-spacing: 1px; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.stat-cell {
+  background: #1a1d2b; border: 1px solid #2a3048; border-radius: 9px; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.stat-cell span { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #8a93a8; }
+.stat-cell b { font-size: 16px; color: #ffd76b; }
+.stat-cell b.stat-weapon { font-size: 13px; color: #f3e9c8; }
+.stats-abilities { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+.stat-ability {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: #1a1d2b; border: 1px solid #262a3a; border-radius: 8px; cursor: default;
+}
+.sa-label { flex: 1; color: #e8e2d0; font-size: 13px; }
+.sa-value { font-size: 15px; font-weight: 800; color: #f3e9c8; min-width: 20px; text-align: right; }
+.sa-mod { font-size: 12px; font-weight: 800; min-width: 22px; text-align: center; }
+.sa-mod.pos { color: #6eff9a; }
+.sa-mod.neg { color: #ff7a6b; }
+.stats-conds { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.stats-cond-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.stats-cond-label { color: #8a93a8; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; min-width: 62px; }
+.stats-cond-none { color: #5d6478; font-style: italic; font-size: 12px; }
+.cond-chip { font-size: 12px; padding: 3px 8px; border-radius: 6px; }
+.cond-chip.buff { background: #17321c; color: #6eff9a; border: 1px solid #2a5a30; }
+.cond-chip.debuff { background: #331716; color: #ff9d8a; border: 1px solid #6a2a20; }
+.cond-chip.neutral { background: #1a1d2b; color: #b7c0d6; border: 1px solid #3a4054; }
+.stats-footer { border-top: 1px solid #2a3247; padding-top: 8px; text-align: center; font-size: 11px; color: #6b7488; }
 .inv-sel-actions { display: flex; align-items: center; gap: 10px; }
 .inv-drop-btn {
   font-family: inherit; cursor: pointer; padding: 6px 12px; font-size: 12px; font-weight: 700;
@@ -301,6 +344,53 @@ html, body, #root {
   color: #ffc2c2; transition: border-color 0.15s, transform 0.1s;
 }
 .inv-drop-btn:hover { border-color: #ef4444; transform: translateY(-1px); }
+.inv-inspect-btn {
+  font-family: inherit; cursor: pointer; padding: 6px 12px; font-size: 12px; font-weight: 700;
+  background: linear-gradient(180deg, #1e3a5a, #14283f); border: 1px solid #3a6a9a; border-radius: 8px;
+  color: #bfe0ff; transition: border-color 0.15s, transform 0.1s;
+}
+.inv-inspect-btn:hover { border-color: #60a5fa; transform: translateY(-1px); }
+
+/* ── item inspect (Fallout-style rotating viewer) ── */
+.inspect-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(2,3,8,0.7); backdrop-filter: blur(3px);
+}
+.inspect-panel {
+  display: flex; gap: 20px; align-items: stretch;
+  width: min(680px, 94vw); max-height: 88vh; overflow: auto;
+  background: linear-gradient(160deg, rgba(18,20,34,0.98), rgba(10,11,20,0.98));
+  border: 1px solid #3a3f52; border-radius: 14px; padding: 18px;
+  box-shadow: 0 0 60px rgba(0,0,0,0.8);
+}
+.inspect-stage {
+  position: relative; flex-shrink: 0; width: 220px; height: 220px;
+  background: #0b0b12; border: 1px solid #262a3a; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.inspect-stage .voxel-item-icon canvas { display: block; }
+.inspect-rarity {
+  position: absolute; bottom: 8px; left: 0; right: 0; text-align: center;
+  font-size: 11px; letter-spacing: 2px; font-weight: 800;
+}
+.inspect-details { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.inspect-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.inspect-title h2 { margin: 0; font-size: 20px; letter-spacing: 1px; }
+.inspect-title button { background: none; border: none; color: #8a93a8; cursor: pointer; font-size: 16px; }
+.inspect-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.inspect-meta span {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #9aa3b8;
+  background: #1a1d2b; border: 1px solid #2a3048; border-radius: 6px; padding: 3px 8px;
+}
+.inspect-stats { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.inspect-stat {
+  display: flex; justify-content: space-between; gap: 10px; align-items: center;
+  background: #1a1d2b; border: 1px solid #262a3a; border-radius: 8px; padding: 7px 10px;
+}
+.inspect-stat span { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #8a93a8; }
+.inspect-stat b { font-size: 13px; color: #f3e9c8; text-align: right; }
+.inspect-desc { color: #a9b1c5; font-size: 13px; line-height: 1.5; margin-top: 8px; }
 
 /* ── paperdoll layout (Greg model + 10 equip slots + 50-slot bag) ── */
 .inv-body-new { display: flex; gap: 16px; align-items: flex-start; }

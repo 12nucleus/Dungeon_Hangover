@@ -4,7 +4,10 @@ import type { UISnapshot } from '@/game/types';
 import type { Item, Rarity } from '@/game/items';
 import { ENCHANTS } from '@/game/items';
 import { effAC, effMaxHp, xpProgress } from '@/game/stats';
+import { comboTitleFor } from '@/game/classes';
 import { GregDoll } from './GregDoll';
+import { VoxelItemIcon } from './VoxelItemIcon';
+import { ItemInspect } from './ItemInspect';
 
 const RARITY_COLOR: Record<Rarity, string> = {
   common: '#9ca3af', uncommon: '#4ade80', rare: '#60a5fa', epic: '#c084fc',
@@ -33,7 +36,7 @@ function ItemIcon({ item, size = 40, selected = false, onClick, title }: {
       onClick={onClick}
       title={title ?? `${item.name} — ${item.desc}${ench ? `\n✦ ${ench.desc}` : ''}\nValue ${item.value}g · Tier ${item.tier}`}
     >
-      <span className="inv-item-icon">{item.icon}</span>
+      <VoxelItemIcon item={item} size={size - 8} />
       <span className="inv-item-tiers">{'●'.repeat(item.tier)}</span>
       {ench && <span className="inv-item-ench" style={{ color: ench.color }}>✦</span>}
     </div>
@@ -42,6 +45,7 @@ function ItemIcon({ item, size = 40, selected = false, onClick, title }: {
 
 export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: GameEngine }) {
   const [selId, setSelId] = useState<string | null>(null);
+  const [inspect, setInspect] = useState<Item | null>(null);
   const party = snap.units.filter((u) => u.team === 'party');
   const [tab, setTab] = useState(party[0]?.id ?? '');
   const u = party.find((p) => p.id === tab) ?? party[0];
@@ -69,7 +73,7 @@ export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: Gam
       <div className="st-tabs" style={{ marginBottom: 8 }}>
         {party.map((m) => (
           <button key={m.id} className={`st-tab ${m.id === u.id ? 'active' : ''}`} onClick={() => setTab(m.id)}>
-            {m.name} · Lv{m.level} {m.klass}
+            {m.name} · Lv{m.level} · {comboTitleFor(m.classes ?? [])}
           </button>
         ))}
       </div>
@@ -119,12 +123,15 @@ export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: Gam
           <span>{sel.icon} <b style={{ color: RARITY_COLOR[sel.rarity] }}>{sel.name}</b> — {sel.desc}</span>
           <div className="inv-sel-actions">
             <span className="inv-sel-hint">{sel.kind === 'consumable' ? '🥤 click a hero to drink' : '🦸 click a slot to equip'} · click item again to cancel</span>
+            <button className="inv-inspect-btn" onClick={() => setInspect(sel)}>🔍 Inspect</button>
             <button className="inv-drop-btn" onClick={() => { engine.dropItem(sel.id); setSelId(null); }}>
               🗑 Drop
             </button>
           </div>
         </div>
       )}
+
+      {inspect && <ItemInspect item={inspect} onClose={() => setInspect(null)} />}
     </div>
   );
 }

@@ -42,9 +42,9 @@ export function effAtkBonus(u: Unit): number {
   return wEnch?.atkBonus ?? 0;
 }
 
-// ── XP / levels (roster starts at level 3) ──────────────────
+// ── XP / levels (Greg starts at level 1) ────────────────────
 export const MAX_LEVEL = 5;
-export const XP_THRESHOLDS: Record<number, number> = { 3: 300, 4: 650 };
+export const XP_THRESHOLDS: Record<number, number> = { 1: 100, 2: 220, 3: 400, 4: 650 };
 
 /** xp progress within the current level band (for HUD bars) */
 export function xpProgress(u: Unit): { cur: number; need: number; pct: number } {

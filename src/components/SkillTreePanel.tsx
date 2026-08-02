@@ -10,6 +10,7 @@ import type { UISnapshot, Unit } from '@/game/types';
 import { SKILLS } from '@/game/skills';
 import { treeFor, canUnlock } from '@/game/skilltree';
 import type { SkillNode } from '@/game/skilltree';
+import { comboTitleFor } from '@/game/classes';
 
 interface Props { snap: UISnapshot; engine: GameEngine; }
 
@@ -64,7 +65,7 @@ export function SkillTreePanel({ snap, engine }: Props) {
       <div className="st-tabs">
         {party.map((m) => (
           <button key={m.id} className={`st-tab ${m.id === u.id ? 'active' : ''}`} onClick={() => setTab(m.id)}>
-            {m.name} · Lv{m.level} {m.klass}
+            {m.name} · Lv{m.level} · {comboTitleFor(m.classes ?? [])}
             <span className="st-sp">🪙 {m.skillPoints} SP</span>
           </button>
         ))}

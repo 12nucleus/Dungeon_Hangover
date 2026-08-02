@@ -6,6 +6,7 @@ import { effMaxHp } from '@/game/stats';
 import { InventoryPanel } from './InventoryPanel';
 import { SkillTreePanel } from './SkillTreePanel';
 import { CharacterCreationPanel } from './CharacterCreationPanel';
+import { CharacterStatsPanel } from './CharacterStatsPanel';
 import { Hotbar } from './Hotbar';
 import { BonfireLoadout } from './BonfireLoadout';
 
@@ -311,6 +312,7 @@ export function HUD({ snap, engine }: Props) {
             </button>
           )}
           <div className="hud-right">
+            <button className="hud-btn" onClick={() => engine?.toggleStats()} title="Character stats [U]">📊</button>
             <button className="hud-btn" onClick={() => engine?.toggleSkillTree()} title="Skill tree [K]">📜</button>
             <button className="hud-btn" onClick={() => engine?.toggleInventory()} title="Inventory [I]">🎒</button>
             <button className="hud-btn" onClick={() => engine?.toggleMute()} title="Mute">{snap.muted ? '🔇' : '🔊'}</button>
@@ -322,6 +324,11 @@ export function HUD({ snap, engine }: Props) {
       {/* ══ INVENTORY PANEL ══ */}
       {snap.showInventory && phase !== 'menu' && engine && (
         <InventoryPanel snap={snap} engine={engine} />
+      )}
+
+      {/* ══ CHARACTER STATS PANEL ══ */}
+      {snap.showStats && phase !== 'menu' && engine && (
+        <CharacterStatsPanel snap={snap} engine={engine} />
       )}
 
       {/* ══ SKILL TREE PANEL ══ */}

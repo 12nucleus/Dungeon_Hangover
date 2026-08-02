@@ -10,6 +10,7 @@ import type { GameEngine } from '@/game/engine';
 import { CLASSES, classById } from '@/game/classes';
 import { ALL_CLASS_SKILLS, tier1SkillsFor } from '@/game/classSkills';
 import type { Ability, CharacterBuild, ClassId } from '@/game/types';
+import { ABILITY_LABELS, ABILITY_HINTS } from '@/game/abilityLabels';
 import { ClassPortrait } from './ClassPortrait';
 
 interface Props {
@@ -18,15 +19,11 @@ interface Props {
 
 // Six classic D&D abilities renamed for a tavern-wake setting: mechanical
 // meaning kept (str=power, dex=accuracy, con=hp...) but they read as things a
-// hungover idiot would actually believe about himself.
-const ABILITIES: { key: Ability; label: string; hint: string }[] = [
-  { key: 'str', label: 'Beef', hint: 'Melee power, carry, shove' },
-  { key: 'dex', label: 'Slippery', hint: 'Accuracy, dodge, initiative' },
-  { key: 'con', label: 'Iron Liver', hint: 'Hit points, can hold his ale' },
-  { key: 'int', label: 'Book Smarts', hint: 'Arcane skill, actually knowing things' },
-  { key: 'wis', label: 'Horse Sense', hint: 'Perception, willpower, do not pet the rat' },
-  { key: 'cha', label: 'Bravado', hint: 'Persuasion, intimidation, bluffing the bouncer' },
-];
+// hungover idiot would actually believe about himself. Labels shared via
+// abilityLabels.ts so the stats panel agrees.
+const ABILITIES: { key: Ability; label: string; hint: string }[] = (
+  ['str', 'dex', 'con', 'int', 'wis', 'cha'] as Ability[]
+).map((key) => ({ key, label: ABILITY_LABELS[key], hint: ABILITY_HINTS[key] }));
 
 const BASE = 8;
 const POOL = 14;

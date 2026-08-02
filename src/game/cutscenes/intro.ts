@@ -508,9 +508,11 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // ── Greg gets up ──
   for (let i = 0; i < 3; i++) { h.spawnStars(starPos); await delay(450); }
   hv.rig.anim.death = undefined;
+  hv.rig.anim.getupStart = 0;
   hv.rig.anim.mode = 'getup';
-  await delay(650);
+  await delay(950);                              // let the full rise play out (~0.9s)
   hv.rig.anim.mode = 'idle';
+  hv.rig.anim.getupStart = undefined;
   hv.rig.anim.crouch = 0;
   hv.rig.group.rotation.set(0, Math.PI, 0);
   h.iso.focus(floorWp.clone().add(new THREE.Vector3(0, 1.4, 0)));

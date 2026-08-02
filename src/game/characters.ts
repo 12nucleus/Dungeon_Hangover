@@ -54,6 +54,8 @@ export interface Rig {
     forearmLOffset?: number;
     forearmROffset?: number;
     death?: DeathState;
+    /** timestamp (anim.t) when a 'getup' rise started — for the stand-up curve. */
+    getupStart?: number;
   };
   pivots?: {
     hip: number; torso: number; head: number; eye: number;
@@ -1527,6 +1529,49 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   // the per-frame solver can't stand Greg back up while the game runs.
   if (a.mode === 'passout') return;
 
+  // 'getup': a short "crawl → kneel → stand" rise from the flat baked pose.
+  // Drives the whole-body pitch back to upright with an easing curve and a
+  // subtle overshoot, while the legs tuck then straighten and the head rises
+  // last — a proper, readable get-up instead of an instant teleport upright.
+  if (a.mode === 'getup') {
+    const d = a.death;
+    if (d) { a.death = undefined; rig.group.rotation.z = 0; }
+    const t0 = a.getupStart ?? (a.getupStart = a.t);
+    const T = Math.min(1, (a.t - t0) / 0.9);          // ~0.9s full rise
+    const ease = 1 - Math.pow(1 - T, 3);              // cubic ease-out
+    // whole body rotates from flat (-π/2) to upright (0)
+    rig.group.rotation.x = -Math.PI / 2 * (1 - ease);
+    rig.group.rotation.z *= (1 - ease);
+    // sink then rise: deep crouch at the start, back to standing height
+    const sink = Math.sin(Math.min(1, T * 1.4) * Math.PI) * 0.22;
+    const HIP2 = P?.hip ?? 0.25;
+    const yOff = -sink * HIP2 * 0.9;
+    const baseY = (rig.group.userData.baseY as number) ?? rig.group.position.y;
+    rig.group.position.y = baseY + yOff;
+    // limbs: legs tuck while down, straighten as we rise; arms brace then drop
+    const legBend = (1 - ease) * 1.3;
+    const armBrace = Math.sin(Math.min(1, T * 1.1) * Math.PI) * 0.9;
+    if (p.legL) p.legL.rotation.set(-legBend * 1.1, 0, 0);
+    if (p.legR) p.legR.rotation.set(-legBend * 1.1, 0, 0);
+    if (p.shinL) p.shinL.rotation.x = (1 - ease) * 1.2;
+    if (p.shinR) p.shinR.rotation.x = (1 - ease) * 1.2;
+    if (p.armL) p.armL.rotation.set(-armBrace * 0.8, 0, armBrace * 0.25);
+    if (p.armR) p.armR.rotation.set(-armBrace * 0.8, 0, -armBrace * 0.25);
+    if (p.foreL) p.foreL.rotation.x = -armBrace * 0.7;
+    if (p.foreR) p.foreR.rotation.x = -armBrace * 0.7;
+    if (p.handL) p.handL.rotation.set(0, 0, 0);
+    if (p.handR) p.handR.rotation.set(0, 0, 0);
+    if (p.head) p.head.rotation.set((1 - ease) * -0.25, 0, 0); // head lolls then levels
+    if (p.torso) p.torso.rotation.set((1 - ease) * 0.3, 0, 0); // slight forward lean
+    if (p.hair) p.hair.rotation.set(0, 0, 0);
+    if (p.hood) p.hood.rotation.set(0, 0, 0);
+    if (p.hoodTip) p.hoodTip!.rotation.set(0, 0, 0);
+    a.crouch = 0; a.flinch = 0;
+    // settle into full standing when done (caller flips to 'idle')
+    a.bob = 0;
+    return;
+  }
+
   if (a.mode === 'dead' || a.mode === 'floor' || a.mode === 'lie') {
     const d = a.death ?? (a.death = (a.mode === 'dead' ? initDeath(rig) : initCollapse(rig, a.mode === 'lie')));
     const g = rig.group;
@@ -1594,7 +1639,7 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
     }
   }
 
-  if (a.mode !== 'getup') rig.group.rotation.x = 0;
+  rig.group.rotation.x = 0;
   const walking = a.mode === 'walk';
   const w = walking ? Math.sin(a.t * 11) : 0;
   // idle breathing: half the original speed (1.1 vs 2.2) with a per-rig random

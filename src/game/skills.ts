@@ -240,7 +240,7 @@ export function createRoster(): Unit[] {
     // ── the party — one warrior, alone in the cave ──
     mkUnit({
       name: 'Greg', title: 'Human', team: 'party', klass: 'fighter', pos: { x: 10, z: 8 },
-      maxHp: 38, hp: 38, ac: 10,
+      level: 1, maxHp: 24, hp: 24, ac: 10,
       abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 11, cha: 12 },
       knownSkills: ['slash', 'cleave', 'shield_bash'],
       scheme: { skin: 0xd9a066, cloth: 0xffffff, accent: 0xffeb3b, hair: 0x4a2f1a, hood: false, style: 'normal', naked: true },

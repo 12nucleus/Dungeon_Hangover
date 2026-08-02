@@ -30,10 +30,10 @@ import { buildTavern } from './engine/tavern';
 import { buildSheep } from './engine/sheep';
 import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone } from './engine/dungeonSetup';
 import { smashProp, checkCombatTrigger, enqueue } from './engine/combatAnimation';
-import { updateFog, executeDialogueAction } from './engine/interaction';
+import { updateFog, executeDialogueAction, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
 import { showTargeting as showTargetingModule, showMoveTiles as showMoveTilesModule } from './engine/targeting';
-import { bindInput as bindInputModule, onKeyDown as onKeyDownModule, onResize as onResizeModule } from './engine/input';
+import { bindInput as bindInputModule, onPointerMove as onPointerMoveModule, onPointerDown as onPointerDownModule, onKeyDown as onKeyDownModule, onResize as onResizeModule } from './engine/input';
 interface Floater { el: HTMLDivElement; wp: THREE.Vector3; t: number; }
 interface Walker { path: THREE.Vector3[]; idx: number; }
 
@@ -97,6 +97,7 @@ export class GameEngine {
   public gold = 0;
   public showInventory = false;
   public showSkillTree = false;
+  public showStats = false;
   public questLog = new QuestLog();
   public hermitRig: Rig | null = null;
   public hermitPos: GridPos | null = null;
@@ -1611,6 +1612,15 @@ export class GameEngine {
   // -- inventory / equipment (called from React HUD) ---------
   toggleInventory() {
     this.showInventory = !this.showInventory;
+    if (this.showInventory) this.showStats = false;   // only one overlay at a time
+    this.audio.play('ui_click', 0.6);
+    this.emitSnapshot();
+  }
+
+  /** toggle the detailed character-stats panel. */
+  toggleStats() {
+    this.showStats = !this.showStats;
+    if (this.showStats) this.showInventory = false;   // only one overlay at a time
     this.audio.play('ui_click', 0.6);
     this.emitSnapshot();
   }
@@ -1986,6 +1996,14 @@ export class GameEngine {
   // interaction
   public updateFog(_dt: number) { updateFog(this, _dt); }
   public executeDialogueAction(action: { type: string; itemId?: string; questId?: string }, npc: NPCDef) { executeDialogueAction(this, action, npc); }
+  public pickTile(): GridPos | null { return pickTileModule(this); }
+  public updateHover() { updateHoverModule(this); }
+  public clickExplore(unitId: string | undefined, tile: GridPos | null, propId?: string) { clickExploreModule(this, unitId, tile, propId); }
+  public clickCombat(unitId: string | undefined, tile: GridPos | null, propId?: string) { clickCombatModule(this, unitId, tile, propId); }
+  public moveUnitAlong(u: Unit, path: GridPos[]) { moveUnitAlongModule(this, u, path); }
+  public talkToNpc(npcId: string) { talkToNpcModule(this, npcId); }
+  public onPointerMove = (e: PointerEvent) => { onPointerMoveModule(this, e); };
+  public onPointerDown = (e: PointerEvent) => { onPointerDownModule(this, e); };
 
   // targeting
   public showTargeting(s: SkillDef, u: Unit) { showTargetingModule(this, s, u); }
@@ -2323,6 +2341,7 @@ export class GameEngine {
       gold: this.gold,
       showInventory: this.showInventory,
       showSkillTree: this.showSkillTree,
+      showStats: this.showStats,
       sneaking: this.sneaking,
       running: this.running,
       throwing: this.throwing,

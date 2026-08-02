@@ -170,3 +170,130 @@ export const CLASS_IDS = CLASSES.map((c) => c.id);
 export function classById(id: string): ClassDef | undefined {
   return CLASS_MAP[id];
 }
+
+/**
+ * A comedic "class title" for a (usually 2-class) hybrid build. Returns the
+ * bare class name for a single class, or a funny mash-up for a pair, e.g.
+ * Bar Bouncer + Karaoke Bard → "The Karaoke Bouncer". Falls back to just the
+ * two names joined by " / " if no fun mash-up exists yet.
+ */
+const COMBO_TITLES: [string, string, string][] = [
+  // (classA, classB, mash-up title) — order-independent lookup on pair
+  ['bar_bouncer', 'karaoke_bard', 'The Karaoke Bouncer'],
+  ['bar_bouncer', 'gutter_rogue', 'The Bouncer Who Bounces Back'],
+  ['bar_bouncer', 'sommelier', 'The Bouncer Sommelier'],
+  ['bar_bouncer', 'barista', 'The Bar-Brawl Barista'],
+  ['bar_bouncer', 'accountant', 'The Audit Bouncer'],
+  ['bar_bouncer', 'dentist', 'The Nightclub Dentist'],
+  ['bar_bouncer', 'plumber', 'The Plumber Who Says No'],
+  ['bar_bouncer', 'wedding_planner', 'The Bouncer of Honour'],
+  ['bar_bouncer', 'tabloid_reporter', 'The Bouncer Exposé'],
+  ['bar_bouncer', 'haunted_chef', 'The Door-Haunting Chef'],
+  ['bar_bouncer', 'shaman', 'The Spirit Bouncer'],
+  ['bar_bouncer', 'zoologist', 'The Zoo Bouncer'],
+  ['bar_bouncer', 'insurance_adjuster', 'The Bouncer Adjuster'],
+  ['bar_bouncer', 'mortician', 'The Mortuary Bouncer'],
+  ['gutter_rogue', 'karaoke_bard', 'The Alley Crooner'],
+  ['gutter_rogue', 'sommelier', 'The Wine-Stealing Rogue'],
+  ['gutter_rogue', 'barista', 'The Espresso Shoplifter'],
+  ['gutter_rogue', 'accountant', 'The Book-Cooking Thief'],
+  ['gutter_rogue', 'dentist', 'The Tooth Fairy'],
+  ['gutter_rogue', 'plumber', 'The Pipe Sniper'],
+  ['gutter_rogue', 'wedding_planner', 'The Wedding Crasher'],
+  ['gutter_rogue', 'tabloid_reporter', 'The Scoop Pickpocket'],
+  ['gutter_rogue', 'haunted_chef', 'The Ghost Gourmand'],
+  ['gutter_rogue', 'shaman', 'The Spirit Stealer'],
+  ['gutter_rogue', 'zoologist', 'The Cat Burglar (Literally)'],
+  ['gutter_rogue', 'insurance_adjuster', 'The Fine-Print Fence'],
+  ['gutter_rogue', 'mortician', 'The Grave Robber'],
+  ['karaoke_bard', 'sommelier', 'The Singing Sommelier'],
+  ['karaoke_bard', 'barista', 'The Caffeine Crooner'],
+  ['karaoke_bard', 'accountant', 'The Ballad of the Balance Sheet'],
+  ['karaoke_bard', 'dentist', 'The Drill Serenade'],
+  ['karaoke_bard', 'plumber', 'The Drainpipe Tenor'],
+  ['karaoke_bard', 'wedding_planner', 'The Wedding Singer'],
+  ['karaoke_bard', 'tabloid_reporter', 'The Headline Crooner'],
+  ['karaoke_bard', 'haunted_chef', 'The Karaoke Kitchen'],
+  ['karaoke_bard', 'shaman', 'The Spirit Singer'],
+  ['karaoke_bard', 'zoologist', 'The Zoo Chorus'],
+  ['karaoke_bard', 'insurance_adjuster', 'The Policy Crooner'],
+  ['karaoke_bard', 'mortician', 'The Requiem Baritone'],
+  ['sommelier', 'barista', 'The Bean & Grape'],
+  ['sommelier', 'accountant', 'The Vintage Auditor'],
+  ['sommelier', 'dentist', 'The Wine and Drill'],
+  ['sommelier', 'plumber', 'The Corked Pipe'],
+  ['sommelier', 'wedding_planner', 'The Sommelier of Honour'],
+  ['sommelier', 'tabloid_reporter', 'The Grape Vine'],
+  ['sommelier', 'haunted_chef', 'The Haunted Cellar'],
+  ['sommelier', 'shaman', 'The Spirit Pour'],
+  ['sommelier', 'zoologist', 'The Cork, Duck & Barrel'],
+  ['sommelier', 'insurance_adjuster', 'The Corkage Claim'],
+  ['sommelier', 'mortician', 'The Last Vintage'],
+  ['barista', 'accountant', 'The Bean Counter'],
+  ['barista', 'dentist', 'The Espresso Drill'],
+  ['barista', 'plumber', 'The Steam-Pipe Barista'],
+  ['barista', 'wedding_planner', 'The Filtered Wedding'],
+  ['barista', 'tabloid_reporter', 'The Daily Grind'],
+  ['barista', 'haunted_chef', 'The Haunted Grind'],
+  ['barista', 'shaman', 'The Spirit Espresso'],
+  ['barista', 'zoologist', 'The Coffee Critter'],
+  ['barista', 'insurance_adjuster', 'The Latte Adjuster'],
+  ['barista', 'mortician', 'The Wake-Up Call'],
+  ['accountant', 'dentist', 'The Number Cruncher'],
+  ['accountant', 'plumber', 'The Pipe Fiddler'],
+  ['accountant', 'wedding_planner', 'The Cost-Benefit Bride'],
+  ['accountant', 'tabloid_reporter', 'The Off-The-Books Scoop'],
+  ['accountant', 'haunted_chef', 'The Ghost in the Ledger'],
+  ['accountant', 'shaman', 'The Spirit of Deduction'],
+  ['accountant', 'zoologist', 'The Bottom Line Beast'],
+  ['accountant', 'insurance_adjuster', 'The Twin Bureaucrats'],
+  ['accountant', 'mortician', 'The Final Account'],
+  ['dentist', 'plumber', 'The Hole Duo'],
+  ['dentist', 'wedding_planner', 'The Bridal Drill'],
+  ['dentist', 'tabloid_reporter', 'The Cavity Column'],
+  ['dentist', 'haunted_chef', 'The Sugar Demon'],
+  ['dentist', 'shaman', 'The Tooth Spirit'],
+  ['dentist', 'zoologist', 'The Beast Dentist'],
+  ['dentist', 'insurance_adjuster', 'The Claim Dentist'],
+  ['dentist', 'mortician', 'The Extraction Expert'],
+  ['plumber', 'wedding_planner', 'The Plumber of Honour'],
+  ['plumber', 'tabloid_reporter', 'The Pipe Leak'],
+  ['plumber', 'haunted_chef', 'The Drain Demon'],
+  ['plumber', 'shaman', 'The Spirit Plumber'],
+  ['plumber', 'zoologist', 'The Drain Critter'],
+  ['plumber', 'insurance_adjuster', 'The Flood Claim'],
+  ['plumber', 'mortician', 'The Septic Scythe'],
+  ['wedding_planner', 'tabloid_reporter', 'The Scoop on the Cake'],
+  ['wedding_planner', 'haunted_chef', 'The Haunted Buffet'],
+  ['wedding_planner', 'shaman', 'The Spirit Coordinator'],
+  ['wedding_planner', 'zoologist', 'The Best Beast'],
+  ['wedding_planner', 'insurance_adjuster', 'The Cold-Feet Adjuster'],
+  ['wedding_planner', 'mortician', 'The Till Death Planner'],
+  ['tabloid_reporter', 'haunted_chef', 'The Headline Kitchen'],
+  ['tabloid_reporter', 'shaman', 'The Spirit Scoop'],
+  ['tabloid_reporter', 'zoologist', 'The Clickbait Critter'],
+  ['tabloid_reporter', 'insurance_adjuster', 'The Exclusive Claim'],
+  ['tabloid_reporter', 'mortician', 'The Obituary Column'],
+  ['haunted_chef', 'shaman', 'The Spirit Chef'],
+  ['haunted_chef', 'zoologist', 'The Kitchen Critter'],
+  ['haunted_chef', 'insurance_adjuster', 'The Burnt Claim'],
+  ['haunted_chef', 'mortician', 'The Funeral Feast'],
+  ['shaman', 'zoologist', 'The Spirit of the Wild'],
+  ['shaman', 'insurance_adjuster', 'The Mystic Fine Print'],
+  ['shaman', 'mortician', 'The Spirit of the Afterlife'],
+  ['zoologist', 'insurance_adjuster', 'The Exotic Animal Policy'],
+  ['zoologist', 'mortician', 'The Taxidermist'],
+  ['insurance_adjuster', 'mortician', 'The Final Adjuster'],
+];
+
+export function comboTitleFor(classes: string[]): string {
+  const list = (classes ?? []).filter(Boolean);
+  if (list.length === 1) return classById(list[0])?.name ?? list[0];
+  if (list.length === 0) return 'Unchosen';
+  const a = list[0], b = list[1];
+  const hit = COMBO_TITLES.find(([x, y]) => (x === a && y === b) || (x === b && y === a));
+  if (hit) return hit[2];
+  const na = classById(a)?.name ?? a;
+  const nb = classById(b)?.name ?? b;
+  return `${na} / ${nb}`;
+}

@@ -199,6 +199,7 @@ export interface UISnapshot {
   gold: number;
   showInventory: boolean;
   showSkillTree: boolean;
+  showStats: boolean;
   sneaking: boolean;
   running: boolean;
   throwing: boolean;
