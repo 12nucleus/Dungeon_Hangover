@@ -41,7 +41,12 @@ export async function animate(engine: any, ev: CombatEvent) {
       break;
     }
     case 'float': spawnFloater(engine, ev.unitId, ev.text, ev.cls); await delay(90); break;
-    case 'save': spawnFloater(engine, ev.unitId, ev.success ? `Save ${ev.total} ✓` : `Save ${ev.total} ✗`, ev.success ? 'save-ok' : 'save-fail'); await delay(60); break;
+    case 'save': {
+      spawnFloater(engine, ev.unitId, ev.success ? `Save ${ev.total} ✓` : `Save ${ev.total} ✗`, ev.success ? 'save-ok' : 'save-fail');
+      engine.showDiceRoll?.('d20', ev.total, 'Saving Throw');
+      await delay(60);
+      break;
+    }
     case 'death': {
       const v = engine.visuals.get(ev.unitId);
       if (v) {
@@ -167,7 +172,7 @@ export async function animate(engine: any, ev: CombatEvent) {
       await delay(200);
       break;
     }
-    case 'loot': offerLoot(engine, 'spoils of battle', ev.items, ev.gold); break;
+    case 'dice': engine.showDiceRoll?.(ev.die, ev.total, ev.reason); break;
     case 'levelup': {
       const u = engine.byId(ev.unitId);
       if (u) {
@@ -326,6 +331,7 @@ export async function disarmTrap(engine: any, u: Unit, trap: any) {
   const dexMod = Math.floor((u.abilities.dex - 10) / 2);
   const roll = 1 + Math.floor(Math.random() * 20);
   const total = roll + dexMod + u.proficiency;
+  engine.showDiceRoll?.('d20', total, 'Disarm (DEX)');
   engine.pushLog(`${u.name} attempts to disarm ${trap.def.icon} ${trap.def.name}... Roll ${roll}${dexMod >= 0 ? '+' : ''}${dexMod} (DEX) +${u.proficiency} prof = ${total} vs DC 12`, 'roll');
   if (total >= 12) {
     engine.pushLog(`${u.name} disarms the ${trap.def.name}!`, 'system');

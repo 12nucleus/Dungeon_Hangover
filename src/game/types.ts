@@ -283,6 +283,7 @@ export type CombatEvent =
   | { type: 'death'; unitId: string }
   | { type: 'turn'; unitId: string; round: number }
   | { type: 'phase'; phase: GamePhase }
+  | { type: 'dice'; die: string; total: number; reason: string }
   | { type: 'loot'; items: import('./items').Item[]; gold: number }
   | { type: 'levelup'; unitId: string }
   | { type: 'shake'; power: number }

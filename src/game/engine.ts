@@ -780,6 +780,7 @@ export class GameEngine {
     const mod = abilityMod(g.abilities[stat as Ability]);
     const r = rollD20(mod + g.proficiency);
     const total = r.total;
+    this.showDiceRoll('d20', total, `${stat.toUpperCase()} check`);
     this.pushLog(`🎲 ${stat.toUpperCase()} check: ${r.roll}${fmtMod(mod)} +${g.proficiency} prof = ${total} vs DC ${dc}`, 'roll');
     return total >= dc;
   }
