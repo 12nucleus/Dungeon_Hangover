@@ -162,7 +162,7 @@ export async function animate(engine: any, ev: CombatEvent) {
         // drops that piled up during the fight surface now
         engine.flushLootQueue?.();
       }
-      if (ev.phase === 'victory') { engine.audio.setDrums(false); engine.audio.playMusic('music_victory'); engine.audio.play('victory', 0.9); engine.audio.setMusicDucked(false); spawnChest(engine); }
+      if (ev.phase === 'victory') { engine.audio.setDrums(false); engine.audio.playMusic('music_victory'); engine.audio.setMusicDucked(false); spawnChest(engine); }
       if (ev.phase === 'defeat') { engine.audio.setDrums(false); engine.audio.setMusicDucked(false); }
       await delay(200);
       break;

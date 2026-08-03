@@ -431,7 +431,8 @@ export function winGame(engine: any) {
   engine.phase = 'victory';
   engine.audio.setDrums(false);
   engine.audio.setMusicDucked(false);
-  engine.audio.play('victory', 0.95);
+  // the victory "music" is a short ta-da chime — one shot, no loop
+  engine.audio.playMusic('music_victory');
   const s = engine.runStats ?? { kills: 0, deaths: 0, questsDone: 0, secretsFound: 0, startedAt: Date.now() };
   engine.pushLog('🏆 Floor 50 cleared — The Sewer Cellar conquered!', 'system');
   engine.bigMessage = `FLOOR 50 CLEARED — ${Math.max(0, Math.round((Date.now() - s.startedAt) / 1000))}s, ${s.kills} kills, ${s.deaths} deaths, ${s.questsDone} quests, ${s.secretsFound} secrets`;

@@ -152,7 +152,8 @@ export class AudioManager {
     this.musicSource?.stop();
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
-    src.loop = true;
+    // victory is a one-shot "ta-da" chime — looping it would be a stuck ta-da
+    src.loop = name !== 'music_victory';
     src.connect(this.musicGain);
     src.start();
     this.musicSource = src;

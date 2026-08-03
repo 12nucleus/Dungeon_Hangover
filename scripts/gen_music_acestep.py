@@ -4,10 +4,12 @@
 # (https://github.com/ace-step/ACE-Step-1.5), the open-source
 # text-to-music model, running in the `ace_step` conda env.
 #
-# Produces the three gameplay tracks in public/audio/:
-#   music_ambient.mp3   — dark dungeon ambience (180 s, Am, 70 BPM)
+# Produces the gameplay tracks in public/audio/:
+#   music_ambient.mp3   — dark sewer-cellar ambience (180 s, Dm, 66 BPM)
 #   music_combat.mp3    — battle theme            (120 s, Dm, 140 BPM)
-#   music_victory.mp3   — victory fanfare         ( 90 s, C,  120 BPM)
+#   music_victory.mp3   — NOT generated here anymore: a short synthesized
+#                          "ta-da" chime (scripts/gen_chime.py) replaces
+#                          the full victory fanfare.
 #
 # Each track is generated as 2 candidates (different seeds); the one
 # with the stronger full-mix profile (RMS energy x spectral movement,
@@ -15,7 +17,8 @@
 # tail so the WebAudio loop breathes instead of clipping mid-note.
 #
 # Run (from the ace_step env):
-#   python scripts/gen_music_acestep.py
+#   python scripts/gen_music_acestep.py            # all tracks
+#   python scripts/gen_music_acestep.py ambient    # only the ambient track
 # ─────────────────────────────────────────────────────────────
 import os
 import re
@@ -38,20 +41,21 @@ TRACKS = [
         "name": "music_ambient",
         "captions": [
             (
-                "Dark fantasy dungeon ambience. Slow, cavernous and atmospheric: deep droning "
-                "strings and low church-organ pads, a distant tolling bell, sparse lonely piano "
-                "notes, eerie wind whistling through stone corridors, subtle dripping water. "
-                "Ominous, mysterious, ancient. Sparse texture, wide reverb, moderate dynamics. "
-                "Instrumental. 70 BPM, A minor, 4/4."
+                "Dark sewer cellar ambience. Gentle water dripping and trickling "
+                "through echoing stone tunnels, distant drips and hollow wind, a "
+                "soft low flute melody wandering slowly, warm cello drone underneath, "
+                "sparse harp notes. Calm, mysterious, cavernous, atmospheric. "
+                "Slow spacious texture, long reverb. Instrumental. 66 BPM, D minor, 4/4."
             ),
             (
-                "Eerie medieval dungeon atmosphere. Low cello drone, soft pipe-organ swells, "
-                "muted choir humming, faint music-box motif, distant rumble and wind. Very "
-                "slow and spacious, mysterious, somber, unsettling. Ambient texture with long "
-                "decays. Instrumental. 66 BPM, D minor, 4/4."
+                "Atmospheric underground sewer soundscape. Quiet lapping water, slow "
+                "echoing water drops, a mournful distant horn, gentle woodwind phrase, "
+                "dark warm drone with slow swelling chords. Somber, meditative, eerie "
+                "but peaceful. Ambient texture, moderate dynamics. "
+                "Instrumental. 70 BPM, A minor, 4/4."
             ),
         ],
-        "duration": 180, "bpm": 70, "keyscale": "Am", "seeds": [101, 411],
+        "duration": 180, "bpm": 70, "keyscale": "Am", "seeds": [717, 911],
     },
     {
         "name": "music_combat",
@@ -70,23 +74,6 @@ TRACKS = [
             ),
         ],
         "duration": 120, "bpm": 140, "keyscale": "Dm", "seeds": [202, 522],
-    },
-    {
-        "name": "music_victory",
-        "captions": [
-            (
-                "Triumphant fantasy victory fanfare. Heroic French horns and bright trumpets, "
-                "warm full string section, rolling timpani, glockenspiel sparkle, big uplifting "
-                "finale chords. Celebratory, majestic, joyful. Rich orchestral texture with a "
-                "clear melody. Instrumental. 120 BPM, C major, 4/4."
-            ),
-            (
-                "Grand tavern-worthy victory theme. Swaggering folk horns, dancing fiddle, "
-                "plucked mandolin, thumping drums, cheerful accordion, celebratory choir. "
-                "Bold, warm, triumphant tavern anthem. Instrumental. 130 BPM, C major, 4/4."
-            ),
-        ],
-        "duration": 90, "bpm": 120, "keyscale": "C", "seeds": [303, 633],
     },
 ]
 
@@ -118,6 +105,11 @@ def score_wav(path: str) -> float:
 
 
 def main():
+    only = sys.argv[1] if len(sys.argv) > 1 else None
+    tracks = [tr for tr in TRACKS if not only or tr["name"] == only or tr["name"].split("_", 1)[-1] == only]
+    if not tracks:
+        print(f"unknown track filter: {only} (have {[t['name'] for t in TRACKS]})")
+        sys.exit(1)
     print("Initializing DiT handler (acestep-v15-turbo) ...")
     dit = AceStepHandler()
     status, ok = dit.initialize_service(
@@ -148,7 +140,7 @@ def main():
         sys.exit(1)
     print("LM ready.")
 
-    for tr in TRACKS:
+    for tr in tracks:
         best_wav, best_score = None, -1.0
         print(f"\n=== {tr['name']} ({tr['duration']}s, {tr['bpm']} BPM, {tr['keyscale']}) ===")
         for i, (caption, seed) in enumerate(zip(tr["captions"], tr["seeds"])):
