@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot, Unit } from '@/game/types';
 import { SKILLS } from '@/game/skills';
+import { ALL_CLASS_SKILLS } from '@/game/classSkills';
 import { effMaxHp } from '@/game/stats';
 import { InventoryPanel } from './InventoryPanel';
 import { SkillTreePanel } from './SkillTreePanel';
@@ -210,7 +211,7 @@ export function HUD({ snap, engine }: Props) {
       {/* ══ TARGETING HINT ══ */}
       {snap.targeting && playerTurn && (
         <div className="targeting-hint">
-          🎯 Aiming <b>{SKILLS[snap.selectedSkill!]?.name}</b> — click a target · right-click / Esc to cancel
+          🎯 Aiming <b>{(SKILLS[snap.selectedSkill!] ?? ALL_CLASS_SKILLS[snap.selectedSkill!])?.name}</b> — click a target · right-click / Esc to cancel
         </div>
       )}
 

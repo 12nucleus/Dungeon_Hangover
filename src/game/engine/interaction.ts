@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
 import { Combat } from '../combat';
-import { SKILLS } from '../skills';
+import { skillById } from '../skillLookup';
 import type { GridPos, SkillDef, Unit } from '../types';
 import { NPCS, type NPCDef, type DialogueAction, type ChoiceCondition } from '../npc';
 import { makeItem } from '../items';
@@ -25,7 +25,8 @@ export function updateFog(engine: any, _dt: number) {
   const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat?.living('party')[0];
   if (!leader) return;
 
-  const radius = engine.torchLit ? engine.visionRadius + 5 : engine.visionRadius;
+  // torch reveals a modest radius — rooms stay dark beyond the flame
+  const radius = engine.torchLit ? engine.visionRadius + 2 : engine.visionRadius;
   const px = leader.pos.x, pz = leader.pos.z;
   const S = engine.explored.length;
   const x0 = Math.max(0, px - radius), x1 = Math.min(S - 1, px + radius);
@@ -51,9 +52,12 @@ export function updateFog(engine: any, _dt: number) {
   // block the whole room from grazing camera angles. A flat dark tile reads
   // as "unexplored black floor" from any angle without occluding the scene.
   if (!engine.fogMesh && engine.fogGroup) {
-    const g = new THREE.BoxGeometry(1.08, 0.14, 1.08);
-    // Dense opaque black slabs make unexplored rooms unreadable even when the
-    // camera is panned/rotated across them.
+    // Tall opaque columns, not flat slabs: a slab lets the camera see OVER
+    // low walls into unexplored rooms (walls on floor 50 are 2.6–4.0 tall).
+    // A column as tall as the tallest wall hides everything beyond it from
+    // every angle. Only UNEXPLORED tiles carry one, so the explored area
+    // stays pillar-free.
+    const g = new THREE.BoxGeometry(1.08, 5.2, 1.08);
     const m = new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 1, transparent: false, depthWrite: true });
     const mesh = new THREE.InstancedMesh(g, m, S * S);
     mesh.renderOrder = 5;
@@ -71,19 +75,14 @@ export function updateFog(engine: any, _dt: number) {
     for (let x = 0; x < S; x++) {
       for (let z = 0; z < S; z++) {
         if (engine.explored[x][z]) continue;
-        // Only fog walkable floor tiles (walls are solid rock — capping them
-        // with black boxes looks broken). The leader's own tile is included
-        // as a safety net even if the grid flags it blocked.
+        // Fog EVERY unexplored tile — floors AND walls — so the map layout
+        // can't be read through the darkness. Columns sit on the floor
+        // surface and rise past the tallest wall.
         const onSelf = x === px && z === pz;
-        if (!onSelf && !engine.world.isWalkable(x, z)) continue;
-        // unitWorld().y is the tile CENTER (h + 0.5) where a unit stands;
-        // the actual floor surface is ~h (floor voxel tops sit at h-0.04..h).
-        // Rest the slab right on that surface so it reads as a dark patch of
-        // floor, never a floating box. x/z come from unitWorld so the slab
-        // stays aligned with the world offset convention.
+        if (onSelf) continue;   // never fog the leader's own tile
         const wp = unitWorld(engine, { x, z });
         const floorY = engine.world.heightAt(x, z);
-        fogDummy.position.set(wp.x, floorY + 0.03, wp.z);
+        fogDummy.position.set(wp.x, floorY + 2.6, wp.z);
         fogDummy.updateMatrix();
         engine.fogMesh.setMatrixAt(n, fogDummy.matrix);
         n++;
@@ -176,7 +175,7 @@ export function updateHover(engine: any) {
   }
   if (engine.targeting && !unitHit) {
     const tile = pickTile(engine);
-    const s = SKILLS[engine.targeting];
+    const s = skillById(engine.targeting);
     const a = engine.combat.active;
     if (tile && s && s.aoeRadius > 0 && !s.selfCentered && a) showAoePreview(engine, s, tile);
   }
@@ -312,8 +311,8 @@ export function clickCombat(engine: any, unitId: string | undefined, tile: GridP
   const active = engine.combat.active;
   if (!active || active.team !== 'party') return;
   if (engine.targeting) {
-    const s = SKILLS[engine.targeting];
-    if (s.aoeRadius > 0 && !s.selfCentered) {
+    const s = skillById(engine.targeting);
+    if (s && s.aoeRadius > 0 && !s.selfCentered) {
       if (tile && Combat.dist(active.pos, tile) <= s.range) {
         engine.audio.play('dice', 0.7);
         engine.enqueue(engine.combat.useSkill(active, s.id, tile));
@@ -322,7 +321,7 @@ export function clickCombat(engine: any, unitId: string | undefined, tile: GridP
       }
       return;
     }
-    if (unitId) {
+    if (unitId && s) {
       const t = engine.byId(unitId);
       if (t && t.alive && Combat.dist(active.pos, t.pos) <= s.range) {
         engine.audio.play('dice', 0.7);
@@ -332,15 +331,15 @@ export function clickCombat(engine: any, unitId: string | undefined, tile: GridP
         return;
       }
     }
-    if (propId) trySmashInCombat(engine, active, propId, s);
+    if (propId && s) trySmashInCombat(engine, active, propId, s);
     return;
   }
   if (unitId) {
     const t = engine.byId(unitId);
     if (t && t.alive && t.team === 'enemy') {
-      const basic = active.equippedSkills.map((id: string) => SKILLS[id]).find((s: SkillDef) =>
-        s.damageDice && !s.targetsAllies && !s.selfCentered && s.aoeRadius === 0 &&
-        Combat.dist(active.pos, t.pos) <= Math.max(1, s.range) && !engine.combat.canUse(active, s));
+      const basic = active.equippedSkills.map((id: string) => skillById(id))
+        .find((s: SkillDef | undefined): s is SkillDef => !!s && !!s.damageDice && !s.targetsAllies && !s.selfCentered && s.aoeRadius === 0 &&
+          Combat.dist(active.pos, t.pos) <= Math.max(1, s.range) && !engine.combat.canUse(active, s));
       if (basic) {
         engine.audio.play('dice', 0.7);
         engine.enqueue(engine.combat.useSkill(active, basic.id, t.id));
@@ -357,10 +356,10 @@ export function clickCombat(engine: any, unitId: string | undefined, tile: GridP
 export function trySmashInCombat(engine: any, active: Unit, propId: string, preferred?: SkillDef) {
   const prop = engine.props.byId(propId);
   if (!prop) return;
-  const usable = (s: SkillDef) => s.damageDice && !s.targetsAllies && !s.selfCentered && s.aoeRadius === 0
+  const usable = (s: SkillDef) => !!s.damageDice && !s.targetsAllies && !s.selfCentered && s.aoeRadius === 0
     && Combat.dist(active.pos, prop.pos) <= Math.max(1, s.range) && !engine.combat.canUse(active, s);
   const skill = (preferred && usable(preferred)) ? preferred
-    : active.equippedSkills.map((id: string) => SKILLS[id]).find(usable);
+    : active.equippedSkills.map((id: string) => skillById(id)).find((s: SkillDef | undefined): s is SkillDef => !!s && usable(s));
   if (skill) {
     engine.audio.play('dice', 0.7);
     engine.targeting = null;

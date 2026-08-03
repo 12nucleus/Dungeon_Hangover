@@ -566,7 +566,9 @@ export function finishIntro(h: CutsceneHost) {
   }
   // reveal the bonfire checkpoint behind Greg as the respawn point + grace window
   h.setBonfireCheckpoint(h.structures?.checkpoint ?? { x: 5, z: 5 });
-  h.armIntroGrace(2.5);
+  // long enough to loot the starting bag and light the bonfire without the
+  // sewer rats cone-aggroing from the next room over
+  h.armIntroGrace(45);
   // hero torch phenomenon permanently disabled
 
   h.iso.lerp = 7;

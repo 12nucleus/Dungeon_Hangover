@@ -5,7 +5,7 @@
 // Engine internals will be made public in step 6 (engine.ts rewrite).
 // ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
-import { SKILLS } from '../skills';
+import { skillById } from '../skillLookup';
 import { setWeapon } from '../characters';
 import { SaveManager, SettingsManager, SAVE_VERSION_NUMBER } from '../save';
 import type { GameSettings, SaveData } from '../save';
@@ -107,7 +107,8 @@ export function selectSkill(engine: any, skillId: string | null) {
     engine.setHoverInfoOnce('Skills can only be used in combat.');
     return;
   }
-  const s = SKILLS[skillId];
+  const s = skillById(skillId);
+  if (!s) { engine.setHoverInfoOnce('Unknown skill.'); return; }
   const deny = engine.combat.canUse(active, s);
   if (deny) { engine.setHoverInfoOnce(deny); return; }
   engine.audio.play('ui_click', 0.6);

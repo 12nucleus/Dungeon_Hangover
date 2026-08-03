@@ -932,7 +932,11 @@ export class GameEngine {
       if (f.scheme?.orc === true && this.flags.has('goblin_respect') && !this.flags.has('goblins_provoked')) continue;
       const range = (f.flying ? 5 : 4) - (this.sneaking ? 2 : 0);
       for (const p of party) {
-        if (Combat.dist(p.pos, f.pos) <= range || (!this.sneaking && this.inEnemyCone(p.pos, f))) {
+        // the sewer tunnel rats camp the room next to spawn — they only
+        // aggro on proximity, never through their vision cone, so looting
+        // and lighting the bonfire is always safe
+        const coneAggro = f.groupId === 'r3_rats' ? false : !this.sneaking && this.inEnemyCone(p.pos, f);
+        if (Combat.dist(p.pos, f.pos) <= range || coneAggro) {
           this.aggroGroup(f.groupId);
           return;
         }

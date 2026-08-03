@@ -148,6 +148,8 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (ev.phase === 'combat') {
         engine.audio.setDrums(true);
         engine.audio.setMusicDucked(true);
+        // the encounter theme takes over from the ambient loop
+        engine.audio.playMusic('music_combat');
         for (const [id, v] of engine.visuals) {
           const u = engine.byId(id);
           if (!u) continue;
@@ -155,9 +157,14 @@ export async function animate(engine: any, ev: CombatEvent) {
           if (u.alive) { v.rig.anim.mode = 'idle'; v.rig.group.position.copy(unitWorld(engine, u.pos)); }
         }
       }
-      if (ev.phase === 'victory') { engine.audio.setDrums(false); engine.audio.play('victory', 0.9); engine.audio.setMusicDucked(false); spawnChest(engine); }
+      if (ev.phase === 'explore') {
+        engine.hazardUsed?.clear();   // hazards reset per fight
+        engine.audio.setDrums(false);
+        engine.audio.setMusicDucked(false);
+        if (engine.phase === 'explore') engine.audio.playMusic('music_ambient');  // back to the cellar
+      }
+      if (ev.phase === 'victory') { engine.audio.setDrums(false); engine.audio.playMusic('music_victory'); engine.audio.play('victory', 0.9); engine.audio.setMusicDucked(false); spawnChest(engine); }
       if (ev.phase === 'defeat') { engine.audio.setDrums(false); engine.audio.setMusicDucked(false); }
-      if (ev.phase === 'explore') engine.hazardUsed?.clear();   // hazards reset per fight
       await delay(200);
       break;
     }
@@ -277,6 +284,9 @@ export async function smashProp(engine: any, u: Unit, prop: any, skill?: SkillDe
 
 export function destroyProp(engine: any, prop: any) {
   const wp = engine.props.worldPos(prop);
+  if (prop.def.id === 'starting') {
+    void engine.narrate('f50_sack', "A sack. It contains a dagger that's seen better centuries, a potion of questionable provenance, and a torch. This is your inheritance. Spend it wisely.", 4600);
+  }
   const { items, gold } = engine.props.destroy(prop);
   FX.debris(engine.particles, wp.clone().add(new THREE.Vector3(0, 0.35, 0)), prop.def.palette, 24);
   FX.dust(engine.particles, wp.clone());

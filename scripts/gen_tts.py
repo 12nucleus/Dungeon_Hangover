@@ -67,11 +67,13 @@ LINES = [
      "He drank the tavern dry, insulted a man with a sword, challenged a wizard to a fistfight, and spent four seconds as livestock. Then the floor rose up to introduce itself."),
     # — Act 3: dungeon wake-up (narrator, over the scene) —
     ("narr_wake", "narrator",
-     "You wake at the bottom of a fifty floor dungeon. In your underwear. With a headache that could crush a small kingdom."),
+     "You wake up. You are lying on cold stone. You are wearing underwear. This is not how you thought today would go, and you once thought you'd marry a chandelier."),
     ("narr_premise", "narrator",
-     "A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that probably won't last. The only way out is up."),
+     "You stand. The room spins. You are not sure if it's the hangover or the dungeon. Both, probably."),
+    ("narr_premise_2", "narrator",
+     "A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that probably won't last. Somewhere in the dark, something squeaks."),
     ("narr_floor", "narrator",
-     "Floor one of the Warren. The bonfire behind you is the last warm thing you'll see for a long, long time. Get up, Greg. We've got fifty floors of regret to climb."),
+     "Floor 50 — the sewer cellar. The bottom of everything. The bonfire behind you is the last warm thing you'll see for a long, long time. Get up, Greg. We've got fifty floors of regret to climb."),
     # — Act 3b: Greg comes to — cursing, confused, no idea where/who he is —
     ("greg_wake_1", "greg",
      "Urgh... wha... where the bloody hell am I? ...Stone ceiling. Right. Not the tavern, then."),
@@ -191,10 +193,10 @@ def main():
                     help="regenerate public/audio/music_ambient.mp3 (synthesized dungeon loop; no TTS model needed)")
     args = ap.parse_args()
 
-    # standalone: regenerate the synthesized dungeon music loop (no model load)
+    # standalone: regenerate the music tracks (ambient/combat/victory) via the
+    # dedicated composer — see gen_music.py for the full arrangement
     if args.music:
-        out = os.path.join(os.path.dirname(__file__), "..", "public", "audio", "music_ambient.mp3")
-        build_dungeon_music(os.path.abspath(out))
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "gen_music.py")], check=True)
         print("DONE (music)")
         return
 

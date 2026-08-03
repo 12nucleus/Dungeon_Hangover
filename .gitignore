@@ -32,3 +32,4 @@ qwen3-tts/
 $null
 ts-errors.txt
 this.spawnDrunkStars(rig)
+__pycache__/

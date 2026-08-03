@@ -51,6 +51,7 @@ export function lightBonfire(engine: any) {
     : { x: 10, z: 10 };
   spawnBonfireFlame(engine);
   if (typeof engine.torchFuel === 'number') engine.torchFuel = 100;   // bonfire refills the torch
+  void engine.narrate('f50_bonfire', "The bonfire catches. The warmth is immediate. The warmth is the first good thing that has happened to you since you woke up. The warmth is the first good thing that has happened to you in WEEKS.", 4600);
   engine.pushLog('The bonfire roars to life. This place feels safer now...', 'system');
   engine.audio.play('ui_click', 0.6);
   engine.audio.play('bonfire_lit', 1.0);

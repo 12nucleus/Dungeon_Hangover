@@ -8,6 +8,7 @@ import { useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot, Unit } from '@/game/types';
 import { SKILLS } from '@/game/skills';
+import { ALL_CLASS_SKILLS } from '@/game/classSkills';
 import { treeFor, canUnlock } from '@/game/skilltree';
 import type { SkillNode } from '@/game/skilltree';
 import { comboTitleFor } from '@/game/classes';
@@ -95,7 +96,7 @@ export function SkillTreePanel({ snap, engine }: Props) {
         <div className="st-loadout-title">Loadout (max 12)</div>
         <div className="st-loadout-skills">
           {u.knownSkills.map((sid) => {
-            const s = SKILLS[sid];
+            const s = SKILLS[sid] ?? ALL_CLASS_SKILLS[sid];
             if (!s) return null;
             const equippedIdx = u.equippedSkills.indexOf(sid);
             const isEquipped = equippedIdx >= 0;
