@@ -9,6 +9,17 @@ import { makeItem } from './items';
 import { mulberry32 } from '../levels/gen/dungeonGen';
 
 export const SKILLS: Record<string, SkillDef> = {
+  // ── Universal ────────────────────────────────────────────
+  // basic weapon attack — ALWAYS available, whatever skills the player
+  // picked (utility-only builds had no way to attack). The damage dice
+  // come from the equipped weapon (combat.useSkill resolves them).
+  attack: {
+    id: 'attack', name: 'Attack', icon: '⚔️', kind: 'melee',
+    desc: 'A basic weapon attack.',
+    range: 1, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'str', damageDice: '1d4', damageType: 'bludgeoning',
+    fxColor: 0xffe08a, fx: 'slash',
+  },
   // ── Fighter ──────────────────────────────────────────────
   slash: {
     id: 'slash', name: 'Slash', icon: '⚔️', kind: 'melee',

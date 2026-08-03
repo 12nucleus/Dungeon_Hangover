@@ -42,6 +42,12 @@ function merge(a: LootOffer, b: LootOffer): LootOffer {
 }
 
 export function offerLoot(engine: any, source: string, items: any[], gold: number) {
+  // an empty drop (empty crate, unlucky corpse) shouldn't open a pointless
+  // overlay — just log it and move on
+  if ((!items || items.length === 0) && !gold) {
+    engine.emitSnapshot?.();
+    return;
+  }
   const offer: LootOffer = { source, items: [...items], gold };
   if (engine.combat?.inCombat) {
     if (!engine.lootQueue) engine.lootQueue = [];

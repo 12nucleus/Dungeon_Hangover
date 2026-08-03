@@ -171,7 +171,8 @@ export function levelUpAtBonfire(engine: any, unitId: string) {
 
 /** a free walkable tile next to the bonfire (the bonfire itself blocks) */
 function bonfireStandingSpot(engine: any): GridPos {
-  const b = engine.bonfirePos;
+  const b = engine.bonfirePos ?? engine.structures?.partySpawn;
+  if (!b) return { x: 0, z: 0 };
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
     const tx = b.x + dx, tz = b.z + dz;
     if (engine.world.isWalkable(tx, tz) && !engine.world.blocked[tx]?.[tz]) return { x: tx, z: tz };
@@ -180,8 +181,10 @@ function bonfireStandingSpot(engine: any): GridPos {
 }
 
 export function respawn(engine: any) {
-  if (!engine.bonfireLit || !engine.bonfirePos) return;
+  // dying BEFORE lighting the bonfire must not soft-lock the run — fall
+  // back to the floor's spawn point
   const spot = bonfireStandingSpot(engine);
+  engine.bonfirePos = engine.bonfirePos ?? engine.structures?.partySpawn ?? null;
   engine.phase = 'explore';
   engine.gameWon = false;
   engine.busy = false;

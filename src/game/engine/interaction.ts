@@ -362,7 +362,10 @@ export function clickCombat(engine: any, unitId: string | undefined, tile: GridP
   if (unitId) {
     const t = engine.byId(unitId);
     if (t && t.alive && t.team === 'enemy') {
-      const basic = active.equippedSkills.map((id: string) => skillById(id))
+      // the universal 'attack' is always in the pool — utility-only builds
+      // (velvet rope + id check, say) can still swing their weapon
+      const pool = [...active.equippedSkills, 'attack'];
+      const basic = pool.map((id: string) => skillById(id))
         .find((s: SkillDef | undefined): s is SkillDef => !!s && !!s.damageDice && !s.targetsAllies && !s.selfCentered && s.aoeRadius === 0 &&
           Combat.dist(active.pos, t.pos) <= Math.max(1, s.range) && !engine.combat.canUse(active, s));
       if (basic) {

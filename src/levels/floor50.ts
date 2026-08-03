@@ -129,15 +129,18 @@ const SHORTCUT_SPECS: CorridorSpec[] = [
   { pts: [{ x: 7, z: 69 }, { x: 69, z: 69 }], width: 1 },    // south edge
   { pts: [{ x: 70, z: 14 }, { x: 70, z: 69 }], width: 1 },   // east run
 ];
-// hand-tuned shortcut: r1 south edge → (30,59-60) debris → west run z=61
-// (w3 → z 60..62) → vertical x=8 z 63..103 → south edge z=104 → east run
-// x=104 z 21..104 → r19's east edge. Every joint lands on a shared tile.
+// hand-tuned shortcut: r1 south edge → debris (54,83-84) → straight SOUTH at
+// x=54 to z=99 (clear of r3/r4 and the 3→4 corridor at x 38..40, z 80..90) →
+// WEST at z 99..100 to x=32 (clear of r5 which starts at z 102) → vertical
+// x=32 down to z=127 → south run z=128 → east run x=128 up to r19's east
+// edge. NO crossing with any room corridor: the only entrance is the debris.
 const SHORTCUT: CorridorSpec[] = [
-  { pts: [{ x: 30, z: 59 }, { x: 30, z: 60 }], width: 1 },
-  { pts: [{ x: 8, z: 61 }, { x: 30, z: 61 }], width: 3 },
-  { pts: [{ x: 8, z: 63 }, { x: 8, z: 103 }], width: 3 },
-  { pts: [{ x: 8, z: 104 }, { x: 104, z: 104 }], width: 1 },
-  { pts: [{ x: 104, z: 21 }, { x: 104, z: 104 }], width: 3 },
+  { pts: [{ x: 54, z: 83 }, { x: 54, z: 84 }], width: 1 },    // debris lane
+  { pts: [{ x: 54, z: 85 }, { x: 54, z: 99 }], width: 1 },    // south leg
+  { pts: [{ x: 32, z: 100 }, { x: 54, z: 100 }], width: 2 },  // west leg
+  { pts: [{ x: 32, z: 100 }, { x: 32, z: 127 }], width: 2 },  // vertical
+  { pts: [{ x: 32, z: 128 }, { x: 128, z: 128 }], width: 1 }, // south run
+  { pts: [{ x: 128, z: 45 }, { x: 128, z: 128 }], width: 3 }, // east run
 ];
 // the shortcut entries live at the END of CORRIDOR_SPECS (after the 1→19
 // comment block) — strip them before mapping, then push the tuned spans
@@ -151,6 +154,30 @@ const CORRIDORS: CorridorSpec[] = [
   ...CORRIDOR_SPECS.slice(0, CORRIDOR_SPECS.length - SHORTCUT_N).map(SCALED),
   ...SHORTCUT,
 ];
+
+// the shortcut is a dark smuggler's back-pass: keep it torch-free. Its
+// 1-wide lanes can't take a torch anyway (a global ring can fool torchSafe
+// into thinking a blocked tile stays connected — a torch would seal the
+// shortcut even after the debris is cleared).
+const SHORTCUT_TILES = new Set<string>();
+for (const c of SHORTCUT) {
+  for (let i = 0; i + 1 < c.pts.length; i++) {
+    const a = c.pts[i], b = c.pts[i + 1];
+    const dx = Math.sign(b.x - a.x), dz = Math.sign(b.z - a.z);
+    const len = Math.max(Math.abs(b.x - a.x), Math.abs(b.z - a.z));
+    for (let k = 0; k <= len; k++) {
+      const x = a.x + dx * k + OFFSET.x, z = a.z + dz * k + OFFSET.z;
+      SHORTCUT_TILES.add(`${x},${z}`);
+      if (dz !== 0) {
+        SHORTCUT_TILES.add(`${x + 1},${z}`);
+        if (c.width === 3) SHORTCUT_TILES.add(`${x - 1},${z}`);
+      } else {
+        SHORTCUT_TILES.add(`${x},${z + 1}`);
+        if (c.width === 3) SHORTCUT_TILES.add(`${x},${z - 1}`);
+      }
+    }
+  }
+}
 
 const map = buildAuthoredMap(S, OFFSET, ROOMS, CORRIDORS);
 validateAuthoredMap(map, ROOMS);
@@ -209,7 +236,7 @@ const structures: LevelStructures = {
     { id: 'door16', tiles: lane(17, 34, 17, 42), kind: 'secretDoor', openedByFlag: 'mushroom_door' },
     { id: 'door17', tiles: lane(86, 9, 90, 9), kind: 'secretDoor', openedByFlag: 'vault_tunnel' },
     { id: 'debris56', tiles: lane(20, 81, 24, 81), kind: 'rubble', openedByFlag: 'debris_56' },
-    { id: 'debris19', tiles: lane(30, 59, 30, 60), kind: 'rubble', openedByFlag: 'shortcut_open' },
+    { id: 'debris19', tiles: lane(54, 83, 54, 84), kind: 'rubble', openedByFlag: 'shortcut_open' },
     { id: 'pipeclimb', tiles: lane(38, 35, 38, 42), kind: 'rubble', openedByFlag: 'pipe_climbed' },
   ],
   bossDoorOpenFlag: 'gribnab_door_open',
@@ -287,6 +314,7 @@ const corridorTiles: GridPos[] = [];
 for (let x = 1; x < S - 1; x++) for (let z = 1; z < S - 1; z++) {
   if (!map.walk[x][z] || map.water[x][z]) continue;
   if (map.roomOf(x, z) !== null) continue;
+  if (SHORTCUT_TILES.has(`${x},${z}`)) continue;   // the dark back-pass stays unlit
   corridorTiles.push({ x, z });
 }
 // torches BLOCK their tile — only hang one where removing the tile still

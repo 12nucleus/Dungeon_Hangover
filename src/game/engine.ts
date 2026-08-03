@@ -1920,7 +1920,9 @@ export class GameEngine {
       case 'attack': {
         const a = this.combat.active;
         if (a && a.team === 'party' && this.phase === 'combat') {
-          const first = a.equippedSkills.find((id) => {
+          // the universal 'attack' is always an option — utility-only builds
+          // can still swing their weapon
+          const first = [...a.equippedSkills, 'attack'].find((id) => {
             const s = SKILLS[id]; return s && s.damageDice && !s.targetsAllies && !s.selfCentered && s.aoeRadius === 0;
           });
           if (first) { this.selectSkill(first); return; }

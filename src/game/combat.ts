@@ -333,8 +333,20 @@ export class Combat {
 
   /** targets = explicit tile (AoE) or unit id (single). Returns events or throws string reason. */
   useSkill(u: Unit, skillId: string, target: GridPos | string): CombatEvent[] {
-    const s = skillById(skillId);
-    if (!s || !u.equippedSkills.includes(skillId)) return [];
+    // the universal 'attack' skill takes its dice from the equipped weapon
+    // (fists if unarmed) so a weaponless/utility build can always fight
+    let s: SkillDef | undefined = skillById(skillId);
+    if (skillId === 'attack') {
+      const w = u.equipment?.weapon as { damageDice?: string; damageType?: string; icon?: string; name?: string } | undefined;
+      s = {
+        ...(s ?? { id: 'attack', name: 'Attack', icon: '⚔️', kind: 'melee', desc: 'A basic weapon attack.', range: 1, aoeRadius: 0, cost: 'action', cooldown: 0, attackAbility: 'str', damageDice: '1d4', damageType: 'bludgeoning', fxColor: 0xffe08a, fx: 'slash' }),
+        damageDice: w?.damageDice ?? '1d2',
+        damageType: (w?.damageType as DamageType) ?? 'bludgeoning',
+        icon: w?.icon ?? '👊',
+        name: w ? `Attack (${w.name ?? 'weapon'})` : 'Punch',
+      } as SkillDef;
+    }
+    if (!s || (skillId !== 'attack' && !u.equippedSkills.includes(skillId))) return [];
     const deny = this.canUse(u, s);
     if (deny) return [{ type: 'log', text: deny, kind: 'info' }];
 
