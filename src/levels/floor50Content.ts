@@ -216,7 +216,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   {
     const r = R('r1');
     const puddleDrunk = rng() < 0.5;
-    once('drink_puddle', r.x0 + 1, r.z0, '[E] Drink from the puddle', (e) => {
+    once('drink_puddle', r.x0 + 1, r.z0, '[R] Drink from the puddle', (e) => {
       if (puddleDrunk) {
         e.healGreg(5);
         void e.narrate('f50_puddle', "You drink. It's cold, it's brown, and it tastes like a decision. You feel... better? The puddle had one job.", 3600);
@@ -225,11 +225,11 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         void e.narrate('f50_puddle_bad', "You drink. It's cold, it's brown, and it tastes like a decision. Your stomach files an immediate protest. Nauseated.", 3600);
       }
     });
-    once('take_bucket', r.x0, r.z0 + 2, '[E] Take the wooden bucket', (e) => {
+    once('take_bucket', r.x0, r.z0 + 2, '[R] Take the wooden bucket', (e) => {
       grant(e, ['wooden_bucket']);
       e.pushLog('A bucket. As a weapon it\'s mostly a statement. The narrator has SO many comments.', 'system');
     });
-    once('read_scratches', r.x0 + 2, r.z0 + 2, '[E] Read the wall scratches', narr('f50_scratches', "You don't remember writing this. You don't remember ANYTHING. This is either amnesia or a really good night."));
+    once('read_scratches', r.x0 + 2, r.z0 + 2, '[R] Read the wall scratches', narr('f50_scratches', "You don't remember writing this. You don't remember ANYTHING. This is either amnesia or a really good night."));
   }
 
   // ── R2 — the hermit's cell ──
@@ -237,7 +237,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r2');
     out.push({
       id: 'rest_mat', pos: { x: r.x1, z: r.z0 }, radius: 2,
-      label: '[E] Rest on the straw mat',
+      label: '[R] Rest on the straw mat',
       visibleIf: (e) => !e.hasFlag('rest_mat_used'),
       once: true,
       run: (e) => {
@@ -246,14 +246,14 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         void e.narrate('f50_mat', "You lie on the straw mat. It smells like straw. It smells like a barn. It smells like HOME. You sleep for five minutes. It's the best five minutes of your life.", 4200);
       },
     });
-    once('take_candle', r.x0, r.z0 + 1, '[E] Take the candle', (e) => {
+    once('take_candle', r.x0, r.z0 + 1, '[R] Take the candle', (e) => {
       e.torchFuel = Math.min(100, e.torchFuel + 20);
       void e.narrate('f50_candle', "You take the candle. The Hermit doesn't mind. The Hermit has been in the dark for centuries. He's used to it.", 3600);
       e.emitSnapshot();
     });
     out.push({
       id: 'chest_r2', pos: { x: r.x1, z: r.z1 }, radius: 2,
-      label: '[E] Open the small chest',
+      label: '[R] Open the small chest',
       visibleIf: (e) => !e.hasFlag('chest_r2_open'),
       run: (e) => {
         const keyed = e.hasItemInInventory('rusty_key') || e.hasItemInInventory('lockpick');
@@ -272,7 +272,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   // ── R3 — the sewer tunnel ──
   {
     const r = R('r3');
-    once('search_skeleton_r3', r.x1, r.z0, '[E] Search the skeleton in the water', (e) => {
+    once('search_skeleton_r3', r.x1, r.z0, '[R] Search the skeleton in the water', (e) => {
       void e.narrate('f50_skeleton', "A skeleton. In the water. It's been here a while. It's wearing the same underwear as you. This is either a coincidence or a dress code.", 4200);
       grant(e, ['lockpick'], 2);
       e.pushLog('The skeleton holds a lockpick and 2 gold. Its note is waterlogged: "The rat took my finger. Then it took my life. Priorities."', 'system');
@@ -282,13 +282,13 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   // ── R4 — the rat nursery ──
   {
     const r = R('r4');
-    once('search_nest_r4', r.x0, r.z0, '[E] Search the nest', (e) => {
+    once('search_nest_r4', r.x0, r.z0, '[R] Search the nest', (e) => {
       grant(e, ['soap_chunk'], 1);
       e.pushLog('The nest holds a button, a coin, and — buried deep — a SOAP CHUNK. The rats have been stealing from the King.', 'system');
     });
     out.push({
       id: 'throw_bone', pos: { x: r.x1, z: r.z1 }, radius: 2,
-      label: '[E] Throw the rat bone into the nursery',
+      label: '[R] Throw the rat bone into the nursery',
       visibleIf: (e) => e.hasItemInInventory('rat_bone'),
       run: (e) => {
         e.takeItem('rat_bone');
@@ -315,7 +315,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r5');
     out.push({
       id: 'offer_cheese', pos: { x: (r.x0 + r.x1) >> 1, z: r.z0 + 2 }, radius: 2,
-      label: '[E] Offer the moldy cheese to the Boss Rat',
+      label: '[R] Offer the moldy cheese to the Boss Rat',
       visibleIf: (e) => e.hasItemInInventory('moldy_cheese') && !e.hasFlag('boss_pacified') && !e.hasFlag('boss_rat_dead'),
       run: (e) => {
         e.takeItem('moldy_cheese');
@@ -331,7 +331,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'clear_debris_56', pos: { x: r.x1 + 1, z: r.z0 + 2 }, radius: 2,
-      label: '[E] Clear the debris (STR)',
+      label: '[R] Clear the debris (STR)',
       visibleIf: (e) => !e.hasFlag('debris_56'),
       run: (e) => {
         if (e.abilityCheck('str', 10)) {
@@ -350,7 +350,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const press = { x: r.x0 + 1, z: r.z0 };
     out.push({
       id: 'wine_press', pos: press, radius: 2,
-      label: '[E] Examine the wine press',
+      label: '[R] Examine the wine press',
       visibleIf: (e) => !e.combat?.inCombat,
       run: narr('f50_press', 'A wine press. Big, rusty, and hungry. If only you could shove someone into it. (Shove them in combat!)'),
     });
@@ -363,7 +363,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     ];
     spots.forEach(([x, z], i) => {
       const isWine = i % 2 === 0;
-      once(`take_wine_${i}`, x, z, isWine ? '[E] Take a bottle of wine' : '[E] Take a broken bottle', (e) => {
+      once(`take_wine_${i}`, x, z, isWine ? '[R] Take a bottle of wine' : '[R] Take a broken bottle', (e) => {
         if (isWine) {
           grant(e, ['wine_bottle']);
           void e.narrate('f50_wine', "You take the wine. It's been fermenting for centuries. It's basically vinegar. You'll drink it anyway.", 3200);
@@ -375,7 +375,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'open_trapdoor', pos: { x: r.x1, z: r.z0 }, radius: 2,
-      label: '[E] Open the trapdoor',
+      label: '[R] Open the trapdoor',
       visibleIf: (e) => !e.hasFlag('trapdoor_open'),
       run: (e) => {
         const keyed = e.hasItemInInventory('rusty_key') || e.hasItemInInventory('lockpick');
@@ -392,14 +392,14 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   // ── R7 — the flooded passage ──
   {
     const r = R('r7');
-    once('search_body_r7', r.x0, r.z0, '[E] Search the floating body', (e) => {
+    once('search_body_r7', r.x0, r.z0, '[R] Search the floating body', (e) => {
       void e.narrate('f50_body', "A body. Floating. It's been here a while. It's wearing armor. Good armor. You take the armor. The body doesn't mind. The body is DEAD.", 4200);
       grant(e, ['leather_boot'], 5);
       e.pushLog('A note pinned to the boot: "The soap is in the pipes. Don\'t ask why."', 'system');
     });
     out.push({
       id: 'submerged_chest_r7', pos: { x: r.x1, z: r.z0 + 1 }, radius: 2,
-      label: '[E] Open the submerged chest',
+      label: '[R] Open the submerged chest',
       visibleIf: (e) => !e.hasFlag('chest_r7_open'),
       run: (e) => {
         if (!e.hasFlag('water_drained') && !e.abilityCheck('con', 12)) {
@@ -418,7 +418,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   // ── R8 — the pipe junction ──
   {
     const r = R('r8');
-    once('reach_pipe', r.x1 - 1, r.z0 + 1, '[E] Reach into the medium pipe', (e) => {
+    once('reach_pipe', r.x1 - 1, r.z0 + 1, '[R] Reach into the medium pipe', (e) => {
       grant(e, ['goblin_soap']);
       if (Math.random() < 0.25) {
         e.applyCondition(e.combat!.living('party')[0].id, 'bleeding', 2);
@@ -429,7 +429,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'turn_valve', pos: { x: r.x0, z: r.z0 + 2 }, radius: 2,
-      label: '[E] Turn the valve',
+      label: '[R] Turn the valve',
       visibleIf: (e) => !e.hasFlag('water_drained'),
       run: (e) => {
         if (isPlumber(e) || e.abilityCheck('str', 12)) {
@@ -443,7 +443,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'fill_flask', pos: { x: r.x0 + 1, z: r.z1 }, radius: 2,
-      label: '[E] Fill the flask',
+      label: '[R] Fill the flask',
       visibleIf: (e) => flagCount(e, 'flask_fill_') < 3,
       run: (e) => {
         e.setFlag(`flask_fill_${flagCount(e, 'flask_fill_')}`);
@@ -453,7 +453,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'climb_pipe_14', pos: { x: r.x0 + 1, z: r.z0 - 1 }, radius: 2,
-      label: '[E] Climb the large pipe (STR/Plumber)',
+      label: '[R] Climb the large pipe (STR/Plumber)',
       visibleIf: (e) => !e.hasFlag('pipe_climbed'),
       run: (e) => {
         if (isPlumber(e) || e.abilityCheck('str', 10)) {
@@ -469,7 +469,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   // ── R9 — the guarded door ──
   {
     const r = R('r9');
-    once('read_sign_r9', r.x0, r.z0, '[E] Read the sign on the door', narr('f50_sign', 'The sign reads: "GRIBNAB\'S BATH — KNOCK FIRST — SOAP REQUIRED". Someone has written "please" in smaller letters underneath. Someone has crossed out "please".'));
+    once('read_sign_r9', r.x0, r.z0, '[R] Read the sign on the door', narr('f50_sign', 'The sign reads: "GRIBNAB\'S BATH — KNOCK FIRST — SOAP REQUIRED". Someone has written "please" in smaller letters underneath. Someone has crossed out "please".'));
   }
 
   // ── R10 — the guard's antechamber ──
@@ -477,7 +477,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r10');
     out.push({
       id: 'rest_bunk', pos: { x: r.x1, z: r.z0 }, radius: 2,
-      label: '[E] Rest on the bunk',
+      label: '[R] Rest on the bunk',
       visibleIf: (e) => !e.hasFlag('rest_bunk_used'),
       once: true,
       run: (e) => {
@@ -488,7 +488,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'footlocker_r10', pos: { x: r.x0, z: r.z0 + 1 }, radius: 2,
-      label: '[E] Open the footlocker',
+      label: '[R] Open the footlocker',
       visibleIf: (e) => !e.hasFlag('footlocker_r10_open'),
       run: (e) => {
         const keyed = e.hasItemInInventory('rusty_key') || e.hasItemInInventory('lockpick');
@@ -503,7 +503,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'dice_table', pos: { x: (r.x0 + r.x1) >> 1, z: r.z1 }, radius: 2,
-      label: '[E] Gamble at the dice table (5 gold)',
+      label: '[R] Gamble at the dice table (5 gold)',
       visibleIf: (e) => flagCount(e, 'gamble_') < 3 && e.gold >= 5,
       run: (e) => {
         e.setFlag(`gamble_${flagCount(e, 'gamble_')}`);
@@ -525,11 +525,11 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   // ── R11 — the upper sewer ──
   {
     const r = R('r11');
-    once('search_nest_r11', r.x0, r.z1, '[E] Search the nest', (e) => {
+    once('search_nest_r11', r.x0, r.z1, '[R] Search the nest', (e) => {
       grant(e, ['soap_chunk']);
       e.pushLog('The nest holds three rat teeth and — bless the rats — a SOAP CHUNK.', 'system');
     });
-    once('peek_crack', r.x1, r.z0, '[E] Peek through the crack in the wall', (e) => {
+    once('peek_crack', r.x1, r.z0, '[R] Peek through the crack in the wall', (e) => {
       e.setFlag('scouted_12');
       void e.narrate('f50_crack', 'Through the crack: a flooded room. Rats. A large one with opinions. You now have the drop on them — they\'ll be Surprised when you fight.', 4000);
     });
@@ -538,13 +538,13 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   // ── R12 — the flooded rat den ──
   {
     const r = R('r12');
-    once('search_corpse_r12', r.x0, r.z0, '[E] Search the floating corpse', (e) => {
+    once('search_corpse_r12', r.x0, r.z0, '[R] Search the floating corpse', (e) => {
       grant(e, ['rat_whisker'], 8);
       void e.narrate('f50_corpse', "A note: 'The Hermit lies. Trust no one. Especially not the one who smiles.' The Hermit smiles. The Hermit is ALWAYS smiling.", 4200);
     });
     out.push({
       id: 'open_drain_r12', pos: { x: r.x1, z: r.z1 }, radius: 2,
-      label: '[E] Open the drain (Plumber)',
+      label: '[R] Open the drain (Plumber)',
       visibleIf: (e) => !e.hasFlag('drain_open'),
       run: (e) => {
         if (isPlumber(e)) {
@@ -566,7 +566,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       [r.x0, r.z0], [r.x1, r.z0], [r.x0, r.z1], [r.x1, r.z1],
     ];
     patches.forEach(([x, z], i) => {
-      once(`eat_mushroom_${i}`, x, z, i === poisonIdx ? '[E] Eat the mushroom' : '[E] Eat the glowing mushroom', (e) => {
+      once(`eat_mushroom_${i}`, x, z, i === poisonIdx ? '[R] Eat the mushroom' : '[R] Eat the glowing mushroom', (e) => {
         if (i === poisonIdx) {
           e.applyCondition(e.combat!.living('party')[0].id, 'poisoned', 3);
           void e.narrate('f50_poison_mush', 'That one was NOT glowing. Why was it not glowing. The dungeon laughs. Poisoned.', 3600);
@@ -577,30 +577,30 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         }
       });
     });
-    once('sit_circle', (r.x0 + r.x1) >> 1, (r.z0 + r.z1) >> 1, '[E] Sit in the mushroom circle', (e) => {
+    once('sit_circle', (r.x0 + r.x1) >> 1, (r.z0 + r.z1) >> 1, '[R] Sit in the mushroom circle', (e) => {
       e.applyCondition(e.combat!.living('party')[0].id, 'hallucinating', 2);
       e.setFlag('mushroom_door');
       void e.narrate('f50_circle', "You sit in the mushroom circle. The world SPINS. The world CHANGES. You see things. You see a DOOR. A door that's ALWAYS been there. A door that's WAITING.", 4600);
     });
-    once('read_note_r13', r.x0, (r.z0 + r.z1) >> 1, '[E] Read the note on the wall', narr('f50_note13', 'The wall note reads: "The Hermit was here before the dungeon. The dungeon grew around him."'));
+    once('read_note_r13', r.x0, (r.z0 + r.z1) >> 1, '[R] Read the note on the wall', narr('f50_note13', 'The wall note reads: "The Hermit was here before the dungeon. The dungeon grew around him."'));
   }
 
   // ── R14 — pipe maintenance ──
   {
     const r = R('r14');
-    once('take_wrench', r.x0, r.z0, '[E] Take the wrench', (e) => {
+    once('take_wrench', r.x0, r.z0, '[R] Take the wrench', (e) => {
       grant(e, ['wrench']);
       void e.narrate('f50_wrench', "You pick up a wrench. It feels right. This is the first time anything has felt right today.", 3600);
     });
-    once('take_plunger', r.x1, r.z0, '[E] Take the plunger', (e) => {
+    once('take_plunger', r.x1, r.z0, '[R] Take the plunger', (e) => {
       grant(e, ['plunger']);
       e.pushLog('The plunger. The most feared weapon in any sewer. 25% chance to stun.', 'system');
     });
-    once('take_pipe_helmet', r.x0, r.z1, '[E] Take the pipe fitting', (e) => {
+    once('take_pipe_helmet', r.x0, r.z1, '[R] Take the pipe fitting', (e) => {
       grant(e, ['pipe_helmet']);
       e.pushLog('A pipe fitting. It fits your head. It\'s a helmet now. −1 physical damage taken.', 'system');
     });
-    once('open_toolbox', (r.x0 + r.x1) >> 1, r.z1, '[E] Open the toolbox', (e) => {
+    once('open_toolbox', (r.x0 + r.x1) >> 1, r.z1, '[R] Open the toolbox', (e) => {
       grant(e, ['soap_chunk'], 2);
       e.pushLog('The toolbox holds nails, wire, and — a SOAP CHUNK. Partial soap. Not enough for the guard. Or maybe it is. Who knows.', 'system');
     });
@@ -609,13 +609,13 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   // ── R15 — the bone pit ──
   {
     const r = R('r15');
-    once('search_skeleton_r15', r.x0, r.z0, '[E] Search the skeleton', (e) => {
+    once('search_skeleton_r15', r.x0, r.z0, '[R] Search the skeleton', (e) => {
       grant(e, ['ribcage_armor'], 5);
       e.pushLog('The skeleton yields 5 gold and a ribcage. It fits like a dream. A bony, hygienically questionable dream.', 'system');
     });
     out.push({
       id: 'bone_pedestal', pos: { x: (r.x0 + r.x1) >> 1, z: r.z0 + 1 }, radius: 2,
-      label: '[E] Place the severed finger on the bone pedestal',
+      label: '[R] Place the severed finger on the bone pedestal',
       visibleIf: (e) => e.hasItemInInventory('severed_finger') && !e.hasFlag('finger_pedestal'),
       run: (e) => {
         e.setFlag('finger_pedestal');
@@ -632,7 +632,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'burn_bones', pos: { x: r.x1, z: r.z0 + 1 }, radius: 2,
-      label: '[E] Burn the bones',
+      label: '[R] Burn the bones',
       visibleIf: (e) => e.torchFuel > 0 && !e.hasFlag('bones_burned'),
       run: (e) => {
         e.setFlag('bones_burned');
@@ -642,7 +642,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'find_tunnel_r17', pos: { x: r.x1, z: r.z0 }, radius: 2,
-      label: '[E] Search for the hidden tunnel (WIS)',
+      label: '[R] Search for the hidden tunnel (WIS)',
       visibleIf: (e) => !e.hasFlag('vault_tunnel'),
       run: (e) => {
         const keyed = e.hasItemInInventory('rusty_key') || e.hasItemInInventory('lockpick');
@@ -663,14 +663,14 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   // ── R16 — the hidden room ──
   {
     const r = R('r16');
-    once('chest_r16', r.x1, r.z1, '[E] Open the chest', (e) => {
+    once('chest_r16', r.x1, r.z1, '[R] Open the chest', (e) => {
       grant(e, ['ghost_soup'], 20);
       e.pushLog('The chest holds 20 gold and a bowl of GHOST SOUP. It\'s warm. It should not be warm. It is not yours.', 'system');
     });
-    once('mirror_r16', r.x0, r.z0, '[E] Look in the mirror', narr('f50_mirror', 'You look in the mirror. You see yourself, but cleaner. The mirror is a liar. You respect the hustle.'));
+    once('mirror_r16', r.x0, r.z0, '[R] Look in the mirror', narr('f50_mirror', 'You look in the mirror. You see yourself, but cleaner. The mirror is a liar. You respect the hustle.'));
     out.push({
       id: 'rest_bed_r16', pos: { x: (r.x0 + r.x1) >> 1, z: r.z1 }, radius: 2,
-      label: '[E] Rest in the bed',
+      label: '[R] Rest in the bed',
       visibleIf: (e) => !e.hasFlag('rest_bed_used'),
       once: true,
       run: (e) => {
@@ -687,7 +687,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r17');
     out.push({
       id: 'chest_vault', pos: { x: (r.x0 + r.x1) >> 1, z: (r.z0 + r.z1) >> 1 }, radius: 2,
-      label: '[E] Open the vault chest',
+      label: '[R] Open the vault chest',
       visibleIf: (e) => !e.hasFlag('vault_opened'),
       run: (e) => {
         e.setFlag('vault_opened');
@@ -706,7 +706,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r18');
     out.push({
       id: 'examine_compass', pos: { x: (r.x0 + r.x1) >> 1, z: r.z0 }, radius: 2,
-      label: '[E] Examine the compass rose',
+      label: '[R] Examine the compass rose',
       visibleIf: (e) => e.hasFlag('met_scrag') && !e.hasFlag('compass_active'),
       run: (e) => {
         e.setFlag('compass_active');
@@ -715,7 +715,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'fountain_pour', pos: { x: (r.x0 + r.x1) >> 1, z: r.z1 }, radius: 2,
-      label: '[E] Pour water into the fountain',
+      label: '[R] Pour water into the fountain',
       visibleIf: (e) => e.hasItemInInventory('water_flask') && !e.hasFlag('fountain_done'),
       run: (e) => {
         e.setFlag('fountain_done');
@@ -731,7 +731,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r1 = R('r1');
     out.push({
       id: 'clear_debris_19', pos: { x: r1.x0 + 2, z: r1.z1 + 1 }, radius: 2,
-      label: '[E] Clear the debris (STR)',
+      label: '[R] Clear the debris (STR)',
       visibleIf: (e) => !e.hasFlag('shortcut_open'),
       run: (e) => {
         if (isPlumber(e) || e.abilityCheck('str', 10)) {
@@ -743,11 +743,11 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       },
     });
     const r = R('r19');
-    once('search_skeleton_r19', r.x0, r.z0, '[E] Search the skeleton', (e) => {
+    once('search_skeleton_r19', r.x0, r.z0, '[R] Search the skeleton', (e) => {
       grant(e, [], 3);
       void e.narrate('f50_skeleton19', "A skeleton near the gap. Its note: 'I almost made it back. The bonfire was right there.' You take the 3 gold. The skeleton doesn't mind.", 3800);
     });
-    once('look_up', r.x1, r.z0, '[E] Look up through the crack', narr('f50_look_up', 'Through the crack in the ceiling: stars. Or crystals. Or a very large eye. You decide it\'s stars.'));
+    once('look_up', r.x1, r.z0, '[R] Look up through the crack', narr('f50_look_up', 'Through the crack in the ceiling: stars. Or crystals. Or a very large eye. You decide it\'s stars.'));
   }
 
   // ── R20 — the old well ──
@@ -755,7 +755,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r20');
     out.push({
       id: 'well_lower', pos: { x: (r.x0 + r.x1) >> 1, z: r.z0 }, radius: 2,
-      label: '[E] Lower into the well',
+      label: '[R] Lower into the well',
       run: (e) => {
         const r7 = R('r7');
         const dest = { x: r7.x0 + 5, z: r7.z0 + 1 };
@@ -769,7 +769,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'well_drop_finger', pos: { x: (r.x0 + r.x1) >> 1, z: r.z1 }, radius: 2,
-      label: '[E] Drop the severed finger into the well',
+      label: '[R] Drop the severed finger into the well',
       visibleIf: (e) => e.hasItemInInventory('severed_finger') && !e.hasFlag('finger_in_well'),
       run: (e) => {
         e.setFlag('finger_in_well');
@@ -780,7 +780,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         void e.narrate('f50_well_finger', 'The finger drops. The ring flashes once, twice, and is gone. You feel blessed. The Hermit does not. The quest is failed.', 4400);
       },
     });
-    once('take_bucket_r20', r.x0, (r.z0 + r.z1) >> 1, '[E] Take the bucket', (e) => {
+    once('take_bucket_r20', r.x0, (r.z0 + r.z1) >> 1, '[R] Take the bucket', (e) => {
       grant(e, ['wooden_bucket']);
       e.pushLog('A bucket from the well. A helmet? A weapon? A statement? Yes.', 'system');
     });
@@ -791,7 +791,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r21');
     out.push({
       id: 'study_map', pos: { x: r.x0, z: r.z1 }, radius: 2,
-      label: '[E] Study the map',
+      label: '[R] Study the map',
       visibleIf: (e) => !e.hasFlag('map_studied'),
       run: (e) => {
         e.setFlag('map_studied');
@@ -802,11 +802,11 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         e.pushLog('The goblin map reveals the floor ahead: armory, flooded deep, throne antechamber, and the BATH. The bath is circled. Twice.', 'system');
       },
     });
-    once('footlocker_r21', r.x1, r.z0, '[E] Open the footlocker', (e) => {
+    once('footlocker_r21', r.x1, r.z0, '[R] Open the footlocker', (e) => {
       grant(e, ['goblin_spear'], 15);
       e.pushLog('The footlocker holds 15 gold and a GOBLIN SPEAR. Crude, sharp, and smug about it.', 'system');
     });
-    once('eat_stew', (r.x0 + r.x1) >> 1, r.z0, '[E] Eat the stew', (e) => {
+    once('eat_stew', (r.x0 + r.x1) >> 1, r.z0, '[R] Eat the stew', (e) => {
       e.healGreg(10);
       e.pushLog('The stew is... edible. That is the best you can say. +10 HP.', 'system');
     });
@@ -818,35 +818,35 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const rackUsed = (e: GameEngineLike) => e.hasFlag('rack_axe') || e.hasFlag('rack_spear') || e.hasFlag('rack_mace');
     out.push({
       id: 'take_axe', pos: { x: r.x0, z: r.z0 }, radius: 2,
-      label: '[E] Take the Rusty Axe from the rack',
+      label: '[R] Take the Rusty Axe from the rack',
       visibleIf: (e) => !rackUsed(e),
       run: (e) => { e.setFlag('rack_axe'); grant(e, ['rusty_axe']); e.pushLog('The Rusty Axe. Mostly rust, technically an axe.', 'system'); },
     });
     out.push({
       id: 'take_spear', pos: { x: r.x0 + 1, z: r.z0 }, radius: 2,
-      label: '[E] Take the Rusty Spear from the rack',
+      label: '[R] Take the Rusty Spear from the rack',
       visibleIf: (e) => !rackUsed(e),
       run: (e) => { e.setFlag('rack_spear'); grant(e, ['rusty_spear']); e.pushLog('The Rusty Spear. Pointy end, rusted end, middle is a mystery.', 'system'); },
     });
     out.push({
       id: 'take_mace', pos: { x: r.x0 + 2, z: r.z0 }, radius: 2,
-      label: '[E] Take the Rusty Mace from the rack',
+      label: '[R] Take the Rusty Mace from the rack',
       visibleIf: (e) => !rackUsed(e),
       run: (e) => { e.setFlag('rack_mace'); grant(e, ['rusty_mace']); e.pushLog('The Rusty Mace. 10% chance to rattle a brain. Yours included.', 'system'); },
     });
     out.push({
       id: 'take_vest', pos: { x: r.x0, z: r.z1 }, radius: 2,
-      label: '[E] Take the Leather Vest from the rack',
+      label: '[R] Take the Leather Vest from the rack',
       visibleIf: (e) => !e.hasFlag('armor_rack_done'),
       run: (e) => { e.setFlag('armor_rack_done'); grant(e, ['leather_vest']); e.pushLog('The Leather Vest. +1 AC, goblin-grade stitching.', 'system'); },
     });
     out.push({
       id: 'take_chain', pos: { x: r.x0 + 1, z: r.z1 }, radius: 2,
-      label: '[E] Take the Chain Shirt from the rack',
+      label: '[R] Take the Chain Shirt from the rack',
       visibleIf: (e) => !e.hasFlag('armor_rack_done'),
       run: (e) => { e.setFlag('armor_rack_done'); grant(e, ['chain_shirt']); e.pushLog('The Chain Shirt. +2 AC, rings of questionable provenance.', 'system'); },
     });
-    once('read_note_r22', r.x1, (r.z0 + r.z1) >> 1, '[E] Read the note', narr('f50_note22', 'The note reads: "The King is in the bath. He is always in the bath. Do not disturb him. Unless you have soap. Then disturb him."'));
+    once('read_note_r22', r.x1, (r.z0 + r.z1) >> 1, '[R] Read the note', narr('f50_note22', 'The note reads: "The King is in the bath. He is always in the bath. Do not disturb him. Unless you have soap. Then disturb him."'));
   }
 
   // ── R23 — the flooded deep ──
@@ -854,7 +854,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r23');
     out.push({
       id: 'altar_r23', pos: { x: r.x0, z: r.z0 }, radius: 2,
-      label: '[E] Place soap on the altar',
+      label: '[R] Place soap on the altar',
       visibleIf: (e) => hasAnySoap(e) && !e.hasFlag('water_drained'),
       run: (e) => {
         consumeAnySoap(e);
@@ -865,7 +865,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'chest_r23', pos: { x: r.x1, z: r.z1 }, radius: 2,
-      label: '[E] Open the submerged chest',
+      label: '[R] Open the submerged chest',
       visibleIf: (e) => !e.hasFlag('chest_r23_open'),
       run: (e) => {
         if (!e.hasFlag('water_drained') && !e.abilityCheck('con', 12)) {
@@ -884,17 +884,17 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   // ── R24 — throne antechamber ──
   {
     const r = R('r24');
-    once('sit_throne', (r.x0 + r.x1) >> 1, r.z0, '[E] Sit on the goblin throne', (e) => {
+    once('sit_throne', (r.x0 + r.x1) >> 1, r.z0, '[R] Sit on the goblin throne', (e) => {
       e.setFlag('goblin_respect');
       void e.narrate('f50_throne', 'You sit on the goblin throne. It is exactly goblin-sized, which is to say deeply uncomfortable. But the goblins SEE. You have their respect. They will not attack unless provoked.', 4200);
     });
-    once('tear_banner', r.x0, r.z1, '[E] Tear down the banner', (e) => {
+    once('tear_banner', r.x0, r.z1, '[R] Tear down the banner', (e) => {
       grant(e, ['goblin_banner']);
       e.pushLog('You tear down the throne-room banner. +1 AC. It smells like a parade.', 'system');
     });
     out.push({
       id: 'knock_door', pos: { x: r.x1, z: r.z0 + 1 }, radius: 2,
-      label: '[E] Knock on Gribnab\'s door (soap)',
+      label: '[R] Knock on Gribnab\'s door (soap)',
       visibleIf: (e) => !e.hasFlag('gribnab_door_open') && hasAnySoap(e),
       run: (e) => {
         consumeAnySoap(e);
@@ -905,7 +905,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     out.push({
       id: 'force_door', pos: { x: r.x1, z: r.z0 + 1 }, radius: 2,
-      label: '[E] Force the door',
+      label: '[R] Force the door',
       visibleIf: (e) => !e.hasFlag('gribnab_door_open') && !hasAnySoap(e),
       run: (e) => {
         if (isPlumber(e) || e.abilityCheck('str', 14)) {
@@ -927,23 +927,23 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       [r.x0 + 2, r.z0 + 3], [r.x0 + 4, r.z0 + 5], [r.x1 - 2, r.z0 + 2], [r.x1 - 1, r.z0 + 6],
     ];
     duckSpots.forEach(([x, z], i) => {
-      once(`squeeze_duck_${i}`, x, z, '[E] Take a rubber duck', (e) => {
+      once(`squeeze_duck_${i}`, x, z, '[R] Take a rubber duck', (e) => {
         grant(e, ['rubber_duck']);
         e.playSfx('screech', 0.4);
         e.pushLog('SQUEAK. The duck is taken. The duck is magnificent.', 'system');
       });
     });
-    once('take_towel', r.x0, r.z0, '[E] Take the towel', (e) => {
+    once('take_towel', r.x0, r.z0, '[R] Take the towel', (e) => {
       grant(e, ['towel']);
       e.pushLog('A towel from the King\'s rack. Whip-crack! 50% chance to blind on a hit.', 'system');
     });
-    once('pour_bubble_bath', (r.x0 + r.x1) >> 1, r.z0 + 1, '[E] Take the bubble bath', (e) => {
+    once('pour_bubble_bath', (r.x0 + r.x1) >> 1, r.z0 + 1, '[R] Take the bubble bath', (e) => {
       grant(e, ['bubble_bath']);
       e.pushLog('A bottle of bubble bath. Pour it at your feet for Slippery — the floor gleams with menace.', 'system');
     });
     out.push({
       id: 'exit_stairs', pos: { x: r.x0 + 4, z: r.z1 }, radius: 2,
-      label: '[E] Climb the stairs to Floor 49',
+      label: '[R] Climb the stairs to Floor 49',
       visibleIf: (e) => e.hasFlag('gribnab_dead') || e.hasFlag('gribnab_befriended'),
       run: (e) => {
         void e.narrate('f50_departure', 'The staircase is cold. The staircase is stone. The staircase goes UP. You climb away from the bath. You climb away from the soap. You climb toward Floor 49. You climb toward the LIGHT.', 5600);

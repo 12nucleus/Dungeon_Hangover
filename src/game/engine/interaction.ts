@@ -52,12 +52,12 @@ export function updateFog(engine: any, _dt: number) {
   // block the whole room from grazing camera angles. A flat dark tile reads
   // as "unexplored black floor" from any angle without occluding the scene.
   if (!engine.fogMesh && engine.fogGroup) {
-    // Tall opaque columns, not flat slabs: a slab lets the camera see OVER
-    // low walls into unexplored rooms (walls on floor 50 are 2.6–4.0 tall).
-    // A column as tall as the tallest wall hides everything beyond it from
-    // every angle. Only UNEXPLORED tiles carry one, so the explored area
-    // stays pillar-free.
-    const g = new THREE.BoxGeometry(1.08, 5.2, 1.08);
+    // Tall opaque columns on UNEXPLORED FLOOR tiles. A column as tall as the
+    // tallest wall hides rooms beyond it from every camera angle (a flat slab
+    // let the camera see over low walls). Walls themselves are never fogged —
+    // they're opaque voxels, and fogging them turned the explored room's own
+    // walls into black monoliths.
+    const g = new THREE.BoxGeometry(1.08, 4.8, 1.08);
     const m = new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 1, transparent: false, depthWrite: true });
     const mesh = new THREE.InstancedMesh(g, m, S * S);
     mesh.renderOrder = 5;
@@ -75,14 +75,13 @@ export function updateFog(engine: any, _dt: number) {
     for (let x = 0; x < S; x++) {
       for (let z = 0; z < S; z++) {
         if (engine.explored[x][z]) continue;
-        // Fog EVERY unexplored tile — floors AND walls — so the map layout
-        // can't be read through the darkness. Columns sit on the floor
-        // surface and rise past the tallest wall.
+        // Only unexplored WALKABLE tiles are fogged — the walls stay as
+        // terrain. The leader's own tile is never fogged.
         const onSelf = x === px && z === pz;
-        if (onSelf) continue;   // never fog the leader's own tile
+        if (onSelf || !engine.world.isWalkable(x, z)) continue;
         const wp = unitWorld(engine, { x, z });
         const floorY = engine.world.heightAt(x, z);
-        fogDummy.position.set(wp.x, floorY + 2.6, wp.z);
+        fogDummy.position.set(wp.x, floorY + 2.4, wp.z);
         fogDummy.updateMatrix();
         engine.fogMesh.setMatrixAt(n, fogDummy.matrix);
         n++;

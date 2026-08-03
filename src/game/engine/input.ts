@@ -29,8 +29,15 @@ export function onPointerDown(engine: any, e: PointerEvent) {
   const propHit = engine.ray.intersectObjects(engine.props.pickboxes, false)[0];
   const tile = pickTile(engine);
 
-  if (engine.phase === 'explore') engine.clickExplore(unitHit?.object.userData.unitId, tile, propHit?.object.userData.propId);
-  else if (engine.phase === 'combat') engine.clickCombat(unitHit?.object.userData.unitId, tile, propHit?.object.userData.propId);
+  if (engine.phase === 'explore') {
+    // clicking an active interactable's tile triggers it (puddle, chest, valve…)
+    const it = engine.activeInteractable;
+    if (it && !propHit && tile && Math.max(Math.abs(it.pos.x - tile.x), Math.abs(it.pos.z - tile.z)) <= it.radius) {
+      engine.triggerActiveInteractable();
+      return;
+    }
+    engine.clickExplore(unitHit?.object.userData.unitId, tile, propHit?.object.userData.propId);
+  } else if (engine.phase === 'combat') engine.clickCombat(unitHit?.object.userData.unitId, tile, propHit?.object.userData.propId);
 }
 
 export function onWheel(engine: any, e: WheelEvent) {
@@ -72,11 +79,11 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   engine.keys.add(k);
   const cutscene = engine.busy && (engine.introActive || engine.bossCineActive);
   if (k === 'q' && !cutscene) engine.iso.rotate(1);
-  if (k === 'e' && !cutscene) {
-    // interact with the active prompt first (puddle, chest, valve…),
-    // else the camera rotation the key originally did
+  if (k === 'e' && !cutscene) engine.iso.rotate(-1);
+  if (k === 'r' && !cutscene) {
+    // interact with the active prompt (puddle, chest, valve…)
     if (engine.activeInteractable && engine.phase === 'explore' && !engine.combat.inCombat) engine.triggerActiveInteractable();
-    else engine.iso.rotate(-1);
+    else engine.setHoverInfoOnce('Nothing to interact with here.');
     return;
   }
   if (k === 'j' && engine.phase !== 'menu') { engine.toggleQuestLog(); return; }

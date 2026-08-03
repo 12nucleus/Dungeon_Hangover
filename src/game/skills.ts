@@ -650,8 +650,10 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
     }));
   };
 
-  // R3 — three small rats
-  smallRat(sp.rooms.r3, 'r3_rats', 3);
+  // R3 — the sewer tunnel beside spawn is deliberately EMPTY: the player's
+  // first fight should come on their terms (Room 4 nursery), not from mobs
+  // camping the room next to the bonfire. The tunnel keeps its interactables
+  // (skeleton, barrel) and can still roll the torch-off ambush.
   // R4 — the nursery: mother + 4 babies
   units.push(mkUnit({
     name: 'Mother Rat', title: 'Matriarch of the Nursery', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r4),

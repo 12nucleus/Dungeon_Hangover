@@ -190,6 +190,9 @@ export class GameEngine {
       }
     } catch { /* asset missing ? text only */ }
     await this.cineDelay(Math.max(minMs, dur));
+    // narrate owns its own caption lifecycle — clear the line after it plays
+    // (cutscene beats that clearCine() early are harmless double-clears)
+    this.clearCine();
   }
 
   /** a full-screen black fade (0..1) for scene transitions */
