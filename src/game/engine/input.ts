@@ -101,6 +101,8 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
       engine.cutsceneDirector?.requestSkip();
       return;
     }
+    // Esc closes the dialogue overlay first — pausing under it is confusing
+    if (engine.showDialogue) { engine.closeDialogue(); return; }
     if (engine.showInventory) { engine.showInventory = false; engine.emitSnapshot(); return; }
     if (engine.showSkillTree) { engine.showSkillTree = false; engine.emitSnapshot(); return; }
     if (engine.targeting) { cancelTargeting(engine); return; }

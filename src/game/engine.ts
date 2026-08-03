@@ -1298,9 +1298,19 @@ export class GameEngine {
       this.titlePrevBg = null;
     }
 
-    // 2. Free the current floor's geometry - disposeFloor handles all
-    //    meshes / rigs / fog / props.
-    if (typeof this.disposeFloor === 'function') this.disposeFloor();
+    // 2. Hide the current floor instead of disposing it — the world is
+    //    rebuilt ONLY once at init(); destroying it here would leave the
+    //    next New Run without a voxel world (disposeFloor was the culprit:
+    //    update()/emitSnapshot read this.world.heights and crashed, and a
+    //    fresh run never rebuilt it). Hiding mirrors enterTavern's pattern.
+    if (this.world) this.world.group.visible = false;
+    if (this.props) this.props.group.visible = false;
+    if (this.fogGroup) this.fogGroup.visible = false;
+    for (const [, v] of this.visuals) {
+      if (v.rig?.group) v.rig.group.visible = false;
+      if (v.proxy) v.proxy.visible = false;
+    }
+    for (const c of this.enemyCones) c.mesh.visible = false;
 
     // 3. Reset combat / phase state.
     this.inTavern = false;
@@ -1469,6 +1479,11 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
+  /** flip the pause flag (Esc key / pause menu) */
+  togglePause() {
+    this.setPaused(!this.paused);
+  }
+
   /** list occupied slots (newest first) for the Load / New-Game UI */
   listSlots(): SaveSlotMeta[] { return SaveManager.listSlots(); }
 
@@ -1550,6 +1565,15 @@ export class GameEngine {
     this.combat.inCombat = false;
     this.queue = [];
     this.eventQueue = [];
+    // a run started from the title (after returnToTitle) needs the dungeon
+    // un-hidden again — the world group persists, just hidden
+    if (this.world) this.world.group.visible = true;
+    if (this.props) this.props.group.visible = true;
+    if (this.fogGroup) this.fogGroup.visible = true;
+    for (const [, v] of this.visuals) {
+      if (v.rig?.group) v.rig.group.visible = true;
+      if (v.proxy) v.proxy.visible = true;
+    }
     if (this.cutsceneHost) {
       const title = setupTitleScene(this.cutsceneHost);
       this.titleExt = title.ext;
@@ -2469,6 +2493,9 @@ export class GameEngine {
     // No continuous pulling ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ no jerkiness, no fighting the player's panning.
 
     this.iso.update(dt);
+    // title mode (after returnToTitle) has no voxel world — skip the floor
+    // update paths so the rebuild doesn't wedge the render loop
+    if (!this.world) return;
     this.world.update(dt);
     this.updateDroppedWeapons(dt);
     if (this.structures) this.updateDungeon(dt);
@@ -2743,8 +2770,8 @@ export class GameEngine {
     const minimapUnits = this.combat.units
       .filter(u => u.alive && this.explored[u.pos.x]?.[u.pos.z])
       .map(u => ({ x: u.pos.x, z: u.pos.z, team: u.team }));
-    // minimap: only show explored tiles (fog of war)
-    const MS = this.world.heights.length;  // WORLD_SIZE
+    // minimap: only show explored tiles (fog of war) — empty in title mode
+    const MS = this.world?.heights?.length ?? 0;  // WORLD_SIZE
     const minimapWalk: boolean[][] = [];
     const minimapHeights: number[][] = [];
     for (let x = 0; x < MS; x++) {
@@ -2783,6 +2810,7 @@ export class GameEngine {
       torchEquipped: this.combat?.living('party')[0]?.weapon === 'torch',
       bigMessage: this.bigMessage,
       cinematic: this.cinematic,
+      busy: this.busy,
       paused: this.paused,
       minimapTiles: { walk: minimapWalk, heights: minimapHeights, units: minimapUnits },
       showBonfireUI: this.showBonfireUI,

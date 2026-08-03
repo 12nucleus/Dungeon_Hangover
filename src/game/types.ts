@@ -236,8 +236,10 @@ export interface UISnapshot {
   throwing: boolean;
   torchLit: boolean;
   torchEquipped: boolean;
-  bigMessage: string | null;
+  bigMessage?: string | null;
   cinematic?: boolean;
+  /** engine is mid-cutscene/interaction — UI should not fight it */
+  busy?: boolean;
   /** true while the in-game pause menu is open (simulation frozen) */
   paused?: boolean;
   minimapTiles?: { walk: boolean[][]; heights: number[][]; units: { x: number; z: number; team: 'party' | 'enemy'; }[] };

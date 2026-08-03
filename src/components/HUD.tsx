@@ -180,8 +180,10 @@ export function HUD({ snap, engine }: Props) {
 
   return (
     <div className="hud">
-      {/* ══ MAIN MENU ══ */}
-      {phase === 'menu' && !snap.cinematic && (
+      {/* ══ MAIN MENU ══ (title idle only — hidden while the intro/cutscene
+          narration runs: between caption beats `cinematic` is false but the
+          cutscene is still playing, so the menu would flicker over it) */}
+      {phase === 'menu' && !snap.cinematic && !snap.busy && (
         <div className="overlay-screen menu">
           <div className="menu-inner">
             <div className="menu-rune">◆ ◆ ◆</div>
