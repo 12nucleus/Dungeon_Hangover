@@ -129,8 +129,29 @@ export class GameEngine {
   public showDialogue: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null = null;
   /** current dialogue tree node (persists across clicks; null = fresh) */
   public dialogueNodeId: string | null = null;
+
+  // ── dice-roll visual (BG3-style) ──────────────────────
+  /** last visual dice roll (HUD animates a 3D die for ~2s) */
+  public diceShow: { die: string; total: number; reason: string; at: number } | null = null;
+  private diceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** show a rolling-die overlay for a check (perception, gamble, luck…) */
+  public showDiceRoll(die: string, total: number, reason: string) {
+    this.diceShow = { die, total, reason, at: performance.now() };
+    clearTimeout(this.diceTimer!);
+    this.diceTimer = setTimeout(() => {
+      if (this.diceShow && performance.now() - this.diceShow.at > 3200) {
+        this.diceShow = null;
+        this.emitSnapshot();
+      }
+    }, 3400);
+    this.emitSnapshot();
+  }
   public sneaking = false;
   public running = false;
+  /** first-person camera mode (P key) — camera rides on the hero's head */
+  public firstPerson = false;
+  private heroHiddenByFP = false;
   public crouchLerp = 0;
   /** when true the player has queued a throw (uses inventory item as projectile) */
   public throwing = false;
@@ -1841,6 +1862,14 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
+  /** toggle the first-person camera (P) — rides on the hero's head */
+  toggleFirstPerson() {
+    this.firstPerson = !this.firstPerson;
+    this.audio.play('ui_click', 0.5);
+    this.pushLog(this.firstPerson ? '🎥 First-person view. Q/E rotates your head.' : '🎥 Back to the isometric view.', 'system');
+    this.emitSnapshot();
+  }
+
   toggleTorch() {
     this.torchLit = !this.torchLit;
     this.audio.play('ui_click', 0.4);
@@ -2496,6 +2525,24 @@ export class GameEngine {
     // title mode (after returnToTitle) has no voxel world — skip the floor
     // update paths so the rebuild doesn't wedge the render loop
     if (!this.world) return;
+    // ── first-person view: camera rides on the hero's head, looking along
+    //    the iso yaw (Q/E still rotates the view). ──
+    const fpHero = this.combat?.living('party')[0];
+    if (this.firstPerson && fpHero && fpHero.alive) {
+      const eye = this.unitWorld(fpHero.pos).add(new THREE.Vector3(0, 1.7, 0));
+      const dir = new THREE.Vector3(Math.sin(this.iso.yaw), 0, Math.cos(this.iso.yaw));
+      this.iso.cam.position.copy(eye);
+      this.iso.cam.lookAt(eye.clone().addScaledVector(dir, 4));
+      this.iso.cam.up.set(0, 1, 0);
+      const fv = this.visuals.get(fpHero.id);
+      if (fv) { fv.rig.group.visible = false; fv.proxy.visible = false; }
+      this.ring.visible = false;
+      this.heroHiddenByFP = true;
+    } else if (this.heroHiddenByFP) {
+      const fv = this.visuals.get(fpHero?.id ?? '');
+      if (fv) { fv.rig.group.visible = true; fv.proxy.visible = true; }
+      this.heroHiddenByFP = false;
+    }
     this.world.update(dt);
     this.updateDroppedWeapons(dt);
     if (this.structures) this.updateDungeon(dt);
@@ -2828,6 +2875,7 @@ export class GameEngine {
       })),
       runStats: { ...this.runStats },
       showDialogue: this.showDialogue,
+      diceShow: this.diceShow ? { ...this.diceShow } : null,
       pendingLoot: this.pendingLoot ? { source: this.pendingLoot.source, items: [...this.pendingLoot.items], gold: this.pendingLoot.gold } : null,
       showConsole: this.consoleOpen,
       consoleInput: this.consoleInput,

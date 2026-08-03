@@ -611,6 +611,70 @@ html, body, #root {
 }
 .dialogue-close:hover { border-color: #c9a227; color: #f3e9c8; }
 
+/* ── dice roll overlay ── */
+.dice-overlay {
+  position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  pointer-events: none; z-index: 30;
+}
+.dice-scene { perspective: 480px; width: 96px; height: 96px; }
+.dice-cube {
+  position: relative; width: 96px; height: 96px;
+  transform-style: preserve-3d;
+  animation: diceTumble 1.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.dice-face {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 44px; font-weight: 900; color: #f3e9c8;
+  background: radial-gradient(circle at 35% 30%, #7a1f2a, #4a1018);
+  border: 2px solid #c9a227; border-radius: 14px;
+  box-shadow: 0 0 24px rgba(255, 170, 60, 0.35);
+  text-shadow: 0 2px 0 #2a0a10;
+}
+.dice-face.f0 { transform: rotateY(0deg) translateZ(48px); }
+.dice-face.f1 { transform: rotateY(90deg) translateZ(48px); }
+.dice-face.f2 { transform: rotateY(180deg) translateZ(48px); }
+.dice-face.f3 { transform: rotateY(-90deg) translateZ(48px); }
+.dice-face.f4 { transform: rotateX(90deg) translateZ(48px); }
+.dice-face.f5 { transform: rotateX(-90deg) translateZ(48px); }
+.dice-cube.d20 .dice-face {
+  background: radial-gradient(circle at 35% 30%, #1f3a7a, #10184a);
+}
+@keyframes diceTumble {
+  0% { transform: rotateX(0) rotateY(0) scale(0.4); opacity: 0; }
+  20% { opacity: 1; }
+  70% { transform: rotateX(720deg) rotateY(540deg) scale(1.15); }
+  100% { transform: rotateX(1080deg) rotateY(720deg) scale(1); }
+}
+.dice-reason {
+  color: #f3e9c8; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;
+  background: rgba(10, 12, 20, 0.75); border: 1px solid rgba(201, 162, 39, 0.5);
+  border-radius: 6px; padding: 4px 16px; white-space: nowrap;
+}
+
+/* ── action feed (live Chronicle lines over the canvas) ── */
+.action-feed {
+  position: absolute; left: 50%; bottom: 148px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  pointer-events: none; z-index: 12; max-width: 640px;
+}
+.action-feed-item {
+  font-size: 12px; color: #d8dce8; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  background: rgba(10, 12, 20, 0.55); border-radius: 4px; padding: 2px 10px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  animation: feedFade 9s linear both;
+}
+.action-feed-item.roll { color: #ffd75e; }
+.action-feed-item.hit { color: #ff9a7a; }
+.action-feed-item.crit { color: #ffd75e; font-weight: 700; }
+.action-feed-item.death { color: #ff7a6b; }
+.action-feed-item.system { color: #9ab8d8; }
+@keyframes feedFade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 /* ── loot preview overlay ── */
 .loot-overlay {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -644,6 +708,7 @@ html, body, #root {
   background: linear-gradient(180deg, #2a3048, #1a1f30); transition: border-color 0.12s;
 }
 .loot-btn.take:hover { border-color: #4ade80; color: #b8f5cf; }
+.loot-btn.examine:hover { border-color: #7dd3fc; color: #cfeafc; }
 .loot-btn.leave:hover { border-color: #ff7a6b; color: #ffc4bc; }
 .loot-gold { color: #ffd75e; font-size: 13px; margin-bottom: 12px; letter-spacing: 1px; }
 .loot-actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; }

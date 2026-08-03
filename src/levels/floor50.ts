@@ -8,7 +8,12 @@
 // seed, never by the layout.
 //
 // All coordinates below are MAP-LOCAL; OFFSET is added to every tile so
-// the 70×70 region sits inside the WORLD_SIZE=120 grid.
+// the 105×105 region sits inside the WORLD_SIZE=150 grid.
+//
+// GRANDEUR PASS: SCALE = 1.5 stretches every room/corridor (width-2
+// corridors become width 3, width-1 gate lanes stay width 1 so blockers
+// can still seal them). Walls are taller and the terrain gets raised
+// mezzanine shelves (r24/r25/r6) plus a sunken oubliette (r20).
 // ─────────────────────────────────────────────────────────────
 import type { LevelDef, LevelStructures, PropPlacement, Rect } from './levelTypes';
 import type { GridPos } from '../game/types';
@@ -22,8 +27,12 @@ import { mulberry32 } from './gen/dungeonGen';
 const S = WORLD_SIZE;
 const OFFSET: GridPos = { x: 24, z: 24 };
 
-// ── the 25 authored rooms (map-local top-left + size) ─────────
-const ROOMS: RoomSpec[] = [
+/** grandeur scale — every authored dimension stretches by this factor */
+const SCALE = 1.5;
+const sc = (n: number) => Math.round(n * SCALE);
+
+// ── the 25 authored rooms (map-local top-left + size, UNSCALED) ────
+const ROOM_SPECS: RoomSpec[] = [
   { id: 'r1', name: "Bonfire Cell", x0: 18, z0: 35, w: 4, h: 4, floor: 'stone' },
   { id: 'r2', name: "Hermit's Cell", x0: 24, z0: 35, w: 3, h: 3, floor: 'stone' },
   { id: 'r3', name: 'Sewer Tunnel', x0: 8, z0: 36, w: 8, h: 2, floor: 'water_shallow' },
@@ -51,15 +60,14 @@ const ROOMS: RoomSpec[] = [
   { id: 'r25', name: 'Bath Chamber', x0: 56, z0: 60, w: 10, h: 8, floor: 'marble' },
 ];
 
-// ── corridors (map-local polylines; width 2 unless noted) ─────
-// 15→18 / 11→18 / 18→19 / 11→8 / 18→9 / 19→20: north cluster
-// 13→8 / 8→9 / 9→20 / 13→16 / 8→14 / 9→10: mid cluster + gates
+// ── corridors (map-local polylines, UNSCALED; width 2 unless noted) ──
+// 15→18 / 11→18 / 18→19 / 11→8 / 18→9 / 19→20: north cluster// 13→8 / 8→9 / 9→20 / 13→16 / 8→14 / 9→10: mid cluster + gates
 // 10→21 → 21→22 → 22→23 → 23→24 → 24→25: the long east spine
 // 3→1 / 1→2 / 3→4 / 4→5 / 5→6 / 6→7 / 7→24: south cluster
 // 11→12: the flooded rat den dead-end
 // 1↔19: the collapsed-tunnel shortcut (runs down the west/south/east
 //       edges of the 70×70 region so it can't shortcut past gates)
-const CORRIDORS: CorridorSpec[] = [
+const CORRIDOR_SPECS: CorridorSpec[] = [
   { pts: [{ x: 54, z: 10 }, { x: 54, z: 11 }], width: 2 },                    // 15→18
   { pts: [{ x: 30, z: 12 }, { x: 49, z: 12 }], width: 2 },                    // 11→18
   { pts: [{ x: 55, z: 13 }, { x: 65, z: 13 }], width: 2 },                    // 18→19
@@ -97,6 +105,53 @@ const CORRIDORS: CorridorSpec[] = [
   { pts: [{ x: 70, z: 14 }, { x: 70, z: 69 }], width: 1 },
 ];
 
+// ── scaled copies: rooms get 1.5×, corridors 1.5× (width 2→3; the
+//    deliberate width-1 gate lanes stay 1 so blockers still seal them).
+//    Endpoints are stretched one extra tile because rooms grow faster
+//    than their connectors — otherwise scaled rooms end up a tile short
+//    of the corridor mouth. The 1↔19 shortcut is hand-tuned below
+//    (its corner joints break under naive scaling).
+const SCALED = (c: CorridorSpec): CorridorSpec => {
+  const pts = c.pts.map((p) => ({ x: sc(p.x), z: sc(p.z) }));
+  if (pts.length >= 2) {
+    const d0 = { x: Math.sign(pts[1].x - pts[0].x), z: Math.sign(pts[1].z - pts[0].z) };
+    pts[0] = { x: pts[0].x - d0.x, z: pts[0].z - d0.z };
+    const L = pts.length - 1;
+    const d1 = { x: Math.sign(pts[L].x - pts[L - 1].x), z: Math.sign(pts[L].z - pts[L - 1].z) };
+    pts[L] = { x: pts[L].x + d1.x, z: pts[L].z + d1.z };
+  }
+  return { pts, width: c.width === 1 ? 1 : 3 };
+};
+const SHORTCUT_SPECS: CorridorSpec[] = [
+  { pts: [{ x: 20, z: 39 }, { x: 20, z: 40 }], width: 1 },   // debris tiles (r1 end)
+  { pts: [{ x: 5, z: 41 }, { x: 20, z: 41 }], width: 2 },    // west run
+  { pts: [{ x: 5, z: 43 }, { x: 5, z: 68 }], width: 2 },     // south-west vertical
+  { pts: [{ x: 7, z: 69 }, { x: 69, z: 69 }], width: 1 },    // south edge
+  { pts: [{ x: 70, z: 14 }, { x: 70, z: 69 }], width: 1 },   // east run
+];
+// hand-tuned shortcut: r1 south edge → (30,59-60) debris → west run z=61
+// (w3 → z 60..62) → vertical x=8 z 63..103 → south edge z=104 → east run
+// x=104 z 21..104 → r19's east edge. Every joint lands on a shared tile.
+const SHORTCUT: CorridorSpec[] = [
+  { pts: [{ x: 30, z: 59 }, { x: 30, z: 60 }], width: 1 },
+  { pts: [{ x: 8, z: 61 }, { x: 30, z: 61 }], width: 3 },
+  { pts: [{ x: 8, z: 63 }, { x: 8, z: 103 }], width: 3 },
+  { pts: [{ x: 8, z: 104 }, { x: 104, z: 104 }], width: 1 },
+  { pts: [{ x: 104, z: 21 }, { x: 104, z: 104 }], width: 3 },
+];
+// the shortcut entries live at the END of CORRIDOR_SPECS (after the 1→19
+// comment block) — strip them before mapping, then push the tuned spans
+const SHORTCUT_N = SHORTCUT_SPECS.length;
+const ROOMS: RoomSpec[] = ROOM_SPECS.map((r) => ({
+  ...r,
+  x0: sc(r.x0), z0: sc(r.z0),
+  w: Math.max(4, sc(r.w)), h: Math.max(3, sc(r.h)),
+}));
+const CORRIDORS: CorridorSpec[] = [
+  ...CORRIDOR_SPECS.slice(0, CORRIDOR_SPECS.length - SHORTCUT_N).map(SCALED),
+  ...SHORTCUT,
+];
+
 const map = buildAuthoredMap(S, OFFSET, ROOMS, CORRIDORS);
 validateAuthoredMap(map, ROOMS);
 
@@ -104,17 +159,24 @@ const O = (p: GridPos): GridPos => ({ x: p.x + OFFSET.x, z: p.z + OFFSET.z });
 const OX = (x: number, z: number): GridPos => ({ x: x + OFFSET.x, z: z + OFFSET.z });
 
 // ── key structural tiles (map-local → world) ─────────────────
-const partySpawn = OX(19, 36);
-const checkpoint = OX(20, 37);
-const bossDoor = OX(60, 58);
-const bossBath = OX(60, 64);
-const goldenChest = OX(64, 66);
-const secretChest = OX(62, 5);
-const hermitChamber = OX(25, 36);
-const exitStairs = OX(60, 67);
+const partySpawn = OX(sc(19), sc(36));
+const checkpoint = OX(sc(20), sc(37));
+const bossDoor = OX(sc(60), sc(58));
+const bossBath = OX(sc(60), sc(64));
+const goldenChest = OX(sc(64), sc(66));
+const secretChest = OX(sc(62), sc(5));
+const hermitChamber = OX(sc(25), sc(37));
+const exitStairs = OX(sc(60), sc(67));
 
 const roomList = ROOMS.map((r) => ({ id: r.id, name: r.name, rect: map.rooms[r.id] }));
 const roomRectOf = (id: string): Rect | undefined => map.rooms[id];
+
+/** every map-local tile in a rect, offset to world coords (gate lane spans) */
+const lane = (x0: number, z0: number, x1: number, z1: number): GridPos[] => {
+  const out: GridPos[] = [];
+  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) out.push(O({ x, z }));
+  return out;
+};
 
 const structures: LevelStructures = {
   partySpawn,
@@ -134,33 +196,46 @@ const structures: LevelStructures = {
   exitStairs,
   rooms: roomList,
   npcs: [
-    { npcId: 'hermit', pos: O({ x: 25, z: 36 }) },
-    { npcId: 'other_hermit', pos: O({ x: 11, z: 29 }) },
-    { npcId: 'scrag', pos: O({ x: 49, z: 22 }) },
+    { npcId: 'hermit', pos: O({ x: sc(25), z: sc(37) }) },
+    { npcId: 'other_hermit', pos: O({ x: sc(11), z: sc(29) }) },
+    { npcId: 'scrag', pos: O({ x: sc(49), z: sc(22) }) },
   ],
   doors: [
-    { id: 'soap_gate', pos: O({ x: 49, z: 25 }), axis: 'z', openedByFlag: 'soap_gate_open' },
-    { id: 'trapdoor67', pos: O({ x: 23, z: 53 }), axis: 'x', openedByFlag: 'trapdoor_open' },
+    { id: 'soap_gate', pos: O({ x: 74, z: 38 }), axis: 'z', openedByFlag: 'soap_gate_open' },
+    { id: 'trapdoor67', pos: O({ x: 35, z: 80 }), axis: 'x', openedByFlag: 'trapdoor_open' },
   ],
+  // gate lanes seal only if the blocker covers the WHOLE single-lane span
   blockers: [
-    { id: 'door16', tiles: [O({ x: 11, z: 24 }), O({ x: 11, z: 25 })], kind: 'secretDoor', openedByFlag: 'mushroom_door' },
-    { id: 'door17', tiles: [O({ x: 58, z: 6 }), O({ x: 59, z: 6 })], kind: 'secretDoor', openedByFlag: 'vault_tunnel' },
-    { id: 'debris56', tiles: [O({ x: 14, z: 54 }), O({ x: 15, z: 54 })], kind: 'rubble', openedByFlag: 'debris_56' },
-    { id: 'debris19', tiles: [O({ x: 20, z: 39 }), O({ x: 20, z: 40 })], kind: 'rubble', openedByFlag: 'shortcut_open' },
-    { id: 'pipeclimb', tiles: [O({ x: 25, z: 24 }), O({ x: 25, z: 25 })], kind: 'rubble', openedByFlag: 'pipe_climbed' },
+    { id: 'door16', tiles: lane(17, 34, 17, 42), kind: 'secretDoor', openedByFlag: 'mushroom_door' },
+    { id: 'door17', tiles: lane(86, 9, 90, 9), kind: 'secretDoor', openedByFlag: 'vault_tunnel' },
+    { id: 'debris56', tiles: lane(20, 81, 24, 81), kind: 'rubble', openedByFlag: 'debris_56' },
+    { id: 'debris19', tiles: lane(30, 59, 30, 60), kind: 'rubble', openedByFlag: 'shortcut_open' },
+    { id: 'pipeclimb', tiles: lane(38, 35, 38, 42), kind: 'rubble', openedByFlag: 'pipe_climbed' },
   ],
   bossDoorOpenFlag: 'gribnab_door_open',
 };
 
-// ── terrain: flat sewer floors, lower ceilings than the Warren ─
+// ── terrain: flat sewer floors, TALLER walls, raised mezzanines + oubliette ─
+const r24r = map.rooms.r24, r25r = map.rooms.r25, r6r = map.rooms.r6, r20r = map.rooms.r20;
+const plateaus = [
+  // r24 throne antechamber — mezzanine shelf along the north wall
+  { rect: { x0: r24r.x0, z0: r24r.z0, x1: r24r.x1, z1: r24r.z0 + 2 }, steps: 2 },
+  // r25 bath chamber — gallery shelf along the south wall overlooking the bath
+  { rect: { x0: r25r.x0, z0: r25r.z1 - 2, x1: r25r.x1, z1: r25r.z1 }, steps: 2 },
+  // r6 wine cellar — low raised platform (barrels stacked high)
+  { rect: { x0: r6r.x0, z0: r6r.z0, x1: r6r.x0 + 1, z1: r6r.z0 + 1 }, steps: 1 },
+  // r20 old well — the OUBLIETTE: a sunken stone pit (water collects at the bottom)
+  { rect: { x0: r20r.x0 + 1, z0: r20r.z0 + 1, x1: r20r.x1 - 1, z1: r20r.z1 - 1 }, steps: -2 },
+];
 const terrain = buildTerrain(map.walk, {
   seed: 20260802,
   floorBase: 1,
   floorSteps: 0,                       // flat — sewers are not terraced
-  wallHeight: [2.6, 4.0],
+  wallHeight: [4.0, 6.0],              // grander ceilings than the old 2.6–4.0
   wallScale: 0.07,
   floorPalette: ['cave_floor', 'cave_stone', 'gravel'],
   wallPalette: ['cave_stone', 'cave_floor'],
+  plateaus,
   flatten: [
     partySpawn, checkpoint, bossDoor, bossBath, goldenChest, secretChest, hermitChamber, exitStairs,
     ...(structures.doors ?? []).map((d) => d.pos),
@@ -174,6 +249,16 @@ for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
   if (map.walk[x][z]) floorMats[x][z] = map.floorMats[x][z];
 }
 const water = map.water;
+// the oubliette collects water — patch the pit floor to deep water
+{
+  const p = plateaus[3].rect;
+  for (let x = p.x0; x <= p.x1; x++) for (let z = p.z0; z <= p.z1; z++) {
+    if (map.walk[x]?.[z]) {
+      water[x][z] = true;
+      floorMats[x][z] = 'cave_floor';
+    }
+  }
+}
 
 // ── reserved tiles: nothing blocking spawns/doors/chests/NPCs ──
 const reserved = new Set<string>();
@@ -188,10 +273,13 @@ const rng = mulberry32(20260802);
 const props: PropPlacement[] = [];
 const on = (x: number, z: number) => !!map.walk[x]?.[z];
 // explicit props (bonfire, braziers…) always place on walkable tiles;
-// the reserved set only guards the GENERIC decor loops below
+// the reserved set only guards the GENERIC decor loops below.
+// NOTE: `put` takes MAP-LOCAL coords and adds OFFSET — the walk grid and
+// prop placement are both in world coordinates.
 const put = (kind: PropPlacement['kind'], x: number, z: number, s = rng()) => {
-  if (!on(x, z)) return;
-  props.push({ kind, x, z, seed: s });
+  const wx = x + OFFSET.x, wz = z + OFFSET.z;
+  if (!on(wx, wz)) return;
+  props.push({ kind, x: wx, z: wz, seed: s });
 };
 
 // torches on corridor walls every ~6 tiles (skip water rooms)
@@ -239,56 +327,66 @@ let torchN = 0;
 for (const t of corridorTiles) {
   if (reserved.has(`${t.x},${t.z}`)) { torchN++; continue; }
   if (!torchSafe(t.x, t.z)) { torchN++; continue; }
-  if (torchN % 6 === 0 && rng() < 0.7) {
-    put('torch', t.x, t.z);
+  if (torchN % 12 === 0 && rng() < 0.6) {
+    // put() takes MAP-LOCAL coords; corridorTiles are world — convert back
+    put('torch', t.x - OFFSET.x, t.z - OFFSET.z);
     torchPlaced.add(`${t.x},${t.z}`);
   }
   torchN++;
 }
 
-put('bonfire', checkpoint.x, checkpoint.z, 0.5);
+put('bonfire', sc(20), sc(37), 0.5);   // the respawn checkpoint fire
 // room 1 braziers (bright corner lights before the bonfire is lit)
-put('brazier', 19, 35, 0.5);
-put('brazier', 21, 38, 0.5);
+put('brazier', sc(19), sc(35), 0.5);
+put('brazier', sc(21), sc(38), 0.5);
+// ── room 2 (Hermit's Cell) — his camp: a tent, a crackling campfire,
+//    braziers, a bedroll and a crate. The hermit sits by the fire (his NPC
+//    pos is set next to the campfire in `structures.npcs`).
+put('tent', sc(24), sc(36), 0.3);
+put('campfire', sc(26), sc(37), 0.5);
+put('brazier', sc(24), sc(38), 0.5);
+put('brazier', sc(28), sc(36), 0.5);
+put('bedroll', sc(25), sc(36), 0.4);
+put('crate', sc(27), sc(38), 0.5);
 // braziers flanking Gribnab's door
-put('brazier', 59, 57, 0.5);
-put('brazier', 59, 59, 0.5);
+put('brazier', sc(59), sc(57), 0.5);
+put('brazier', sc(59), sc(59), 0.5);
 // room 24 braziers
-put('brazier', 60, 52, 0.5);
-put('brazier', 64, 56, 0.5);
+put('brazier', sc(60), sc(52), 0.5);
+put('brazier', sc(64), sc(56), 0.5);
 // mushrooms: rooms 13 + 12
-put('mushroom', 10, 20, 0.3);
-put('mushroom', 12, 22, 0.7);
-put('mushroom', 11, 21, 0.5);
-put('mushroom', 24, 5, 0.4);
-put('mushroom', 28, 7, 0.6);
+put('mushroom', sc(10), sc(20), 0.3);
+put('mushroom', sc(12), sc(22), 0.7);
+put('mushroom', sc(11), sc(21), 0.5);
+put('mushroom', sc(24), sc(5), 0.4);
+put('mushroom', sc(28), sc(7), 0.6);
 // bones: 4 / 5 / 15
-put('bones', 8, 44, 0.2); put('bones', 12, 48, 0.8);
-put('bones', 9, 53, 0.3); put('bones', 13, 56, 0.9); put('bones', 8, 57, 0.5);
-put('bones', 52, 4, 0.4); put('bones', 57, 9, 0.6); put('bones', 54, 6, 0.2);
+put('bones', sc(8), sc(44), 0.2); put('bones', sc(12), sc(48), 0.8);
+put('bones', sc(9), sc(53), 0.3); put('bones', sc(13), sc(56), 0.9); put('bones', sc(8), sc(57), 0.5);
+put('bones', sc(52), sc(4), 0.4); put('bones', sc(57), sc(9), 0.6); put('bones', sc(54), sc(6), 0.2);
 // webpiles: corridor corners of 3 / 11
-put('webpile', 9, 36, 0.5); put('webpile', 15, 37, 0.9);
-put('webpile', 24, 12, 0.4); put('webpile', 29, 13, 0.8);
+put('webpile', sc(9), sc(36), 0.5); put('webpile', sc(15), sc(37), 0.9);
+put('webpile', sc(24), sc(12), 0.4); put('webpile', sc(29), sc(13), 0.8);
 // rubble decor: 6 / 19
-put('rubble', 16, 53, 0.3); put('rubble', 22, 56, 0.7);
-put('rubble', 66, 13, 0.5); put('rubble', 69, 14, 0.9);
+put('rubble', sc(16), sc(53), 0.3); put('rubble', sc(22), sc(56), 0.7);
+put('rubble', sc(66), sc(13), 0.5); put('rubble', sc(69), sc(14), 0.9);
 // crystal in the hidden room (16)
-put('crystal_green', 11, 28, 0.4);
-put('crystal_green', 10, 30, 0.6);
+put('crystal_green', sc(11), sc(28), 0.4);
+put('crystal_green', sc(10), sc(30), 0.6);
 // stalagmites sparse in water rooms
-put('stalagmite', 12, 36, 0.5);
-put('stalagmite', 28, 53, 0.7);
-put('stalagmite', 32, 54, 0.3);
-put('stalagmite', 25, 4, 0.6);
-put('stalagmite', 27, 8, 0.2);
-put('stalagmite', 63, 44, 0.5);
-put('stalagmite', 65, 49, 0.8);
+put('stalagmite', sc(12), sc(36), 0.5);
+put('stalagmite', sc(28), sc(53), 0.7);
+put('stalagmite', sc(32), sc(54), 0.3);
+put('stalagmite', sc(25), sc(4), 0.6);
+put('stalagmite', sc(27), sc(8), 0.2);
+put('stalagmite', sc(63), sc(44), 0.5);
+put('stalagmite', sc(65), sc(49), 0.8);
 // stalactites on non-walk tiles bordering corridors
 for (const t of corridorTiles) {
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const nx = t.x + dx, nz = t.z + dz;
     if (on(nx, nz) || nx < 1 || nz < 1 || nx >= S - 1 || nz >= S - 1) continue;
-    if (rng() < 0.12) put('stalactite', nx, nz);
+    if (rng() < 0.12) put('stalactite', nx - OFFSET.x, nz - OFFSET.z);
   }
 }
 
@@ -318,7 +416,7 @@ export const floor50Level: LevelDef = {
   description: "Floor 50. The bottom of everything. Sewers, mold, vermin, forgotten cellars. Somewhere down here a goblin king bathes, and a rat owes an old man a finger.",
   groundMats: ['cave_floor', 'cave_stone', 'cave_floor', 'gravel'],
   fillMats: ['cave_floor', 'cave_stone', 'cave_stone', 'cave_floor'],
-  arena: { x0: OFFSET.x, z0: OFFSET.z, x1: OFFSET.x + 69, z1: OFFSET.z + 69 },
+  arena: { x0: OFFSET.x, z0: OFFSET.z, x1: OFFSET.x + 105, z1: OFFSET.z + 105 },
   spawn: { party: [partySpawn], enemies: [] },
   props,
   ambient: 0.25,

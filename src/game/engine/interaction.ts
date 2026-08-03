@@ -169,6 +169,11 @@ export function updateHover(engine: any) {
       if (trap && trap.revealed) {
         const adj = engine.combat.living('party').some((u: any) => Combat.dist(u.pos, trap.pos) <= 1.5);
         info = `⚠ ${trap.def.icon} ${trap.def.name}${adj ? ' — click to disarm' : ''}`;
+      } else {
+        // decor props (torches, braziers, the hermit's tent…) — hover label
+        const eo = engine.world?.exploredObjects?.find((o: any) => o.x === tile.x && o.z === tile.z);
+        const kind = eo?.object?.userData?.propKind as string | undefined;
+        if (kind && PROP_HOVER[kind]) info = PROP_HOVER[kind];
       }
     }
   }
@@ -182,6 +187,27 @@ export function updateHover(engine: any) {
 }
 
 export function setHoverInfoOnce(engine: any, s: string) { engine.hoverInfo = s; engine.emitSnapshot(); }
+
+/** hover labels for decor props (world props carry userData.propKind) */
+const PROP_HOVER: Record<string, string> = {
+  torch: '🕯 Wall torch — warm light',
+  brazier: '🔥 Brazier — bright light',
+  bonfire: '🔥 Bonfire — rest here',
+  campfire: '🔥 Campfire — the Hermit\'s hearth',
+  tent: '⛺ A canvas tent',
+  bedroll: '🛏 A bedroll',
+  bones: '🦴 Pile of old bones',
+  webpile: '🕸 Cobwebs',
+  rubble: '🪨 Rubble',
+  mushroom: '🍄 Glowing mushrooms',
+  crystal: '💎 Crystal',
+  crystal_blue: '💎 Blue crystal',
+  crystal_green: '💎 Green crystal',
+  stalagmite: '🪨 Stalagmite',
+  stalactite: '⬇ Stalactites above',
+  crate: '📦 Supply crate',
+  boulder: '🪨 Boulder',
+};
 
 // ══ click logic ════════════════════════════════════════════
 export function clickExplore(engine: any, unitId: string | undefined, tile: GridPos | null, propId?: string) {
@@ -510,6 +536,7 @@ export function executeDialogueAction(engine: any, action: DialogueAction, npc: 
       engine.gold -= 5;
       const roll = 1 + Math.floor(Math.random() * 20);
       const house = (1 + Math.floor(Math.random() * 6)) + (1 + Math.floor(Math.random() * 6)) + (1 + Math.floor(Math.random() * 6)) + 2;
+      engine.showDiceRoll?.('d20', roll, 'Gambling');
       engine.pushLog(`🎲 You bet 5 gold. You roll ${roll}; the house rolls ${house}.`, 'roll');
       if (roll > house) {
         engine.gold += 10;

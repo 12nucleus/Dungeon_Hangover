@@ -10,8 +10,9 @@ import { buildCharacter, setWeapon, updateRig, type Rig } from '../characters';
 import { buildIronDoor, buildGoldenChest, buildLever, buildRubble, buildStoneBath, buildWeaponRack } from '../dungeonProps';
 import { FX } from '../particles';
 import { makeItem, rollLootTable } from '../items';
+import { abilityMod } from '../dice';
 import type { GridPos } from '../types';
-import type { LevelDef } from '../../levels/levelTypes';
+import type { LevelDef, Rect } from '../../levels/levelTypes';
 import { NPCS } from '../npc';
 import { SUMMON_TEMPLATES } from '../skills';
 import { unitWorld } from './visuals';
@@ -304,6 +305,7 @@ export function updateDungeon(engine: any, dt: number) {
       const text = engine.roomNarration[roomId];
       if (text) void engine.narrate(`f50_room_${roomId}`, text, 5200);
       maybeAmbush(engine, roomId, leader.pos);
+      perceptionRoll(engine, roomId, leader);
     }
   }
 
@@ -319,6 +321,55 @@ export function updateDungeon(engine: any, dt: number) {
       offerLoot(engine, 'Hidden treasure', [], gold);
       engine.pushLog(`✨ You kick something under the muck — ${gold} gold!`, 'system');
     }
+  }
+}
+
+/**
+ * BG3-style perception check on first room entry: d20 + Wisdom + proficiency
+ * vs DC 14. Success reveals every trap in the room (visible + disarmable),
+ * sparkles the hidden treasures, and hints at secret doors. A near-miss
+ * (10–13) gives a vague "something's off" line. The roll itself gets the
+ * dice overlay + Chronicle entry.
+ */
+function perceptionRoll(engine: any, roomId: string, leader: any) {
+  if (!engine.structures) return;
+  const room = engine.structures.rooms?.find((r: any) => r.id === roomId);
+  if (!room) return;
+  const rect = room.rect as Rect;
+  const inRect = (p: { x: number; z: number }) =>
+    p.x >= rect.x0 && p.x <= rect.x1 && p.z >= rect.z0 && p.z <= rect.z1;
+
+  const wisMod = abilityMod(leader.abilities.wis ?? 10);
+  const prof = leader.proficiency ?? 2;
+  const roll = 1 + Math.floor(Math.random() * 20);
+  const total = roll + wisMod + prof;
+  engine.showDiceRoll?.('d20', total, 'Perception');
+  engine.pushLog(`🧠 ${leader.name} searches the room: d20 ${roll}${wisMod >= 0 ? '+' : ''}${wisMod} (WIS) +${prof} prof = ${total} vs DC 14`, 'roll');
+
+  const traps = engine.trapManager?.traps?.filter((t: any) => inRect(t.pos) && !t.revealed && !t.triggered) ?? [];
+  const treasures = (engine.hiddenTreasures ?? []).filter((t: any) => inRect(t));
+  const secretDoors = (engine.structures.blockers ?? [])
+    .filter((b: any) => b.kind === 'secretDoor' && b.tiles.some((t: any) => inRect(t)));
+
+  if (total >= 14) {
+    for (const t of traps) {
+      engine.trapManager.reveal(t);
+      engine.pushLog(`🔍 ${leader.name} spots a ${t.def.icon} ${t.def.name}!`, 'system');
+    }
+    for (const t of treasures) {
+      FX.levelup(engine.particles, unitWorld(engine, t).clone().add(new THREE.Vector3(0, 0.5, 0)));
+      engine.pushLog('✨ Something glints under the muck — a hidden treasure!', 'system');
+    }
+    if (secretDoors.length) {
+      engine.pushLog(`🧱 The wall here is cracked oddly — a secret door? (${secretDoors.map((b: any) => b.id).join(', ')})`, 'system');
+    }
+    if (!traps.length && !treasures.length && !secretDoors.length) {
+      engine.pushLog('👀 Nothing hidden in here. Just damp and regret.', 'system');
+    }
+  } else if (total >= 10) {
+    engine.pushLog('🤔 Something feels off about this floor… (Perception barely misses.)', 'system');
+  } else {
+    engine.pushLog('😮‍💨 You see nothing unusual. The floor stares back.', 'system');
   }
 }
 

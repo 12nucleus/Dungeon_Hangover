@@ -123,7 +123,7 @@ export class DestructibleManager {
     this.group.add(g);
 
     const topH = (maxY + 1) * CELL;
-    const pickGeo = new THREE.BoxGeometry(0.85, Math.max(0.6, topH), 0.85);
+    const pickGeo = new THREE.BoxGeometry(1.35, Math.max(0.9, topH), 1.35);   // generous hit box (clicking crates should be easy)
     const pick = new THREE.Mesh(pickGeo, pickMat);
     pick.position.copy(g.position).y += topH / 2;
     const prop: Destructible = { id: `prop_${this.seq++}`, def, pos: spot, hp: def.hp, group: g, pick, alive: true };

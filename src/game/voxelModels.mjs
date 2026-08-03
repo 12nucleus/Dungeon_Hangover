@@ -457,6 +457,97 @@ export function propRubble(seed = 0.5) {
   return { name: 'rubble', voxels: v.list(), cube };
 }
 
+// TENT — the Hermit's canvas A-frame (room 2)
+export function propTent(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 41);
+  const v = new Vox();
+  const cube = 0.055;
+  const CANVAS = 0x9a7a4a, CANVAS_D = 0x7a5e38, CANVAS_HI = 0xb8975f;
+  const POLE = 0x6b4a2e, POLE_D = 0x4a3320;
+  // ridge pole + A-frame ends
+  for (let y = 0; y <= 20; y++) v.add(0, y, 0, y % 5 === 2 ? POLE : POLE_D);
+  for (const sgn of [-1, 1]) {
+    for (let k = 0; k <= 12; k++) {
+      const y = Math.round((1 - k / 12) * 16);
+      v.add(sgn * k, y, 0, k % 4 === 1 ? POLE_D : POLE);
+    }
+  }
+  // canvas panels (sloping sides, 3 deep)
+  for (let z = 0; z < 4; z++) {
+    for (let x = -11; x <= 11; x++) {
+      const h = Math.max(1, 16 - Math.abs(x) * 1.35);
+      for (let y = 0; y <= h; y++) {
+        const c = (x + z + y) % 7 === 0 ? CANVAS_HI : ((x + z) & 1 ? CANVAS : CANVAS_D);
+        v.add(x, y, z - 1, c);
+      }
+    }
+  }
+  // open flap on the +z side
+  for (let x = -3; x <= 3; x++) for (let y = 0; y <= 9; y++) v.add(x, y, 2, CANVAS_D);
+  return { name: 'tent', voxels: v.list(), cube, blocks: true };
+}
+
+// CAMPFIRE — small lit fire ring (dressing; NOT the respawn bonfire)
+export function propCampfire(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 43);
+  const v = new Vox();
+  const cube = 0.055;
+  const STONE = 0x5a5560, STONE_D = 0x413d47, WOOD = 0x6b4a2e, WOOD_D = 0x4a3320, ASH = 0x3a3630;
+  // stone ring (small)
+  for (let a = 0; a < 8; a++) {
+    const ang = (a / 8) * Math.PI * 2;
+    const rr = 6;
+    v.ellipsoid(Math.round(Math.cos(ang) * rr), 1, Math.round(Math.sin(ang) * rr), 2, 1.8, 2, a % 3 === 0 ? STONE_D : STONE);
+  }
+  for (let x = -4; x <= 4; x++) for (let z = -4; z <= 4; z++) if (x * x + z * z <= 18) v.add(x, 0, z, ASH);
+  // criss-cross logs + flames
+  for (let i = 0; i < 4; i++) {
+    const ang = (i / 4) * Math.PI * 2;
+    const bx = Math.cos(ang) * 3.5, bz = Math.sin(ang) * 3.5;
+    for (let k = 0; k <= 8; k++) {
+      const t = k / 8;
+      v.add(Math.round(bx * (1 - t)), 1 + Math.round(t * 6), Math.round(bz * (1 - t)), k % 3 === 0 ? WOOD_D : WOOD);
+    }
+  }
+  for (let y = 1; y <= 8; y++) v.add(0, y, 0, y > 5 ? 0xffb545 : 0xff7a1f);
+  v.add(1, 6, 0, 0xff7a1f); v.add(-1, 5, 0, 0xff9a2a); v.add(0, 6, 1, 0xff9a2a);
+  return {
+    name: 'campfire', voxels: v.list(), cube, blocks: true,
+    glow: { color: 0xff7a2a, intensity: 10, dist: 8, decay: 1.7, y: 7 * cube, flicker: 2.4 },
+    particles: { type: 'flame', color: 0xffb545, y: 8 * cube, spread: 0.16, rate: 9, count: 16 },
+    flame: { y: 8 * cube, big: false },
+    anim: 'flicker',
+  };
+}
+
+// BEDROLL — rolled blanket with a pillow (the Hermit's bed)
+export function propBedroll(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 47);
+  const v = new Vox();
+  const cube = 0.055;
+  const BLANKET = 0x8a5a3a, BLANKET_D = 0x6e4630, BLANKET_HI = 0xa87a52;
+  const PILLOW = 0xc8b89a;
+  for (let x = -3; x <= 3; x++) for (let z = -2; z <= 2; z++) {
+    const c = (x + z) & 1 ? BLANKET : BLANKET_D;
+    v.add(x, 0, z, c);
+    if (Math.abs(x) <= 2 && Math.abs(z) <= 1) v.add(x, 1, z, (x + z) & 1 ? BLANKET_HI : BLANKET);
+  }
+  v.box(-4, 0, -1, -3, 1, 1, PILLOW);
+  return { name: 'bedroll', voxels: v.list(), cube };
+}
+
+// CRATE — wooden supply crate (non-destructible dressing)
+export function propCrate(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 53);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x8a6a44, W_D = 0x6e5232, W_HI = 0xa8825a, IRON = 0x50535c;
+  v.box(-4, 0, -4, 4, 5, 4, speckle([W, W_D, W_HI], 3, 1, 7));
+  // iron straps
+  for (let y = 0; y <= 5; y++) { v.add(-4, y, 0, IRON); v.add(4, y, 0, IRON); v.add(0, y, -4, IRON); v.add(0, y, 4, IRON); }
+  return { name: 'crate', voxels: v.list(), cube, blocks: true };
+}
+
 export const PROP_BUILDERS = {
   stalagmite: propStalagmite,
   stalactite: propStalactite,
@@ -471,6 +562,10 @@ export const PROP_BUILDERS = {
   bonfire: propBonfire,
   webpile: propWebPile,
   rubble: propRubble,
+  tent: propTent,
+  campfire: propCampfire,
+  bedroll: propBedroll,
+  crate: propCrate,
 };
 
 // ══════════════════════════════════════════════════════════════

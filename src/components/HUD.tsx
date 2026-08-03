@@ -11,6 +11,8 @@ import { CharacterStatsPanel } from './CharacterStatsPanel';
 import { Hotbar } from './Hotbar';
 import { BonfireLoadout } from './BonfireLoadout';
 import { VoxelItemIcon } from './VoxelItemIcon';
+import { ItemInspect } from './ItemInspect';
+import type { Item } from '@/game/items';
 import { isQuestLoot } from '@/game/engine/loot';
 
 interface Props { snap: UISnapshot | null; engine: GameEngine | null; }
@@ -31,14 +33,51 @@ function Portrait({ u, size = 44, active = false }: { u: Unit; size?: number; ac
   );
 }
 
-/** Loot preview — see what dropped, choose what to take (Take All / per-item). */
+/** BG3-style dice roll — a tumbling 3D die with the result, shown briefly. */
+function DiceRollOverlay({ snap }: { snap: UISnapshot }) {
+  const d = snap.diceShow;
+  if (!d) return null;
+  const fresh = performance.now() - d.at < 3200;
+  if (!fresh) return null;
+  return (
+    <div className="dice-overlay" key={d.at}>
+      <div className="dice-scene">
+        <div className={`dice-cube ${d.die === 'd20' ? 'd20' : ''}`}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className={`dice-face f${i}`}>{d.total}</div>
+          ))}
+        </div>
+      </div>
+      <div className="dice-reason">{d.reason} — {d.die}</div>
+    </div>
+  );
+}
+
+/** Action feed — the last few Chronicle lines floating over the canvas so
+ *  the player can follow what just happened without opening the log. */
+function ActionFeed({ snap }: { snap: UISnapshot }) {
+  const log = snap.log ?? [];
+  if (!log.length) return null;
+  return (
+    <div className="action-feed">
+      {log.slice(-4).map((l) => (
+        <div key={l.id} className={`action-feed-item ${l.kind}`}>{l.text}</div>
+      ))}
+    </div>
+  );
+}
+
+/** Loot preview — see what dropped, choose what to take (Take All / per-item).
+ *  Each row offers Examine (full model + stat sheet) before taking. */
 function LootPreviewOverlay({ snap, engine }: { snap: UISnapshot; engine: GameEngine | null }) {
   const offer = snap.pendingLoot;
+  const [examining, setExamining] = useState<Item | null>(null);
   if (!offer) return null;
   const hasItems = offer.items.length > 0;
   const allQuest = offer.items.every(isQuestLoot);
   return (
     <div className="loot-overlay">
+      {examining && <ItemInspect item={examining} onClose={() => setExamining(null)} />}
       <div className="loot-box">
         <div className="loot-title">📦 {offer.source}</div>
         <div className="loot-hint">Choose what to take. Quest items must be taken.</div>
@@ -56,6 +95,7 @@ function LootPreviewOverlay({ snap, engine }: { snap: UISnapshot; engine: GameEn
                     <div className="loot-row-desc">{it.desc}</div>
                   </div>
                   <button className="loot-btn take" onClick={() => engine?.takeLootItem(it.id)}>Take</button>
+                  <button className="loot-btn examine" onClick={() => setExamining(it)}>🔍 Examine</button>
                   {!quest && <button className="loot-btn leave" onClick={() => engine?.leaveLootItem(it.id)}>Leave</button>}
                 </div>
               );
@@ -163,7 +203,6 @@ function Minimap({ snap }: { snap: UISnapshot }) {
 }
 
 export function HUD({ snap, engine }: Props) {
-  const [showHelp, setShowHelp] = useState(false);
   const [showLog, setShowLog] = useState(true);
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -401,14 +440,7 @@ export function HUD({ snap, engine }: Props) {
             <div className="enemy-turn-banner">⚔ {activeUnit.name} is acting…</div>
           )}
           {phase === 'explore' && (
-            <div className="explore-hint">🧭 Click ground to move · I Inventory · K Skill tree · C Sneak · Space Rest</div>
-          )}
-
-          {/* floor banner (Floor 50 — The Sewer Cellar) */}
-          {snap.floorName && (
-            <div className="floor-banner" title={`Floor ${snap.floor ?? ''}`}>
-              Floor {snap.floor ?? 50} — {snap.floorName}
-            </div>
+            <div className="explore-hint">🧭 Click ground to move · I Inventory · K Skill tree · C Sneak · P First-person · Space Rest</div>
           )}
 
           {/* right controls */}
@@ -424,10 +456,22 @@ export function HUD({ snap, engine }: Props) {
             <button className="hud-btn" onClick={() => engine?.toggleSkillTree()} title="Skill tree [K]">📜</button>
             <button className="hud-btn" onClick={() => engine?.toggleInventory()} title="Inventory [I]">🎒</button>
             <button className="hud-btn" onClick={() => engine?.toggleMute()} title="Mute">{snap.muted ? '🔇' : '🔊'}</button>
-            <button className="hud-btn" onClick={() => setShowHelp(!showHelp)} title="Help">❓</button>
           </div>
         </div>
       )}
+
+      {/* ══ FLOOR BANNER — top of the canvas (was bottom-bar, user asked for the top) ══ */}
+      {phase !== 'menu' && snap.floorName && (
+        <div className="floor-banner" title={`Floor ${snap.floor ?? ''}`}>
+          Floor {snap.floor ?? 50} — {snap.floorName}
+        </div>
+      )}
+
+      {/* ══ DICE ROLL (BG3-style visual) ══ */}
+      {snap.diceShow && phase !== 'menu' && <DiceRollOverlay snap={snap} />}
+
+      {/* ══ ACTION FEED — live Chronicle lines over the canvas ══ */}
+      {phase !== 'menu' && phase !== 'creation' && <ActionFeed snap={snap} />}
 
       {/* ══ INVENTORY PANEL ══ */}
       {snap.showInventory && phase !== 'menu' && engine && (
@@ -442,26 +486,6 @@ export function HUD({ snap, engine }: Props) {
       {/* ══ SKILL TREE PANEL ══ */}
       {snap.showSkillTree && phase !== 'menu' && engine && (
         <SkillTreePanel snap={snap} engine={engine} />
-      )}
-
-      {/* ══ HELP PANEL ══ */}
-      {showHelp && phase !== 'menu' && (
-        <div className="help-panel">
-          <div className="help-title">How to play <button onClick={() => setShowHelp(false)}>✕</button></div>
-          <ul>
-            <li><b>Explore:</b> click ground to move, click a hero to select the leader.</li>
-            <li><b>Combat:</b> blue tiles = movement. Click a tile to move, click an enemy for a quick attack.</li>
-            <li><b>Skills:</b> hotbar or keys 1-9,0,-,=. 🔥/❄ aim with the mouse — red tiles show the blast.</li>
-            <li><b>Action economy:</b> ⚡ action, 🔸 bonus action, 👟 movement per turn.</li>
-            <li><b>Camera:</b> WASD pan, Q/E rotate, wheel zoom, F focus active unit.</li>
-            <li><b>Inventory:</b> I or 🎒 — equip gear, drink potions (bonus action in combat).</li>
-            <li><b>Skill tree:</b> K or 📜 — spend skill points to unlock passives &amp; new skills (earned on level-up — spend XP at bonfires to level up). Equip up to 12 skills on the hotbar.</li>
-            <li><b>Sneak:</b> C or 🕴️ — toggle stealth. Move slower but avoid enemy vision cones. Surprise enemies for an auto-crit first strike!</li>
-            <li><b>Traps:</b> hidden hazards trigger when stepped on. Reveal them with passive perception (Wisdom). Click a revealed trap to disarm.</li>
-            <li><b>Loot:</b> smash crates/barrels/vases; enemies drop gear &amp; gold. Rarity: grey→green→blue→purple.</li>
-            <li><b>End turn:</b> Space or the END TURN button.</li>
-          </ul>
-        </div>
       )}
 
       {/* ══ CHEAT CONSOLE (backtick key) ══ */}

@@ -19,7 +19,7 @@ const BLOCKING_PROPS = new Set(['torch', 'bonfire', 'brazier']);
 // If you still use the open-world heightmap mode (level === null), its
 // hardcoded `arena` rect and river placement were tuned for 46 and will
 // need re-tuning for the bigger grid.
-export const WORLD_SIZE = 120;
+export const WORLD_SIZE = 150;
 export const TILE = 1;
 const MAX_H = 3;
 
@@ -334,6 +334,7 @@ export class VoxelWorld {
       const built = createProp(p.kind, wx, groundTopY, wz, p.seed ?? 0.5);
       if (!built) continue;
       built.group.userData.fogTile = { x: p.x, z: p.z };
+      built.group.userData.propKind = p.kind;   // for hover labels
       this.group.add(built.group);
       this.exploredObjects.push({ object: built.group, x: p.x, z: p.z });
       if (built.update) this.propUpdates.push(built.update);

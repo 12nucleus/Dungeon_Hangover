@@ -93,6 +93,7 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   if (k === 't') { engine.toggleTorch(); return; }
   if (k === 'v') { engine.followCam = !engine.followCam; engine.pushLog(`Follow camera ${engine.followCam ? 'ON' : 'OFF'}`, 'system'); engine.emitSnapshot(); return; }
   if (k === 'm') { engine.showFullMap = !engine.showFullMap; engine.emitSnapshot(); return; }
+  if (k === 'p' && engine.phase === 'explore' && !engine.combat.inCombat) { engine.toggleFirstPerson(); return; }
   if (k === 'b') { engine.debugWarpToBoss(); return; }
   if (k === 'escape') {
     if (engine.busy && (engine.introActive || engine.bossCineActive)) {

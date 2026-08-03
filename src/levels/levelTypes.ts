@@ -4,7 +4,7 @@
 import type { GridPos, Unit } from '../game/types';
 import type { Interactable } from '../game/engine/interactables';
 
-export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'crystal_blue' | 'crystal_green' | 'boulder' | 'bones' | 'torch' | 'brazier' | 'mushroom' | 'bonfire' | 'webpile' | 'rubble';
+export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'crystal_blue' | 'crystal_green' | 'boulder' | 'bones' | 'torch' | 'brazier' | 'mushroom' | 'bonfire' | 'webpile' | 'rubble' | 'tent' | 'campfire' | 'bedroll' | 'crate';
 
 export interface PropPlacement {
   kind: PropKind;
