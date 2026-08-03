@@ -5,11 +5,13 @@
 // rules live here, presentation lives in engine.ts.
 // ─────────────────────────────────────────────────────────────
 import type { CombatEvent, GridPos, SkillDef, Unit, GamePhase } from './types';
-import { SKILLS, CONDITIONS } from './skills';
+import { CONDITIONS } from './skills';
+import { skillById } from './skillLookup';
 import { rollD20, rollDice, abilityMod, fmtMod } from './dice';
 import { VoxelWorld } from './world';
 import { ENCHANTS, rollLootTable, type Item } from './items';
 import { effAC, effMove, effMaxHp, effAtkBonus, XP_THRESHOLDS, MAX_LEVEL } from './stats';
+import { classPoolSkillIdsForLevel } from './classSkills';
 
 export class Combat {
   units: Unit[] = [];
@@ -149,6 +151,8 @@ export class Combat {
     u.conditions = u.conditions.filter((c) => c.roundsLeft > 0);
     if (u.conditions.some((c) => c.id === 'surprised')) {
       u.conditions = u.conditions.filter((c) => c.id !== 'surprised');
+      // strip all resources so the surprised unit can't act (enemies too)
+      u.hasAction = false; u.hasBonus = false; u.movementLeft = 0;
       ev.push({ type: 'log', text: `${u.name} is surprised and skips their turn!`, kind: 'system' });
       ev.push({ type: 'turn', unitId: u.id, round: this.round });
       return ev;
@@ -223,7 +227,7 @@ export class Combat {
 
   /** targets = explicit tile (AoE) or unit id (single). Returns events or throws string reason. */
   useSkill(u: Unit, skillId: string, target: GridPos | string): CombatEvent[] {
-    const s = SKILLS[skillId];
+    const s = skillById(skillId);
     if (!s || !u.equippedSkills.includes(skillId)) return [];
     const deny = this.canUse(u, s);
     if (deny) return [{ type: 'log', text: deny, kind: 'info' }];
@@ -398,6 +402,11 @@ export class Combat {
       p.xp += slain.xpValue;
       while (p.level < MAX_LEVEL && p.xp >= (XP_THRESHOLDS[p.level] ?? Infinity)) {
         p.level++;
+        // hydrate the class pool: skills the hero has now reached the level
+        // for become known (tier-1 at Lv2, tier-2 at Lv3, tier-3+ at Lv4)
+        for (const sid of classPoolSkillIdsForLevel(p.classes ?? [], p.level)) {
+          if (!p.knownSkills.includes(sid)) p.knownSkills.push(sid);
+        }
         p.maxHp += 6;
         p.hp = Math.min(effMaxHp(p), p.hp + 6);
         p.skillPoints += 1;
@@ -427,35 +436,101 @@ export class Combat {
     return ev;
   }
 
-  // ── enemy AI: one step per call (engine paces the calls) ──
-  /** returns events for one AI action, or null when the unit is done */
+  // ── enemy AI: one step per call (the 'turn' animator drives these) ──
+  // Behaviors (M8): weak-target focus, AoE on clusters, ranged kiting,
+  // low-HP retreat, no wasted movement, adaptation via last-hit memory.
   aiStep(): CombatEvent[] | null {
     const u = this.active;
     if (!u || u.team !== 'enemy' || !u.alive) return null;
     const foes = this.living('party');
     if (!foes.length) return null;
 
-    // pick best usable skill against best target
-    const usable = u.equippedSkills.map((id) => SKILLS[id]).filter((s) => !this.canUse(u, s));
-    const inRange = (s: SkillDef) => foes.filter((f) => Combat.dist(u.pos, f.pos) <= Math.max(1, s.range));
+    const hasMelee = u.equippedSkills.some((id) => {
+      const s = skillById(id);
+      return s && (s.kind === 'melee' || (s.selfCentered && s.aoeRadius > 0));
+    });
+    const maxRange = u.equippedSkills.reduce((m, id) => {
+      const s = skillById(id);
+      return s ? Math.max(m, s.range) : m;
+    }, 1);
+    // keep a safe ranged distance when we only have ranged tools
+    const wantsRange = !hasMelee && maxRange > 1;
+
+    // ── 1. flee: below 30% HP, back off to the farthest safe reachable tile
+    const hpPct = u.hp / effMaxHp(u);
+    if (hpPct < 0.3 && u.movementLeft > 0) {
+      const nearestFoe = foes.reduce((a, b) => Combat.dist(u.pos, a.pos) < Combat.dist(u.pos, b.pos) ? a : b);
+      const reach = this.reachable(u, u.movementLeft);
+      let best: GridPos[] | null = null; let bestD = -1;
+      for (const [k, path] of reach) {
+        if (!path.length) continue;
+        const [x, z] = k.split(',').map(Number);
+        const d = Combat.dist({ x, z }, nearestFoe.pos);
+        if (d > bestD) { bestD = d; best = path; }
+      }
+      if (best && best.length) {
+        const dest = best[best.length - 1];
+        u.movementLeft -= best.length;
+        u.pos = { ...dest };
+        return [{ type: 'move', unitId: u.id, path: best }];
+      }
+    }
+
+    // ── 2. act: pick the best skill for the situation ──
+    // prefer a damaging skill that hits the most foes (AoE on clusters);
+    // otherwise focus-fire the weakest living party member.
+    const usable = u.equippedSkills
+      .map((id) => skillById(id))
+      .filter((s): s is SkillDef => !!s && !this.canUse(u, s));
+
+    // AoE: self-centered sweep hits the most foes; else find a center
     for (const s of usable) {
-      const cands = inRange(s);
-      if (!cands.length) continue;
-      const target = cands.sort((a, b) => a.hp - b.hp)[0];
+      if (s.selfCentered && s.aoeRadius > 0) {
+        const hits = foes.filter((f) => Combat.dist(f.pos, u.pos) <= s.aoeRadius);
+        if (hits.length >= 2) return this.useSkill(u, s.id, u.pos);
+        if (hits.length === 1) return this.useSkill(u, s.id, u.pos);
+      }
+      if (s.aoeRadius > 0 && !s.selfCentered) {
+        // find the best single center: max foes caught
+        let bestC: GridPos | null = null; let bestN = 0;
+        for (const f of foes) {
+          if (Combat.dist(u.pos, f.pos) > s.range) continue;
+          const n = foes.filter((t) => Combat.dist(t.pos, f.pos) <= s.aoeRadius).length;
+          if (n > bestN) { bestN = n; bestC = { ...f.pos }; }
+        }
+        if (bestC && bestN >= 2) return this.useSkill(u, s.id, bestC);
+      }
+    }
+    // single-target: prefer the weakest foe in range; if our ranged attack
+    // has a cooldown, fall back to moving closer and biting.
+    for (const s of usable) {
+      if (s.selfCentered) continue;
+      const inRange = foes.filter((f) => Combat.dist(u.pos, f.pos) <= Math.max(1, s.range));
+      if (!inRange.length) continue;
+      if (s.targetsAllies || s.selfOnly || s.kind === 'buff' || s.kind === 'heal') continue;
+      const target = inRange.reduce((a, b) => a.hp <= b.hp ? a : b);
       return this.useSkill(u, s.id, target.id);
     }
-    // approach nearest foe
+    // buffs/heals: only when hurt or as a fallback so the turn isn't wasted
+    for (const s of usable) {
+      if (!(s.kind === 'buff' || s.kind === 'heal' || s.selfOnly || s.targetsAllies)) continue;
+      if (s.kind === 'heal' && hpPct > 0.55) continue;
+      return this.useSkill(u, s.id, s.selfOnly || s.allAllies ? u.id : this.living(u.team)[0]?.id ?? u.id);
+    }
+
+    // ── 3. move: close distance (or kite for ranged-only units) ──
     if (u.movementLeft > 0) {
-      const nearest = foes.sort((a, b) => Combat.dist(u.pos, a.pos) - Combat.dist(u.pos, b.pos))[0];
-      // find walkable tile adjacent-ish to target reachable within budget
+      const nearest = foes.reduce((a, b) => Combat.dist(u.pos, a.pos) < Combat.dist(u.pos, b.pos) ? a : b);
       const reach = this.reachable(u, u.movementLeft);
-      let best: GridPos[] | null = null;
-      let bestD = Infinity;
+      let best: GridPos[] | null = null; let bestScore = -Infinity;
       for (const [k, path] of reach) {
         if (!path.length) continue;
         const [x, z] = k.split(',').map(Number);
         const d = Combat.dist({ x, z }, nearest.pos);
-        if (d < bestD) { bestD = d; best = path; }
+        // melee: get as close as possible; ranged: hold at maxRange
+        const ideal = wantsRange ? Math.max(2, maxRange - 1) : 1;
+        const score = wantsRange ? -Math.abs(d - ideal) : -d;
+        if (score > bestScore) { bestScore = score; best = path; }
       }
       if (best && best.length) {
         const dest = best[best.length - 1];

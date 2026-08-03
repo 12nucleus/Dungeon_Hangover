@@ -112,12 +112,74 @@ LINES = [
      "The Mortician. You ate lunch with the dead for three weeks. Heal off every kill, reanimate your enemies, and get stronger as the bodies pile up."),
 ]
 
+# ─────────────────────────────────────────────────────────────
+# Dungeon music loop builder (optional, standalone)
+#
+# Regenerates public/audio/music_ambient.mp3 with a synthesized,
+# non-copyrighted dungeon theme: dark droning pads, a slow minor-key
+# melody, a tolling bell and a distant war-drum pulse. Everything is
+# additive-synthesized with numpy/scipy (no TTS model, no ffmpeg), so it
+# runs in seconds on any machine that has numpy.
+#
+#   python scripts/gen_tts.py --music          # regenerate the dungeon loop
+#
+def build_dungeon_music(out_path: str, seconds: float = 64.0, sr: int = 22050):
+    import numpy as np
 
-def to_mp3(wav_path: str, mp3_path: str):
-    subprocess.run(
-        ["ffmpeg", "-y", "-i", wav_path, "-ar", "24000", "-b:a", MP3_BITRATE, mp3_path],
-        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+    rng = np.random.default_rng(1337)
+    t = np.arange(int(seconds * sr)) / sr
+    # exponential fade-out envelope (per second, so the loop is seamless-ish)
+    fade = np.exp(-0.045 * t)
+    mix = np.zeros_like(t)
+
+    def note(freq: float, at: float, dur: float, vol: float, kind="pad"):
+        i0, i1 = int(at * sr), int((at + dur) * sr)
+        if i1 > len(t):
+            return
+        n = t[i0:i1] - at
+        if kind == "pad":
+            # two detuned sines + a soft fifth → dark drone chord
+            for f, v in ((freq, 1.0), (freq * 1.005, 0.6), (freq * 1.5, 0.35)):
+                mix[i0:i1] += v * vol * np.sin(2 * np.pi * f * n) * np.exp(-0.8 * n)
+        elif kind == "bell":
+            # decaying partials → church bell toll
+            for k, v in ((1, 1.0), (2.01, 0.5), (3.0, 0.28), (4.02, 0.16)):
+                mix[i0:i1] += v * vol * np.sin(2 * np.pi * freq * k * n) * np.exp(-1.4 * n)
+        else:  # melody pluck
+            mix[i0:i1] += vol * np.sin(2 * np.pi * freq * n) * np.exp(-2.2 * n)
+
+    # A-minor-ish drone bed (never resolves → stays "dungeon")
+    for f, v in ((55.0, 0.16), (110.0, 0.10), (164.81, 0.05)):
+        note(f, 0, seconds, v, "pad")
+
+    # slow tolling bell every 8s
+    for b in range(0, int(seconds), 8):
+        note(65.41, b, 6, 0.07, "bell")
+
+    # sparse minor-key melody (haunting, slightly dissonant)
+    melody = [220.0, 261.63, 246.94, 220.0, 196.0, 164.81, 196.0, 220.0]
+    for i, f in enumerate(melody):
+        note(f, 2 + i * 2.4, 1.8, 0.055, "pluck")
+
+    # war-drum pulse every beat (low thump)
+    for b in range(0, int(seconds), 2):
+        i0 = int(b * sr)
+        i1 = min(i0 + int(0.5 * sr), len(t))
+        n = t[i0:i1] - b
+        mix[i0:i1] += 0.09 * np.sin(2 * np.pi * (60 * np.exp(-3.0 * n)) * n) * np.exp(-3.0 * n)
+
+    # gentle stereo width + normalize
+    audio = np.clip(mix * fade, -1, 1)
+    audio = audio / (np.max(np.abs(audio)) + 1e-6) * 0.85
+    stereo = np.stack([audio, np.roll(audio, int(0.004 * sr))], axis=1)
+    import scipy.io.wavfile as wavfile
+
+    tmp_wav = out_path + ".tmp.wav"
+    wavfile.write(tmp_wav, sr, (stereo * 32767).astype(np.int16))
+    if os.path.exists(out_path):
+        os.remove(out_path)
+    os.replace(tmp_wav, out_path)
+    print(f"wrote dungeon music loop → {out_path} ({seconds}s, {sr}Hz)")
 
 
 def main():
@@ -125,7 +187,16 @@ def main():
     ap.add_argument("--force", action="store_true", help="regenerate even if the mp3 already exists")
     ap.add_argument("--ids", nargs="*", default=None,
                     help="only generate these line ids (e.g. --ids narr_baa)")
+    ap.add_argument("--music", action="store_true",
+                    help="regenerate public/audio/music_ambient.mp3 (synthesized dungeon loop; no TTS model needed)")
     args = ap.parse_args()
+
+    # standalone: regenerate the synthesized dungeon music loop (no model load)
+    if args.music:
+        out = os.path.join(os.path.dirname(__file__), "..", "public", "audio", "music_ambient.mp3")
+        build_dungeon_music(os.path.abspath(out))
+        print("DONE (music)")
+        return
 
     # 1) load the 1.7B Base model (voice clone)
     print(f"loading 1.7B Base model from {BASE_DIR} ...")

@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { setWeapon } from '../characters';
 import { FX } from '../particles';
 import { effMaxHp } from '../stats';
+import { classPoolSkillIdsForLevel } from '../classSkills';
 import { canUnlock, treeFor } from '../skilltree';
 import type { Item } from '../items';
 import { unitWorld } from './visuals';
@@ -125,6 +126,11 @@ export function levelUpAtBonfire(engine: any, unitId: string) {
   }
   u.xp -= threshold;
   u.level++;
+  // hydrate the class pool: skills the hero has now reached the level for
+  // become known (tier-1 at Lv2, tier-2 at Lv3, tier-3+ at Lv4)
+  for (const sid of classPoolSkillIdsForLevel(u.classes ?? [], u.level)) {
+    if (!u.knownSkills.includes(sid)) u.knownSkills.push(sid);
+  }
   u.maxHp += 6;
   u.hp = Math.min(effMaxHp(u), u.hp + 6);
   u.skillPoints += 1;

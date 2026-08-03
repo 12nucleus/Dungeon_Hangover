@@ -101,8 +101,8 @@ export function executeCheatCommand(engine: any, cmd: string) {
       for (let x = 0; x < engine.explored.length; x++)
         for (let z = 0; z < engine.explored[x].length; z++)
           engine.explored[x][z] = true;
-      for (const [, cube] of engine.fogCubes) engine.fogGroup?.remove(cube);
-      engine.fogCubes.clear();
+      if (engine.fogMesh) engine.fogMesh.count = 0;
+      engine.fogDirty = true;
       reply('Map revealed — fog of war cleared!');
       break;
     case 'help':

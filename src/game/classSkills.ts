@@ -11,6 +11,7 @@
 // the combat resolver uses the mapped fields.
 // ─────────────────────────────────────────────────────────────
 import type { Ability, ClassId, DamageType, SkillDef, SkillKind, ParticleFX } from './types';
+import { minLevelForSkill } from './stats';
 
 interface Spec {
   id: string; name: string; icon: string; desc: string;
@@ -977,4 +978,36 @@ export const ALL_CLASS_SKILLS: Record<string, SkillDef> = Object.fromEntries(
 /** Skills playable at level 5 or below (current game's max level). */
 export function tier1SkillsFor(classId: string): SkillDef[] {
   return (CLASS_SKILLS[classId] ?? []).filter((sk) => (sk.tier ?? 1) === 1 && !sk.passive);
+}
+
+/**
+ * Every non-passive class-pool skill id across the unit's chosen classes,
+ * deduped in class order (all tiers). Used by the bonfire loadout to show
+ * the full "what my classes can eventually learn" list with level badges.
+ */
+export function classPoolSkillIds(classes: string[] | undefined): string[] {
+  if (!classes || !classes.length) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const cid of classes) {
+    for (const sk of CLASS_SKILLS[cid] ?? []) {
+      if (sk.passive || seen.has(sk.id)) continue;
+      seen.add(sk.id);
+      out.push(sk.id);
+    }
+  }
+  return out;
+}
+
+/**
+ * The subset of the class pool the unit has *reached the level for*:
+ * tier-1 opens at Lv2, tier-2 at Lv3, tier-3/4/5 at Lv4 (see
+ * `minLevelForSkill`). Called on level-up to hydrate `knownSkills`, which
+ * is the actual gate the bonfire loadout and setHotbarLoadout enforce.
+ */
+export function classPoolSkillIdsForLevel(classes: string[] | undefined, level: number): string[] {
+  return classPoolSkillIds(classes).filter((id) => {
+    const s = ALL_CLASS_SKILLS[id];
+    return !!s && minLevelForSkill(s) <= level;
+  });
 }

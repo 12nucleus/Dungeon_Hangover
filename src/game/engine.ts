@@ -9,6 +9,7 @@ import { ParticleSystem, FX } from './particles';
 import { updateRig, setWeapon, equip, unequip, itemToEquipVisual, type Rig } from './characters';
 import { Combat } from './combat';
 import { SKILLS, createRoster } from './skills';
+import { ALL_CLASS_SKILLS, classPoolSkillIdsForLevel } from './classSkills';
 import { AudioManager } from './audio';
 import { DestructibleManager, type Destructible } from './destructibles';
 import type { Item } from './items';
@@ -18,7 +19,6 @@ import { SaveManager, SettingsManager, type GameSettings, type SaveData, type Sa
 import { canUnlock, treeFor } from './skilltree';
 import { TrapManager } from './traps';
 import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot } from './types';
-import { classById } from './classes';
 import { NPCS, type NPCDef } from './npc';
 import { QuestLog } from './quest';
 import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes/index';
@@ -29,8 +29,8 @@ import { buildTavernExterior } from './engine/tavernExterior';
 import { buildTavern } from './engine/tavern';
 import { buildSheep } from './engine/sheep';
 import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone } from './engine/dungeonSetup';
-import { smashProp, checkCombatTrigger, enqueue } from './engine/combatAnimation';
-import { updateFog, executeDialogueAction, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule } from './engine/interaction';
+import { smashProp, checkCombatTrigger, enqueue, triggerTrap as triggerTrapModule } from './engine/combatAnimation';
+import { updateFog, updateExploredVisibility, executeDialogueAction, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
 import { showTargeting as showTargetingModule, showMoveTiles as showMoveTilesModule } from './engine/targeting';
 import { bindInput as bindInputModule, onPointerMove as onPointerMoveModule, onPointerDown as onPointerDownModule, onKeyDown as onKeyDownModule, onResize as onResizeModule } from './engine/input';
@@ -226,18 +226,26 @@ export class GameEngine {
   // -- fog of war ---------------------------------------------
   /** tiles the player has seen at least once */
   public explored: boolean[][] = [];
-  /** dark overlay meshes covering unexplored tiles (indexed by "x,z") */
+  /** parent group for the full-map fog InstancedMesh */
   public fogGroup: THREE.Group | null = null;
-  public fogCubes: Map<string, THREE.Mesh> = new Map();
+  /** single InstancedMesh of black columns covering every UNEXPLORED tile
+   *  map-wide (not just a window near the leader) — rebuilt lazily when
+   *  `fogDirty` flips, so scrolled-away areas stay completely black */
+  public fogMesh: THREE.InstancedMesh | null = null;
+  /** set when exploration changes → updateFog rebuilds the fog mesh */
+  public fogDirty = true;
   /** vision radius (tiles) ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ torch extends it; base is a small cone */
   public visionRadius = 6;
 
   // -- cheat console ------------------------------------------
   /** when true the camera continuously follows the party leader */
   public followCam = false;
-  /** proximity aggro is OFF by default ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ the player explores freely;
-   *  toggle with the `noaggro` console command */
-  public aggroDisabled = true;
+  /** proximity aggro is ON by default — dormant enemies wake up when the
+   *  party gets within range (or walks into their vision cone). The intro
+   *  grace window (introGraceUntil) still protects the player right after
+   *  the intro so they aren't swarmed instantly. Toggle with the `noaggro`
+   *  console command. */
+  public aggroDisabled = false;
   public showFullMap = false;
   /** console overlay open? (backtick key) */
   public consoleOpen = false;
@@ -352,11 +360,15 @@ export class GameEngine {
     this.scene.add(this.world.group);
 
     // -- fog of war: initialize the explored grid (all dark) + overlay group --
+    // The fog InstancedMesh itself is lazy-created by updateFog (interaction.ts)
+    // so any world/floor rebuild path automatically gets a fresh full-map mesh.
     {
       const FS = this.world.heights.length;
       this.explored = Array.from({ length: FS }, () => new Array<boolean>(FS).fill(false));
       this.fogGroup = new THREE.Group();
       this.scene.add(this.fogGroup);
+      this.fogMesh = null;
+      this.fogDirty = true;
     }
 
     // find bonfire prop
@@ -953,6 +965,7 @@ export class GameEngine {
   // -- HUD API (called from React) ----------------------------
   startGame() {
     void this.audio.init();
+    this.audio.resume();
     this.applyAudioSettings();
   if (!this.introPlayed) {
       this.phase = 'menu';     // gated while the intro plays
@@ -972,6 +985,7 @@ export class GameEngine {
    *  tavern cutscene. The React splash fades out at the same time. */
   enterDungeon() {
     void this.audio.init();
+    this.audio.resume();
     this.applyAudioSettings();
     if (!this.titleExt || !this.cutsceneHost) return;
     const ext = this.titleExt;
@@ -1116,7 +1130,8 @@ export class GameEngine {
       this.setHoverInfoOnce('Skills can only be used in combat.');
       return;
     }
-    const s = SKILLS[skillId];
+    const s = SKILLS[skillId] ?? ALL_CLASS_SKILLS[skillId];
+    if (!s) { this.setHoverInfoOnce('Unknown skill.'); return; }
     const deny = this.combat.canUse(active, s);
     if (deny) { this.setHoverInfoOnce(deny); return; }
     this.audio.play('ui_click', 0.6);
@@ -1284,6 +1299,7 @@ export class GameEngine {
     this.fadeTo(0);
     this.iso.lerp = 7;
     void this.audio.init();
+    this.audio.resume();
     this.applyAudioSettings();
     this.audio.stopTavernMusic();
     this.audio.playMusic('music_ambient');
@@ -1377,14 +1393,21 @@ export class GameEngine {
       hero.classes = [...build.classes];
       hero.abilities = { ...build.abilities };
       hero.allocatedStats = {};
-      // hydrate knownSkills with every Tier-1 skill from the chosen classes so
-      // the bonfire loadout editor can assign any of them to the 12 hotbar slots.
-      const pool: string[] = [];
-      for (const cid of build.classes) {
-        const def = classById(cid);
-        for (const skid of def?.tier1Skills ?? []) pool.push(skid);
-      }
-      hero.knownSkills = [...new Set([...build.skills, ...pool])];
+      // Fresh start: the hero begins at level 1 with zero XP. The roster
+      // template ships a higher level/maxHp (meant for the old instant-dungeon
+      // path) — creation resets all progression so the stats window shows
+      // Lv1 / 0 XP and leveling happens through combat + the bonfire.
+      hero.level = 1;
+      hero.xp = 0;
+      hero.skillPoints = 0;
+      hero.maxHp = 24;
+      hero.hp = 24;
+      // Level-gated knowledge: at Lv1 the hero only knows the 2 skills they
+      // picked during creation. The rest of the class pool is hydrated into
+      // knownSkills by levelUpAtBonfire / awardXP (tier-1 at Lv2, tier-2 at
+      // Lv3, tier-3+ at Lv4) — that membership is what gates the loadout.
+      // Skill-tree unlocks add more as the hero spends points.
+      hero.knownSkills = [...build.skills];
       hero.equippedSkills = [...build.skills];
       hero.hotbarLoadout = [...build.hotbarLoadout];
     }
@@ -1487,8 +1510,18 @@ export class GameEngine {
   setHotbarLoadout(loadout: (string | null)[]) {
     const hero = this.combat.units.find((u) => u.team === 'party');
     if (!hero) return;
-    hero.hotbarLoadout = [...loadout.slice(0, 12)];
-    hero.equippedSkills = hero.hotbarLoadout.filter((x): x is string => !!x);
+    // Defense in depth: only skills the hero actually knows may be slotted.
+    // knownSkills is the level gate — creation picks enter at Lv1, the class
+    // pool hydrates on level-up (tier-1 → Lv2, tier-2 → Lv3, tier-3+ → Lv4),
+    // and the skill tree adds more. A skill can never be equipped before it
+    // is known (item 2).
+    const cleaned = loadout.slice(0, 12).map((id) => {
+      if (!id) return null;
+      if (!hero.knownSkills.includes(id)) return null;
+      return id;
+    });
+    hero.hotbarLoadout = cleaned;
+    hero.equippedSkills = cleaned.filter((x): x is string => !!x);
     this.audio.play('ui_click', 0.5);
     this.emitSnapshot();
   }
@@ -1562,6 +1595,11 @@ export class GameEngine {
     if (u.xp < threshold) { this.setHoverInfoOnce(`Need ${threshold} XP to level up (have ${u.xp}).`); return; }
     u.xp -= threshold;
     u.level++;
+    // hydrate the class pool: skills the hero has now reached the level for
+    // become known (tier-1 at Lv2, tier-2 at Lv3, tier-3+ at Lv4)
+    for (const sid of classPoolSkillIdsForLevel(u.classes ?? [], u.level)) {
+      if (!u.knownSkills.includes(sid)) u.knownSkills.push(sid);
+    }
     u.maxHp += 6;
     u.hp = Math.min(effMaxHp(u), u.hp + 6);
     u.skillPoints += 1;
@@ -1883,19 +1921,22 @@ export class GameEngine {
         this.trapManager.group.parent.remove(this.trapManager.group);
       }
     }
-    // 6. Fog of war cubes.
-    if (this.fogGroup) {
-      for (const [, cube] of this.fogCubes) {
-        if (cube.geometry) cube.geometry.dispose();
-        if (cube.material) {
-          const mats = Array.isArray(cube.material) ? cube.material : [cube.material];
-          mats.forEach((mat) => mat.dispose());
-        }
-        this.fogGroup.remove(cube);
+    // 6. Fog of war — dispose the full-map InstancedMesh + overlay group.
+    if (this.fogMesh) {
+      if (this.fogMesh.geometry) this.fogMesh.geometry.dispose();
+      if (this.fogMesh.material) {
+        const mats = Array.isArray(this.fogMesh.material) ? this.fogMesh.material : [this.fogMesh.material];
+        mats.forEach((mat) => mat.dispose());
       }
-      this.fogCubes.clear();
-      if (this.fogGroup.parent) this.fogGroup.parent.remove(this.fogGroup);
+      this.fogGroup?.remove(this.fogMesh);
+      this.fogMesh = null;
     }
+    if (this.fogGroup) {
+      this.fogGroup.clear();
+      if (this.fogGroup.parent) this.fogGroup.parent.remove(this.fogGroup);
+      this.fogGroup = null;
+    }
+    this.fogDirty = true;
     // 7. Dungeon dressing — iron door, golden chest, secret chest,
     //    lever mesh, weapon rack, boss prop, rubble. These are tracked
     //    as references on the engine; tear them down so they don't
@@ -1992,6 +2033,7 @@ export class GameEngine {
   public enqueue(events: CombatEvent[]) { enqueue(this, events); }
   public checkCombatTrigger() { checkCombatTrigger(this); }
   public smashProp(u: Unit, prop: Destructible, skill?: SkillDef) { smashProp(this, u, prop, skill); }
+  public triggerTrap(u: Unit, trap: any) { triggerTrapModule(this, u, trap); }
 
   // interaction
   public updateFog(_dt: number) { updateFog(this, _dt); }
@@ -2044,8 +2086,11 @@ export class GameEngine {
     this.updateDroppedWeapons(dt);
     if (this.structures) this.updateDungeon(dt);
 
-    // torch flames
-    for (const t of this.world.torches) FX.flame(this.particles, t.pos.clone());
+    // torch flames only exist in explored rooms; otherwise particles leak light
+    for (const t of this.world.torches) {
+      const tile = this.world.worldToTile(t.pos.x, t.pos.z);
+      if (tile && this.explored?.[tile.x]?.[tile.z]) FX.flame(this.particles, t.pos.clone());
+    }
 
     // bonfire (flame + smoke particles)
     if (this.bonfireLit && this.bonfirePos) {
@@ -2071,7 +2116,7 @@ export class GameEngine {
         const flamePos = new THREE.Vector3(0.02, rig?.pivots ? 5.85 * 0.055 : 0.58, 0.02);  // flame cubes are at weapon-local y=5.4*C to 6.3*C
         weaponG.localToWorld(flamePos);
         this.torchLight.position.copy(flamePos);
-        if (player && player.weapon === 'torch' && this.torchLit) {
+        if (player && player.weapon === 'torch' && this.torchLit && (!player || this.explored?.[player.pos.x]?.[player.pos.z])) {
           this.torchLight.intensity = 12;
           this.torchLight.distance = 14;
           FX.flame(this.particles, flamePos.clone());
@@ -2087,6 +2132,7 @@ export class GameEngine {
 
     // fog of war: mark tiles within vision as explored, show/hide dark overlays
     this.updateFog(dt);
+    updateExploredVisibility(this);
 
     // sneak visual ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ smooth crouch
     this.crouchLerp += (this.sneaking ? 1 : 0) * Math.min(1, dt * 6) - this.crouchLerp * Math.min(1, dt * 6);
@@ -2289,7 +2335,8 @@ export class GameEngine {
     // unit bars
     for (const [id, v] of this.visuals) {
       const u = this.byId(id);
-      if (!u || !u.alive || this.phase === 'menu' || this.inTavern) { if (v.bar.style.display !== 'none') v.bar.style.display = 'none'; continue; }
+      const explored = !!u && (u.team === 'party' || !!this.explored?.[u.pos.x]?.[u.pos.z]);
+      if (!u || !u.alive || !explored || this.phase === 'menu' || this.inTavern) { if (v.bar.style.display !== 'none') v.bar.style.display = 'none'; continue; }
       v.bar.style.display = 'block';
       const sp = v.rig.group.position.clone(); sp.y += v.rig.pivots ? 2.8 : 2.05;
       sp.project(this.iso.cam);
@@ -2381,6 +2428,7 @@ export class GameEngine {
     if (this.playerConeGeo) this.playerConeGeo.dispose();
     if (this.coneGeo) this.coneGeo.dispose();
     this.trapManager?.dispose();
+    this.audio?.stopDungeonAmbience();
     this.renderer.domElement.remove();
     this.overlay.innerHTML = '';
     this.renderer.dispose();

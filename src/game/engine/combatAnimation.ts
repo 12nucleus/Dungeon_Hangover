@@ -65,6 +65,20 @@ export async function animate(engine: any, ev: CombatEvent) {
         engine.iso.focus(unitWorld(engine, u.pos));
         clearHighlights(engine);
         if (u.team === 'party' && engine.phase === 'combat') showMoveTiles(engine);
+        // M8: enemy turns are driven by the AI — resolve the full turn
+        // (skills + movement, then advance initiative) right here so the
+        // turn actually resolves instead of stalling forever.
+        if (u.team === 'enemy' && engine.phase === 'combat' && engine.combat.inCombat && u.alive) {
+          const aiEvents: CombatEvent[] = [];
+          for (let i = 0; i < 8; i++) {
+            const step = engine.combat.aiStep();
+            if (!step) break;
+            aiEvents.push(...step);
+            if (!engine.combat.inCombat) break;   // combat may end mid-turn
+          }
+          if (aiEvents.length) engine.enqueue(aiEvents);
+          engine.enqueue(engine.combat.endTurn());
+        }
       }
       await delay(280);
       break;
@@ -431,9 +445,12 @@ function dropWeapon(engine: any, v: any) {
   delete (v.rig.parts as { weapon?: THREE.Mesh }).weapon;
 }
 
-/** enqueue events for sequential playback */
+/** enqueue events for sequential playback — kicks off the pump so the
+ *  queue actually drains (the refactor dropped this wiring; without it
+ *  combat events never animate and enemy turns never resolve). */
 export function enqueue(engine: any, events: CombatEvent[]) {
   engine.eventQueue.push(...events);
+  void pump(engine);
 }
 
 /** pump the event queue — play one event at a time */

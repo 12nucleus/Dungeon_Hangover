@@ -29,6 +29,16 @@ export class AudioManager {
   muted = false;
   private started = false;
   private tavernPending = false;
+  private pendingMusic: string | null = null;
+
+  // ── dungeon ambience (fully procedural, no assets) ─────────
+  private ambGain: GainNode | null = null;      // master ambience bus
+  private ambReverb: ConvolverNode | null = null;
+  private ambNoise: AudioBufferSourceNode | null = null;
+  private ambDrone: OscillatorNode[] = [];
+  private ambTimer: number | null = null;
+  private ambNext: number[] = [];
+  private ambActive = false;
 
   /** must be called from a user gesture.
    *
@@ -43,7 +53,10 @@ export class AudioManager {
    * bonfire_lit) are lazy-loaded the first time play() is called for
    * them. This roughly halves init time on first click. */
   async init() {
-    if (this.started) return;
+    if (this.started) {
+      if (this.ctx?.state === 'suspended') { try { await this.ctx.resume(); } catch { /* gesture may not be available yet */ } }
+      return;
+    }
     this.started = true;
     this.ctx = new AudioContext();
     if (this.ctx.state === 'suspended') { try { await this.ctx.resume(); } catch { /* ignore */ } }
@@ -68,6 +81,11 @@ export class AudioManager {
     // bleeding into the tavern title screen. It is started later, when the intro
     // cutscene hands control to the player (see finishIntro / playIntroCutscene).
     if (this.tavernPending) { this.tavernPending = false; this.playTavernMusic(this._pendingOpts ?? {}); this._pendingOpts = undefined; }
+    if (this.pendingMusic) {
+      const name = this.pendingMusic;
+      this.pendingMusic = null;
+      this.playMusic(name);
+    }
 
     // Background-load the rest of the SFX list — don't await, let them
     // trickle in. Each future play() call is guaranteed to wait if it's
@@ -116,10 +134,21 @@ export class AudioManager {
     src.start();
   }
 
+  /** Resume audio from a later user gesture, such as the first dungeon click. */
+  resume() {
+    if (this.ctx?.state === 'suspended') void this.ctx.resume();
+  }
+
   playMusic(name: string) {
+    if (this.muted) return;
+    this.pendingMusic = name;
+    if (name === 'music_ambient' && this.ctx) this.startDungeonAmbience();
     if (!this.ctx) return;
     const buf = this.buffers.get(name);
-    if (!buf) return;
+    if (!buf) { void this._loadBuffer(name).then(() => {
+      if (this.pendingMusic === name) { this.pendingMusic = null; this.playMusic(name); }
+    }); return; }
+    this.pendingMusic = null;
     this.musicSource?.stop();
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
@@ -127,6 +156,9 @@ export class AudioManager {
     src.connect(this.musicGain);
     src.start();
     this.musicSource = src;
+    // Start the procedural layer independently of whether the music asset was
+    // delayed, so a slow/missing MP3 cannot suppress the dungeon atmosphere.
+    if (name === 'music_ambient') this.startDungeonAmbience();
   }
 
   /** tavern theme — loops on its own gain so it can fade independently.
@@ -209,6 +241,191 @@ export class AudioManager {
     if (!this.ctx) return;
     this.musicSource?.stop();
     this.musicSource = null;
+    this.stopDungeonAmbience();
+  }
+
+  // ══ dungeon ambience — fully procedural soundscape ═════════
+  // A low wind/cave drone sits underneath the dungeon music track, and a
+  // scheduler sprinkles randomized events (water drips, distant screams,
+  // echoed farts, rat squeaks) through a reverb bus so they feel far away
+  // and cavernous. No audio assets required — everything is synthesized at
+  // runtime. Auto-starts with the dungeon music and stops on exit.
+
+  private ambReverbIR(): AudioBuffer {
+    const ctx = this.ctx!;
+    const len = 2.4, sr = ctx.sampleRate;
+    const buf = ctx.createBuffer(2, Math.floor(sr * len), sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      let last = 0;
+      for (let i = 0; i < d.length; i++) {
+        const n = (Math.random() * 2 - 1) * 0.6;
+        // gentle exponentially-decaying tail → cavern slap
+        d[i] = (last + n * 0.45) * Math.pow(1 - i / d.length, 2.2);
+        last = d[i];
+      }
+    }
+    return buf;
+  }
+
+  private ambNoiseBuf(dur: number): AudioBuffer {
+    const ctx = this.ctx!;
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  private ambDroneNote(freq: number, vol: number, type: OscillatorType = 'sine') {
+    if (!this.ctx || !this.ambGain) return;
+    const osc = this.ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.value = freq;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+    g.gain.linearRampToValueAtTime(vol, this.ctx.currentTime + 4);
+    // slow LFO breathing
+    const lfo = this.ctx.createOscillator();
+    lfo.frequency.value = 0.05 + Math.random() * 0.06;
+    const lfoG = this.ctx.createGain();
+    lfoG.gain.value = vol * 0.35;
+    lfo.connect(lfoG).connect(g.gain);
+    osc.connect(g).connect(this.ambGain);
+    osc.start();
+    lfo.start();
+    this.ambDrone.push(osc);
+  }
+
+  /** start the layered dungeon soundscape (drone + drip/scream/fart scheduler) */
+  startDungeonAmbience() {
+    if (!this.ctx || this.ambActive) return;
+    this.ambActive = true;
+
+    // ── ambience bus → reverb bus → master ──
+    const amb = this.ctx.createGain();
+    amb.gain.value = 0.5;
+    const reverb = this.ctx.createConvolver();
+    reverb.buffer = this.ambReverbIR();
+    const reverbGain = this.ctx.createGain();
+    reverbGain.gain.value = 0.55;
+    amb.connect(this.master);
+    amb.connect(reverb).connect(reverbGain).connect(this.master);
+    this.ambGain = amb;
+    this.ambReverb = reverb;
+
+    // ── low wind drone (two detuned sine + a breathy triangle) ──
+    this.ambDroneNote(52, 0.05, 'sine');
+    this.ambDroneNote(52.7, 0.04, 'sine');
+    this.ambDroneNote(104, 0.02, 'triangle');
+
+    // ── scheduler tick — sprinkle random distant events ──
+    const schedule = () => {
+      if (!this.ambActive) return;
+      const now = this.ctx!.currentTime;
+      while (this.ambNext.length < 3) this.ambNext.push(now + Math.random() * 6);
+      const t = this.ambNext.shift()!;
+      const roll = Math.random();
+      if (roll < 0.42) this.ambDrip(t);
+      else if (roll < 0.68) this.ambScream(t);
+      else if (roll < 0.88) this.ambFart(t);
+      else this.ambSqueak(t);
+    };
+    schedule();
+    this.ambTimer = window.setInterval(schedule, 3200);
+  }
+
+  /** stop the dungeon ambience (drone + scheduler) — safe to call anytime */
+  stopDungeonAmbience() {
+    this.ambActive = false;
+    if (this.ambTimer !== null) { clearInterval(this.ambTimer); this.ambTimer = null; }
+    this.ambNext = [];
+    for (const osc of this.ambDrone) { try { osc.stop(); } catch { /* */ } }
+    this.ambDrone = [];
+    this.ambNoise?.stop();
+    this.ambNoise = null;
+    if (this.ambReverb) { try { this.ambReverb.disconnect(); } catch { /* */ } }
+    this.ambReverb = null;
+    if (this.ambGain) { try { this.ambGain.disconnect(); } catch { /* */ } }
+    this.ambGain = null;
+  }
+
+  /** is the dungeon soundscape currently running? (drives UI toggles) */
+  isDungeonAmbienceActive(): boolean {
+    return this.ambActive;
+  }
+
+  private ambDrip(t: number) {
+    if (!this.ctx || !this.ambGain) return;
+    // small plink: short sine blip with fast decay, pitched at 900-1800Hz
+    const osc = this.ctx.createOscillator();
+    const f = 900 + Math.random() * 900;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(f, t);
+    osc.frequency.exponentialRampToValueAtTime(f * 0.75, t + 0.08);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.14, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    osc.connect(g).connect(this.ambGain);
+    osc.start(t); osc.stop(t + 0.12);
+  }
+
+  private ambScream(t: number) {
+    if (!this.ctx || !this.ambGain) return;
+    // distant shriek — bandpassed noise swelled up and down, very quiet
+    const len = 1.4;
+    const buf = this.ambNoiseBuf(len);
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(1900 + Math.random() * 500, t);
+    f.Q.value = 9;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.06, t + 0.25);
+    g.gain.linearRampToValueAtTime(0.0001, t + len);
+    src.connect(f).connect(g).connect(this.ambGain);
+    src.start(t); src.stop(t + len);
+  }
+
+  private ambFart(t: number) {
+    if (!this.ctx || !this.ambGain) return;
+    // echoed fart — low sawtooth with pitch droop + a reverb slap, quiet enough
+    // to be a distant rude noise echoing down a corridor
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(85 + Math.random() * 30, t);
+    osc.frequency.exponentialRampToValueAtTime(38, t + 0.5);
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(320, t);
+    f.frequency.exponentialRampToValueAtTime(90, t + 0.5);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.09, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+    osc.connect(f).connect(g).connect(this.ambGain);
+    osc.start(t); osc.stop(t + 0.75);
+  }
+
+  private ambSqueak(t: number) {
+    if (!this.ctx || !this.ambGain) return;
+    // distant rat squeak — two quick square beeps
+    const mk = (at: number, f0: number, f1: number) => {
+      const o = this.ctx!.createOscillator();
+      o.type = 'square';
+      o.frequency.setValueAtTime(f0, at);
+      o.frequency.exponentialRampToValueAtTime(f1, at + 0.06);
+      const g = this.ctx!.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.045, at + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.07);
+      o.connect(g).connect(this.ambGain!);
+      o.start(at); o.stop(at + 0.09);
+    };
+    mk(t, 1500 + Math.random() * 400, 2200);
+    mk(t + 0.11, 1800, 1400);
   }
 
   /** adaptive layer: war drums while in combat */
@@ -396,6 +613,7 @@ export class AudioManager {
   toggleMute(): boolean {
     this.muted = !this.muted;
     if (this.ctx) this.master.gain.value = this.muted ? 0 : 0.9;
+    if (this.ctx && this.muted) this.stopDungeonAmbience();
     return this.muted;
   }
 

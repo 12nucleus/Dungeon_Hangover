@@ -154,6 +154,36 @@ export function updateDungeon(engine: any, dt: number) {
   const party = engine.combat.living('party');
   const adj = (t: GridPos) => party.some((p: any) => Combat.dist(p.pos, t) <= 1);
 
+  // ── idle patrolling (M8): dormant mobs wander their room ──
+  // They keep their home tile as an anchor, pick a random walkable spot a
+  // few tiles away, and stroll over using the same walker animation as the
+  // player. The moment aggro fires (checkDungeonAggro) the walker is
+  // cleared by the combat 'phase' event and they fight in place.
+  const S = engine.world.heights.length;
+  for (const f of engine.combat.living('enemy')) {
+    if (!f.dormant || f.bossGroup) continue;          // boss waits for his cutscene
+    if (f.patrolT === undefined) f.patrolT = 0;
+    f.patrolT -= dt;
+    const v = engine.visuals.get(f.id);
+    if (v?.walker) continue;                          // already mid-leg
+    if (f.patrolT > 0) continue;
+    f.patrolT = 4 + Math.random() * 6;                // pause before the next leg
+    if (!f.home) f.home = { ...f.pos };
+    for (let tries = 0; tries < 10; tries++) {
+      const tx = f.home.x + Math.round((Math.random() - 0.5) * 7);
+      const tz = f.home.z + Math.round((Math.random() - 0.5) * 7);
+      if (tx < 0 || tz < 0 || tx >= S || tz >= S) continue;
+      if (!engine.world.isWalkable(tx, tz)) continue;
+      if (Math.abs(engine.world.heightAt(tx, tz) - engine.world.heightAt(f.home.x, f.home.z)) > 1) continue;
+      if (party.some((p: any) => Combat.dist(p.pos, { x: tx, z: tz }) <= 1)) continue;
+      const path = engine.combat.pathTo(f, tx, tz, 10);
+      if (path && path.length >= 2) {
+        engine.moveUnitAlong(f, path);
+        break;
+      }
+    }
+  }
+
   if (engine.leverMesh && !engine.secretOpen && adj(st.secretLever)) pullLever(engine);
   if (engine.ironDoor && !engine.ironDoorOpen && adj(st.bossDoor)) {
     if (engine.hasIronKey) openIronDoor(engine);

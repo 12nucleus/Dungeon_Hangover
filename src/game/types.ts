@@ -177,6 +177,11 @@ export interface Unit {
   dropKey?: 'iron' | 'golden';  // guaranteed key drop on death
   flying?: boolean;       // hovers above the floor (bats)
   restedAtBonfire?: boolean;
+  // ── idle patrolling (M8) ──
+  /** home tile the mob patrols around (anchor point) */
+  home?: GridPos;
+  /** seconds until the next patrol leg (counted down in updateDungeon) */
+  patrolT?: number;
 }
 
 export type LogKind = 'info' | 'hit' | 'miss' | 'crit' | 'heal' | 'death' | 'system' | 'roll';

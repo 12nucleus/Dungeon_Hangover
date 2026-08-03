@@ -316,11 +316,14 @@ export function createDungeonRoster(sp: DungeonSpawns): Unit[] {
   const units: Unit[] = [];
 
   // ── the lone hero — naked except for white/yellow underwear (cloth+accent) ──
+  // Template stats are the pre-creation baseline; confirmCharacterCreation
+  // resets the hero to Lv1 / 0 XP / 24 HP once the player picks classes, so
+  // these values only matter if creation is somehow skipped.
   units.push(mkUnit({
     name: 'Greg', title: 'Human', team: 'party', klass: 'fighter', pos: { ...sp.party },
-    maxHp: 46, hp: 46, ac: 10, level: 4,
+    maxHp: 24, hp: 24, ac: 10, level: 1, xp: 0,
     abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 11, cha: 12 },
-    knownSkills: ['slash', 'cleave', 'shield_bash', 'power_strike'],
+    knownSkills: [],
     scheme: { skin: 0xd9a066, cloth: 0xffffff, accent: 0xffeb3b, hair: 0x4a2f1a, hood: false, style: 'normal', naked: true },
     weapon: 'unarmed', xpValue: 0,
     equipment: {},

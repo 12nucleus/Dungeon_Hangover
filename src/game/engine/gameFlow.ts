@@ -17,6 +17,7 @@ import { runTitleNarration } from '../cutscenes/index';
 // ══ start / explore ════════════════════════════════════════
 export function startGame(engine: any) {
   void engine.audio.init();
+  engine.audio.resume();
   engine.applyAudioSettings();
   if (!engine.introPlayed) {
     engine.phase = 'menu';
@@ -32,6 +33,7 @@ export function startGame(engine: any) {
 
 export function enterDungeon(engine: any) {
   void engine.audio.init();
+  engine.audio.resume();
   engine.applyAudioSettings();
   if (!engine.titleExt || !engine.cutsceneHost) return;
   const ext = engine.titleExt;
@@ -251,6 +253,7 @@ export function loadGame(engine: any, slotId: string): boolean {
   engine.fadeTo(0);
   engine.iso.lerp = 7;
   void engine.audio.init();
+  engine.audio.resume();
   engine.applyAudioSettings();
   engine.audio.stopTavernMusic();
   engine.audio.playMusic('music_ambient');

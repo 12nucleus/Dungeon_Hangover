@@ -14,6 +14,12 @@ import { unitWorld } from './visuals';
 import { clearHighlights, showAoePreview, pingAt } from './targeting';
 
 // ══ fog of war ══════════════════════════════════════════════
+// One InstancedMesh covers EVERY unexplored tile map-wide (not just a
+// window around the leader), so scrolled-away unexplored areas stay
+// completely black. Matrices are rebuilt lazily only when tiles become
+// explored (engine.fogDirty), keeping the per-frame cost at zero.
+const fogDummy = new THREE.Object3D();
+
 export function updateFog(engine: any, _dt: number) {
   if (!engine.explored.length || engine.phase === 'menu' || engine.busy) return;
   const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat?.living('party')[0];
@@ -27,51 +33,121 @@ export function updateFog(engine: any, _dt: number) {
   for (let x = x0; x <= x1; x++) {
     for (let z = z0; z <= z1; z++) {
       const dist = Math.max(Math.abs(x - px), Math.abs(z - pz));
-      if (dist <= radius && engine.world.isWalkable(x, z) && !engine.explored[x][z]) {
+      // Reveal walkable tiles plus decorative tiles in the current vision
+      // radius. Props can intentionally occupy blocked tiles (bonfires,
+      // braziers), so those tiles must still become visible when nearby.
+      const onSelf = x === px && z === pz;
+      const hasDecor = (engine.world.exploredObjects ?? []).some((o: any) => o.x === x && o.z === z);
+      if (dist <= radius && (onSelf || engine.world.isWalkable(x, z) || hasDecor) && !engine.explored[x][z]) {
         engine.explored[x][z] = true;
+        engine.fogDirty = true;
       }
     }
   }
 
-  const scanRadius = radius + 10;
-  const sx0 = Math.max(0, px - scanRadius), sx1 = Math.min(S - 1, px + scanRadius);
-  const sz0 = Math.max(0, pz - scanRadius), sz1 = Math.min(S - 1, pz + scanRadius);
-  for (let x = sx0; x <= sx1; x++) {
-    for (let z = sz0; z <= sz1; z++) {
-      if (!engine.world.isWalkable(x, z)) continue;
-      const key = `${x},${z}`;
-      if (!engine.explored[x][z]) {
-        if (!engine.fogCubes.has(key) && engine.fogGroup) {
-          const g = new THREE.BoxGeometry(1.06, 12, 1.06);
-          const m = new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: false });
-          const mesh = new THREE.Mesh(g, m);
-          const wp = unitWorld(engine, { x, z });
-          mesh.position.set(wp.x, wp.y + 3, wp.z);
-          mesh.renderOrder = 5;
-          engine.fogGroup.add(mesh);
-          engine.fogCubes.set(key, mesh);
-        }
-      } else {
-        const cube = engine.fogCubes.get(key);
-        if (cube) { engine.fogGroup?.remove(cube); engine.fogCubes.delete(key); }
+  // Lazy-create the full-map fog mesh (recreated fresh on every floor build).
+  // IMPORTANT: the fog is a THIN flat slab resting on the floor, not a tall
+  // column. Tall opaque boxes become black "pillars" when viewed edge-on and
+  // block the whole room from grazing camera angles. A flat dark tile reads
+  // as "unexplored black floor" from any angle without occluding the scene.
+  if (!engine.fogMesh && engine.fogGroup) {
+    const g = new THREE.BoxGeometry(1.08, 0.14, 1.08);
+    // Dense opaque black slabs make unexplored rooms unreadable even when the
+    // camera is panned/rotated across them.
+    const m = new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 1, transparent: false, depthWrite: true });
+    const mesh = new THREE.InstancedMesh(g, m, S * S);
+    mesh.renderOrder = 5;
+    mesh.frustumCulled = false;
+    mesh.count = 0;
+    engine.fogGroup.add(mesh);
+    engine.fogMesh = mesh;
+    engine.fogDirty = true;
+  }
+
+  // Rebuild instance matrices only when exploration actually changed.
+  if (engine.fogDirty && engine.fogMesh) {
+    engine.fogDirty = false;
+    let n = 0;
+    for (let x = 0; x < S; x++) {
+      for (let z = 0; z < S; z++) {
+        if (engine.explored[x][z]) continue;
+        // Only fog walkable floor tiles (walls are solid rock — capping them
+        // with black boxes looks broken). The leader's own tile is included
+        // as a safety net even if the grid flags it blocked.
+        const onSelf = x === px && z === pz;
+        if (!onSelf && !engine.world.isWalkable(x, z)) continue;
+        // unitWorld().y is the tile CENTER (h + 0.5) where a unit stands;
+        // the actual floor surface is ~h (floor voxel tops sit at h-0.04..h).
+        // Rest the slab right on that surface so it reads as a dark patch of
+        // floor, never a floating box. x/z come from unitWorld so the slab
+        // stays aligned with the world offset convention.
+        const wp = unitWorld(engine, { x, z });
+        const floorY = engine.world.heightAt(x, z);
+        fogDummy.position.set(wp.x, floorY + 0.03, wp.z);
+        fogDummy.updateMatrix();
+        engine.fogMesh.setMatrixAt(n, fogDummy.matrix);
+        n++;
       }
     }
+    engine.fogMesh.count = n;
+    engine.fogMesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+/** Hide all tile-owned decoration while its tile is unexplored. */
+export function updateExploredVisibility(engine: any) {
+  for (const entry of engine.world?.exploredObjects ?? []) {
+    const visible = !!engine.explored?.[entry.x]?.[entry.z];
+    entry.object.visible = true;
+    entry.object.traverse((o: any) => {
+      if (o.isLight) {
+        const base = o.userData.fogBaseIntensity ?? o.intensity;
+        o.userData.fogBaseIntensity = base;
+        o.intensity = visible ? base : 0;
+      }
+      if (o.material?.isSpriteMaterial) {
+        const base = o.userData.fogBaseOpacity ?? o.material.opacity;
+        o.userData.fogBaseOpacity = base;
+        o.material.opacity = visible ? base : 0;
+      }
+    });
+  }
+  for (const torch of engine.world?.torches ?? []) {
+    const tile = engine.world.worldToTile(torch.pos.x, torch.pos.z);
+    if (tile) torch.light.visible = !!engine.explored?.[tile.x]?.[tile.z];
   }
 }
 
 // ══ tile picking ═══════════════════════════════════════════
+// Iterative height refinement: we first intersect a flat plane at the
+// leader's height to get a candidate tile, then re-intersect the ray at that
+// tile's *actual* terrain height (world.heights is the single source of truth
+// for the ground surface in both the voxel-terrain and fallback renderers).
+// With the 55° perspective camera this converges to sub-tile accuracy in
+// 2-3 passes on uneven floors — fixing the "pointer vs. clicked ground"
+// offset.
 export function pickTile(engine: any): GridPos | null {
   engine.ray.setFromCamera(engine.pointer, engine.iso.cam);
-  const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat?.living('party')[0];
-  const pickY = leader ? engine.world.heightAt(leader.pos.x, leader.pos.z) : 1;
   const origin = engine.ray.ray.origin;
   const dir = engine.ray.ray.direction;
   if (Math.abs(dir.y) < 1e-6) return null;
-  const t = (pickY - origin.y) / dir.y;
-  if (t < 0) return null;
-  const hx = origin.x + dir.x * t;
-  const hz = origin.z + dir.z * t;
-  return engine.world.worldToTile(hx, hz);
+
+  const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat?.living('party')[0];
+  let pickY = leader ? engine.world.heightAt(leader.pos.x, leader.pos.z) : 1;
+
+  let tile: GridPos | null = null;
+  for (let i = 0; i < 3; i++) {
+    const t = (pickY - origin.y) / dir.y;
+    if (t < 0) return null;
+    const hx = origin.x + dir.x * t;
+    const hz = origin.z + dir.z * t;
+    tile = engine.world.worldToTile(hx, hz);
+    if (!tile) return null;
+    const nextY = engine.world.heightAt(tile.x, tile.z);
+    if (Math.abs(nextY - pickY) < 0.05) break;
+    pickY = nextY;
+  }
+  return tile;
 }
 
 // ══ hover ══════════════════════════════════════════════════

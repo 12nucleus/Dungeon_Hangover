@@ -141,7 +141,11 @@ export function createProp(kind: string, wx: number, groundTopY: number, wz: num
   if (model.hang) {
     group.position.set(wx, groundTopY + 6, wz);   // hang from ceiling
   } else {
-    group.position.set(wx, groundTopY, wz);
+    // Voxel models use a centered cube origin. Lift by half the model's
+    // lowest voxel so the lowest cube rests exactly on the terrain surface.
+    const minVoxelY = model.voxels.reduce((min, v) => Math.min(min, v.y), Infinity);
+    const baseOffset = Number.isFinite(minVoxelY) ? -minVoxelY * model.cube + model.cube * 0.5 : 0;
+    group.position.set(wx, groundTopY + baseOffset, wz);
   }
 
   let light: THREE.PointLight | null = null;

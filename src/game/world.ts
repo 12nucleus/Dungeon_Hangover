@@ -49,6 +49,8 @@ export class VoxelWorld {
   topMat: string[][] = [];
   torches: Torch[] = [];
   water!: THREE.Mesh;
+  /** Scene objects whose visibility follows the explored tile they belong to. */
+  readonly exploredObjects: { object: THREE.Object3D; x: number; z: number }[] = [];
   private time = 0;
   private propUpdates: NonNullable<BuiltProp['update']>[] = [];
 
@@ -325,10 +327,15 @@ export class VoxelWorld {
     for (const p of L.props) {
       const wx = (p.x - S / 2 + 0.5) * TILE;
       const wz = (p.z - S / 2 + 0.5) * TILE;
-      const groundTopY = this.heights[p.x][p.z] + 0.5;
+      // Props are authored around their local voxel origin. The terrain's
+      // top surface is the height value itself; do not add half a voxel here,
+      // otherwise braziers/bonfires visibly float above the floor.
+      const groundTopY = this.heights[p.x][p.z];
       const built = createProp(p.kind, wx, groundTopY, wz, p.seed ?? 0.5);
       if (!built) continue;
+      built.group.userData.fogTile = { x: p.x, z: p.z };
       this.group.add(built.group);
+      this.exploredObjects.push({ object: built.group, x: p.x, z: p.z });
       if (built.update) this.propUpdates.push(built.update);
       if (built.blocks || BLOCKING_PROPS.has(p.kind)) this.blocked[p.x][p.z] = true;
     }
@@ -346,7 +353,7 @@ export class VoxelWorld {
     const arena = L.arena;
     const col = new THREE.Color();
     const floorGeos: THREE.BufferGeometry[] = [];
-    const veinGeos: THREE.BufferGeometry[] = [];
+    const veinGeosByTile = new Map<string, THREE.BufferGeometry[]>();
 
     const cube = (list: THREE.BufferGeometry[], size: number, x: number, y: number, z: number, hex: number, jit = 0.12) => {
       const g = new THREE.BoxGeometry(size, size, size);
@@ -403,7 +410,10 @@ export class VoxelWorld {
             for (let i = 0; i < n; i++) {
               const jx = dx !== 0 ? 0 : (hash(x + i, z, this.seed) - 0.5) * 0.5;
               const jz = dz !== 0 ? 0 : (hash(x, z + i, this.seed) - 0.5) * 0.5;
-              cube(veinGeos, 0.08, fx + jx, vy, fz + jz, hue, 0.05);
+              const key = `${nx},${nz}`;
+              let tileGeos = veinGeosByTile.get(key);
+              if (!tileGeos) { tileGeos = []; veinGeosByTile.set(key, tileGeos); }
+              cube(tileGeos, 0.08, fx + jx, vy, fz + jz, hue, 0.05);
               vy += 0.18 + hash(x + i, z + i, this.seed) * 0.14;
             }
           }
@@ -419,12 +429,16 @@ export class VoxelWorld {
       m.receiveShadow = true;
       this.group.add(m);
     }
-    if (veinGeos.length) {
-      const merged = mergeGeometries(veinGeos, false)!;
-      veinGeos.forEach((g) => g.dispose());
-      // MeshBasicMaterial ignores lighting → the veins glow in the dark
+    for (const [key, geos] of veinGeosByTile) {
+      const [x, z] = key.split(',').map(Number);
+      const merged = mergeGeometries(geos, false)!;
+      geos.forEach((g) => g.dispose());
+      // MeshBasicMaterial ignores lighting → the veins glow in the dark.
+      // Keep each vein tile separate so unexplored rooms can hide it.
       const m = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ vertexColors: true }));
+      m.userData.fogTile = { x, z };
       this.group.add(m);
+      this.exploredObjects.push({ object: m, x, z });
     }
   }
 
@@ -481,6 +495,7 @@ export class VoxelWorld {
     this.wallH = [];
     this.waterTiles = null;
     this.torches = [];
+    this.exploredObjects.length = 0;
     this.propUpdates = [];
     this.water = undefined as unknown as THREE.Mesh;
   }

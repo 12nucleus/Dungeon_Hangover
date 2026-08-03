@@ -8,8 +8,9 @@ import { useMemo, useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot } from '@/game/types';
 import { SKILLS } from '@/game/skills';
-import { ALL_CLASS_SKILLS } from '@/game/classSkills';
+import { ALL_CLASS_SKILLS, classPoolSkillIds } from '@/game/classSkills';
 import { classById } from '@/game/classes';
+import { minLevelForSkill } from '@/game/stats';
 
 interface Props {
   snap: UISnapshot;
@@ -24,15 +25,22 @@ export function BonfireLoadout({ snap, engine }: Props) {
     hero?.hotbarLoadout ?? hero?.equippedSkills ?? Array(12).fill(null),
   );
 
-  // every skill the leader knows (dedup across both registries)
+  // Every skill the leader can eventually learn: the ones they know now
+  // (assignable) plus the full class pool they have NOT reached the level
+  // for yet (shown greyed-out with a level badge). `known` membership is
+  // the level gate — creation picks enter knownSkills at Lv1, the class
+  // pool hydrates on level-up (tier-1 → Lv2, tier-2 → Lv3, tier-3+ → Lv4).
   const known = useMemo(() => {
-    const seen = new Map<string, { id: string; name: string; icon: string; cls: string; desc: string }>();
-    for (const id of hero?.knownSkills ?? []) {
+    const seen = new Map<string, { id: string; name: string; icon: string; cls: string; desc: string; minLevel: number; known: boolean }>();
+    const add = (id: string, known: boolean) => {
+      if (seen.has(id)) return;
       const s = SKILLS[id] ?? ALL_CLASS_SKILLS[id];
-      if (!s || seen.has(id)) continue;
+      if (!s) return;
       const cls = s.classId ? (classById(s.classId)?.name ?? s.classId) : 'Base';
-      seen.set(id, { id, name: s.name, icon: s.icon, cls, desc: s.desc });
-    }
+      seen.set(id, { id, name: s.name, icon: s.icon, cls, desc: s.desc, minLevel: minLevelForSkill(s), known });
+    };
+    for (const id of hero?.knownSkills ?? []) add(id, true);
+    for (const id of classPoolSkillIds(hero?.classes ?? [])) add(id, false);
     return [...seen.values()];
   }, [hero]);
 
@@ -89,11 +97,14 @@ export function BonfireLoadout({ snap, engine }: Props) {
           <div className="bl-known-grid">
             {known.map((sk) => {
               const already = slots.includes(sk.id);
+              const locked = !sk.known;
               return (
                 <button
                   key={sk.id}
-                  className={`bl-skill ${already ? 'used' : ''}`}
+                  className={`bl-skill ${already ? 'used' : ''} ${locked ? 'locked' : ''}`}
+                  disabled={locked}
                   onClick={() => {
+                    if (locked) return;
                     // already on the bar → remove it; otherwise place in first empty slot
                     if (already) {
                       setSlot(slots.indexOf(sk.id), null);
@@ -102,14 +113,15 @@ export function BonfireLoadout({ snap, engine }: Props) {
                       if (empty >= 0) setSlot(empty, sk.id);
                     }
                   }}
-                  title={`${sk.name} — ${sk.desc}`}
+                  title={locked ? `${sk.name} — unlocks at level ${sk.minLevel}` : `${sk.name} — ${sk.desc}`}
                 >
-                  <span className="bl-skill-icon">{sk.icon}</span>
+                  <span className="bl-skill-icon">{locked ? '🔒' : sk.icon}</span>
                   <div>
                     <strong>{sk.name}</strong>
                     <em>{sk.cls}</em>
                   </div>
-                  {already && <span className="bl-used">on bar</span>}
+                  {locked && <span className="bl-lock">Lv {sk.minLevel}</span>}
+                  {!locked && already && <span className="bl-used">on bar</span>}
                 </button>
               );
             })}

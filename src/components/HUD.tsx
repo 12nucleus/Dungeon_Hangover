@@ -123,9 +123,10 @@ export function HUD({ snap, engine }: Props) {
 
   if (!snap) return null;
   const phase = snap.phase;
-  const active = snap.units.find((u) => u.id === snap.activeId) ?? null;
+  // Strict resolution from activeId only (used for enemy-turn banner / initiative).
+  const activeUnit = snap.units.find((u) => u.id === snap.activeId) ?? null;
   const party = snap.units.filter((u) => u.team === 'party');
-  const playerTurn = phase === 'combat' && active?.team === 'party';
+  const playerTurn = phase === 'combat' && activeUnit?.team === 'party';
 
   return (
     <div className="hud">
@@ -296,9 +297,9 @@ export function HUD({ snap, engine }: Props) {
           )}
 
           {/* BG3-style bottom hotbar (default actions + 12 skill slots) */}
-          {active && active.team === 'party' && <Hotbar snap={snap} engine={engine!} />}
-          {phase === 'combat' && active && active.team === 'enemy' && (
-            <div className="enemy-turn-banner">⚔ {active.name} is acting…</div>
+          {phase !== 'creation' && party.length > 0 && <Hotbar snap={snap} engine={engine!} />}
+          {phase === 'combat' && activeUnit && activeUnit.team === 'enemy' && (
+            <div className="enemy-turn-banner">⚔ {activeUnit.name} is acting…</div>
           )}
           {phase === 'explore' && (
             <div className="explore-hint">🧭 Click ground to move · I Inventory · K Skill tree · C Sneak · Space Rest</div>
