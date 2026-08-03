@@ -72,7 +72,14 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   engine.keys.add(k);
   const cutscene = engine.busy && (engine.introActive || engine.bossCineActive);
   if (k === 'q' && !cutscene) engine.iso.rotate(1);
-  if (k === 'e' && !cutscene) engine.iso.rotate(-1);
+  if (k === 'e' && !cutscene) {
+    // interact with the active prompt first (puddle, chest, valve…),
+    // else the camera rotation the key originally did
+    if (engine.activeInteractable && engine.phase === 'explore' && !engine.combat.inCombat) engine.triggerActiveInteractable();
+    else engine.iso.rotate(-1);
+    return;
+  }
+  if (k === 'j' && engine.phase !== 'menu') { engine.toggleQuestLog(); return; }
   if (k === 'i' && engine.phase !== 'menu') { engine.toggleInventory(); return; }
   if (k === 'k' && engine.phase !== 'menu') { engine.toggleSkillTree(); return; }
   if (k === 'c' && engine.phase === 'explore' && !engine.combat.inCombat) { engine.toggleSneak(); return; }

@@ -2,6 +2,7 @@
 // terrain materials, prop placement, lighting, spawn positions
 // and the monster roster for one dungeon level.
 import type { GridPos, Unit } from '../game/types';
+import type { Interactable } from '../game/engine/interactables';
 
 export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'crystal_blue' | 'crystal_green' | 'boulder' | 'bones' | 'torch' | 'brazier' | 'mushroom' | 'bonfire' | 'webpile' | 'rubble';
 
@@ -26,6 +27,8 @@ export interface LevelLayout {
 }
 
 /** Named interactive structures the engine wires up (doors, chests, cutscene). */
+
+
 export interface LevelStructures {
   partySpawn: GridPos;
   checkpoint?: GridPos;     // starter-room bonfire — light it to set the respawn point
@@ -41,6 +44,22 @@ export interface LevelStructures {
   mezzanines?: Rect[];
   stairs?: { a: GridPos; b: GridPos }[];
   collapsedDeadEnds?: GridPos[];
+
+  // ── floor 50 — authored sewer cellar ──
+  /** hand-authored doors: tiles blocked until `openedByFlag` is set */
+  doors?: { id: string; pos: GridPos; axis: 'x' | 'z'; openedByFlag: string }[];
+  /** hand-authored blockers: rubble/secret-door tiles cleared by a flag */
+  blockers?: { id: string; tiles: GridPos[]; kind: 'rubble' | 'secretDoor'; openedByFlag: string }[];
+  /** boss-rat arena (room 5) — entering it triggers the boss-rat cutscene */
+  arenaRect?: Rect;
+  /** staircase to floor 49, behind Gribnab's bath — departure interactable */
+  exitStairs?: GridPos;
+  /** all authored rooms (id → rect), for entry narration + minimap markers */
+  rooms?: { id: string; name: string; rect: Rect }[];
+  /** hand-authored NPCs to spawn (id → tile) */
+  npcs?: { npcId: string; pos: GridPos }[];
+  /** boss-door override: open on this flag instead of the iron-key check */
+  bossDoorOpenFlag?: string;
 }
 
 export interface LevelDef {
@@ -71,6 +90,23 @@ export interface LevelDef {
   /** optional maze walkability + interactive structures (dungeon levels) */
   layout?: LevelLayout;
   structures?: LevelStructures;
-  /** fresh roster factory (preferred over `roster` so the level can restart) */
-  makeRoster?: () => Unit[];
+  /** fresh roster factory (preferred over `roster` so the level can restart);
+   *  receives the run seed for per-run spawn jitter */
+  makeRoster?: (seed?: number) => Unit[];
+
+  // ── floor 50 — per-level content placements ──
+  /** trap placements; a function is evaluated per-run with the run seed */
+  traps?: { defId: string; x: number; z: number }[] | ((seed: number) => { defId: string; x: number; z: number }[]);
+  /** destructible prop placements (added on top of any generic SPOTS) */
+  destructibles?: { defId: string; x: number; z: number }[];
+  /** interactable definitions; function evaluated per-run with the run seed */
+  makeInteractables?: (seed: number) => Interactable[];
+  /** room lookup: which authored room contains a tile (map coordinates) */
+  roomOf?: (x: number, z: number) => string | null;
+  /** per-room first-entry narration (bible verbatim) */
+  roomNarration?: Record<string, string>;
+  /** environmental hazard tiles (shove targets: wine press, bath tub) */
+  hazards?: { tile: GridPos; kind: string }[];
+  /** per-run hidden-treasure tiles */
+  makeHiddenTreasures?: (seed: number) => GridPos[];
 }

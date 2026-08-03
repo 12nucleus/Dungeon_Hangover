@@ -29,6 +29,8 @@ export async function animate(engine: any, ev: CombatEvent) {
       const v = engine.visuals.get(ev.unitId);
       if (v) { v.rig.anim.flinch = 1; refreshBar(engine, ev.unitId); }
       await delay(120);
+      // Gribnab parley: first time he drops to ≤10% HP, he offers a truce
+      engine.maybeParley?.(ev.unitId);
       break;
     }
     case 'heal': {
@@ -48,15 +50,73 @@ export async function animate(engine: any, ev: CombatEvent) {
       engine.audio.play('sword_hit', 0.4, 0.6);
       const slain = engine.byId(ev.unitId);
       if (slain?.dropKey) grantKey(engine, slain.dropKey);
-      if (slain?.bossGroup || slain?.name === 'Baron Gnaw') {
+      if (slain?.bossGroup || slain?.name === 'Baron Gnaw' || slain?.name === 'Gribnab') {
         engine.defeatedSpecialMobs.add(slain.id);
       }
-      if (slain?.name === 'Baron Gnaw') {
-        const finger = makeItem('severed_finger');
-        engine.inventory.push(finger);
-        engine.pushLog(`🐀 Baron Gnaw drops ${finger.icon} ${finger.name}!`, 'system');
+      if (slain?.name === 'Gribnab') {
+        engine.setFlag?.('gribnab_dead');
+        engine.runStats.kills += 1;
+        engine.pushLog('🛁 The Goblin King is dead. The bath is silent. The rubber ducks float, abandoned.', 'system');
+      }
+      if (slain?.team === 'enemy' && slain?.name !== 'Gribnab') engine.runStats.kills += 1;
+      // guaranteed item/gold drops (Baron Gnaw → finger + rusty key, Gribnab → loot)
+      if (slain?.deathDrops) {
+        for (const itemId of slain.deathDrops.itemIds) {
+          const it = makeItem(itemId);
+          engine.inventory.push(it);
+          engine.pushLog(`${slain.name} drops ${it.icon} ${it.name}!`, 'system');
+        }
+        if (slain.deathDrops.gold) {
+          grantLoot(engine, [], slain.deathDrops.gold);
+          engine.pushLog(`🪙 ${slain.deathDrops.gold} gold clatters from the body.`, 'system');
+        }
+      }
+      // mold blobs: 25% spore burst — Nauseated to adjacent party members
+      if (slain?.name === 'Mold Blob' && Math.random() < 0.25) {
+        for (const p of engine.combat.living('party')) {
+          if (Combat.dist(p.pos, slain.pos) <= 1 && !p.conditions.some((c: any) => c.id === 'nauseated')) {
+            p.conditions.push({ id: 'nauseated', name: 'Nauseated', roundsLeft: 3 });
+            engine.pushLog(`${p.name} breathes in the mold spores — Nauseated!`, 'system');
+            spawnFloater(engine, p.id, '❄ Nauseated', 'debuff');
+          }
+        }
+      }
+      // bone rat: reassembles once unless burned
+      if (slain?.name === 'Bone Rat' && slain.lastDamageKind !== 'fire' && !engine.hasFlag?.('bones_burned') && !engine.hasFlag?.('bonerat_reassembled')) {
+        engine.setFlag?.('bonerat_reassembled');
+        engine.pushLog('🦴 The bones RATTLE. The Bone Rat reassembles!', 'system');
+        await delay(600);
+        slain.alive = true;
+        slain.hp = slain.maxHp;
+        slain.conditions = [];
+        const rv = engine.visuals.get(slain.id);
+        if (rv) {
+          rv.rig.anim.mode = 'idle'; rv.rig.anim.t = 0; rv.bar.style.display = '';
+          rv.rig.group.position.copy(unitWorld(engine, slain.pos));
+          (rv as any).dustDone = false;
+        }
       }
       await delay(500);
+      break;
+    }
+    case 'summon': {
+      // a new unit fades in (boss summons, Scrag hostile path)
+      const u = ev.unit;
+      engine.addUnit(u);
+      const sv = engine.visuals.get(u.id);
+      if (sv) {
+        sv.rig.group.scale.set(0.01, 0.01, 0.01);
+        const t0 = performance.now();
+        const grow = () => {
+          const k = Math.min(1, (performance.now() - t0) / 350);
+          const s = 0.01 + (u.scheme.bulk ?? 1) * (1 - (1 - k) * (1 - k));
+          sv.rig.group.scale.set(s, s, s);
+          if (k < 1 && !engine.disposed) requestAnimationFrame(grow);
+        };
+        grow();
+      }
+      engine.audio.screech();
+      await delay(350);
       break;
     }
     case 'turn': {
@@ -97,6 +157,7 @@ export async function animate(engine: any, ev: CombatEvent) {
       }
       if (ev.phase === 'victory') { engine.audio.setDrums(false); engine.audio.play('victory', 0.9); engine.audio.setMusicDucked(false); spawnChest(engine); }
       if (ev.phase === 'defeat') { engine.audio.setDrums(false); engine.audio.setMusicDucked(false); }
+      if (ev.phase === 'explore') engine.hazardUsed?.clear();   // hazards reset per fight
       await delay(200);
       break;
     }
@@ -141,6 +202,28 @@ export async function animMove(engine: any, unitId: string, path: GridPos[]) {
     const dest = path[path.length - 1];
     const trap = engine.trapManager.at(dest.x, dest.z);
     if (trap && !trap.triggered) void triggerTrap(engine, u, trap);
+    // environmental hazards — shoved into the wine press / the bath tub
+    if (engine.hazardTiles?.has(`${dest.x},${dest.z}`)) {
+      const key = engine.hazardKind?.get(`${dest.x},${dest.z}`) ?? 'hazard';
+      const usedKey = `hazard_${key}`;
+      if (!engine.hazardUsed?.has(usedKey)) {
+        engine.hazardUsed?.add(usedKey);
+        if (key === 'wine_press') {
+          u.hp = Math.max(0, u.hp - 10);
+          spawnFloater(engine, u.id, '🪨 -10', 'dmg');
+          engine.pushLog(`${u.name} is crushed by the wine press! 10 damage.`, 'hit');
+          engine.iso.shake = Math.max(engine.iso.shake ?? 0, 0.3);
+          if (u.hp <= 0 && u.alive) { u.alive = false; spawnFloater(engine, u.id, '💀', 'death'); }
+        } else if (key === 'bath') {
+          u.hp = Math.max(0, u.hp - 5);
+          spawnFloater(engine, u.id, '♨ -5', 'dmg');
+          if (!u.conditions.some((c: any) => c.id === 'scalded')) u.conditions.push({ id: 'scalded', name: 'Scalded', roundsLeft: 2 });
+          engine.pushLog(`${u.name} lands in the steaming bath — 5 damage, Scalded!`, 'hit');
+          if (u.hp <= 0 && u.alive) { u.alive = false; spawnFloater(engine, u.id, '💀', 'death'); }
+        }
+        engine.refreshBar?.(engine, u.id);
+      }
+    }
   }
 }
 

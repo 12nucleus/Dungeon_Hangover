@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot, Ability } from '@/game/types';
-import { effAC, effMove, effMaxHp, effAtkBonus, xpProgress } from '@/game/stats';
+import { effAC, effMove, effMaxHp, effAtkBonus, xpProgress, MAX_LEVEL } from '@/game/stats';
 import { ABILITY_LABELS, ABILITY_HINTS } from '@/game/abilityLabels';
 import { comboTitleFor } from '@/game/classes';
 
@@ -39,7 +39,7 @@ export function CharacterStatsPanel({ snap, engine }: Props) {
   if (!u) return null;
 
   const xp = xpProgress(u);
-  const xpLabel = u.level >= 5 ? 'MAX' : `${xp.cur}/${xp.need} XP`;
+  const xpLabel = u.level >= MAX_LEVEL ? 'STONE COLD SOBER' : `${xp.cur}/${xp.need} XP`;
   const buffs = u.conditions.filter((c) => COND_META[c.id]?.kind === 'buff');
   const debuffs = u.conditions.filter((c) => COND_META[c.id]?.kind === 'debuff');
   const otherConds = u.conditions.filter((c) => !COND_META[c.id]);
@@ -57,7 +57,7 @@ export function CharacterStatsPanel({ snap, engine }: Props) {
       <div className="st-tabs" style={{ marginBottom: 8 }}>
         {party.map((m) => (
           <button key={m.id} className={`st-tab ${m.id === u.id ? 'active' : ''}`} onClick={() => setTab(m.id)}>
-            {m.name} · Lv{m.level} · {comboTitleFor(m.classes ?? [])}
+            {m.name} · Sobriety {m.level} · {comboTitleFor(m.classes ?? [])}
           </button>
         ))}
       </div>
@@ -67,7 +67,7 @@ export function CharacterStatsPanel({ snap, engine }: Props) {
           <b>{u.name}</b> <em>{comboTitleFor(u.classes ?? [])}</em>
         </div>
         <div className="xp-bar stats-xp" title={`${xpLabel}`}><i style={{ width: `${xp.pct * 100}%` }} /></div>
-        <div className="stats-xp-label">{xpLabel} · Level {u.level}</div>
+        <div className="stats-xp-label">{xpLabel} · Sobriety {u.level}</div>
       </div>
 
       {/* combat summary */}

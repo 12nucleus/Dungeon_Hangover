@@ -6,12 +6,14 @@
 // ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
 import { Combat } from '../combat';
-import { buildCharacter, setWeapon, type Rig } from '../characters';
+import { buildCharacter, setWeapon, updateRig, type Rig } from '../characters';
 import { buildIronDoor, buildGoldenChest, buildLever, buildRubble, buildStoneBath, buildWeaponRack } from '../dungeonProps';
 import { FX } from '../particles';
 import { makeItem, rollLootTable } from '../items';
 import type { GridPos } from '../types';
+import type { LevelDef } from '../../levels/levelTypes';
 import { NPCS } from '../npc';
+import { SUMMON_TEMPLATES } from '../skills';
 import { unitWorld } from './visuals';
 import { animateTo } from './cheats';
 
@@ -31,13 +33,8 @@ function place(engine: any, g: THREE.Group, tile: GridPos, yOff = 0) {
   engine.dressingGroup.add(g);
 }
 
-/** test if a point falls inside a rectangular region */
-function inRect(p: GridPos, r: { x0: number; z0: number; x1: number; z1: number }) {
-  return p.x >= r.x0 && p.x <= r.x1 && p.z >= r.z0 && p.z <= r.z1;
-}
-
 /** Build the dungeon set dressing — iron door, bath, boss, chests, lever, rubble, hermit */
-export function setupDungeon(engine: any, L: any) {
+export function setupDungeon(engine: any, L: LevelDef) {
   // NOTE: do NOT call engine.disposeFloor() here. This function is
   // called from BOTH initial init (where there's no previous floor to
   // dispose) AND subsequent floor transitions (where the caller is
@@ -61,11 +58,17 @@ export function setupDungeon(engine: any, L: any) {
     if (bagSpot) engine.props.placeAt('starting_bag', bagSpot.x, bagSpot.z);
   }
 
-  // iron door
+  // iron door(s): the boss door + any authored doors (soap gate, trapdoor)
   const axis: 'x' | 'z' = (engine.world.isWalkable(st.bossDoor.x - 1, st.bossDoor.z) || engine.world.isWalkable(st.bossDoor.x + 1, st.bossDoor.z)) ? 'z' : 'x';
   engine.ironDoor = buildIronDoor(axis);
   place(engine, engine.ironDoor, st.bossDoor);
   engine.world.blocked[st.bossDoor.x][st.bossDoor.z] = true;
+  for (const d of st.doors ?? []) {
+    const mesh = buildIronDoor(d.axis);
+    place(engine, mesh, d.pos);
+    engine.world.blocked[d.pos.x][d.pos.z] = true;
+    engine.doorMeshes.push({ id: d.id, pos: { ...d.pos }, flag: d.openedByFlag, mesh });
+  }
 
   // warlord's bath
   place(engine, buildStoneBath(), st.bossBath);
@@ -92,7 +95,7 @@ export function setupDungeon(engine: any, L: any) {
   engine.secretChestMesh = buildGoldenChest();
   place(engine, engine.secretChestMesh, st.secretChest, 0.02);
 
-  // lever + rubble
+  // lever + rubble (Warren path) + authored blockers (floor 50)
   engine.leverMesh = buildLever();
   place(engine, engine.leverMesh, st.secretLever);
   for (const t of st.secretRubble) {
@@ -101,19 +104,29 @@ export function setupDungeon(engine: any, L: any) {
     engine.world.blocked[t.x][t.z] = true;
     engine.rubbleMeshes.push({ mesh: r, tile: t });
   }
+  for (const b of st.blockers ?? []) {
+    for (const t of b.tiles) {
+      const mesh = b.kind === 'secretDoor'
+        ? buildIronDoor('z')
+        : buildRubble(0.3 + t.x * 0.07 + t.z * 0.03);
+      place(engine, mesh, t);
+      engine.world.blocked[t.x][t.z] = true;
+      engine.blockerMeshes.push({ id: b.id, kind: b.kind, flag: b.openedByFlag, tile: { ...t }, mesh });
+    }
+  }
 
-  // Old Merv the hermit
-  if (st.hermitChamber) {
-    engine.hermitPos = { ...st.hermitChamber };
-    const hermitScheme = NPCS.hermit_merv.scheme;
-    const rig = buildCharacter(hermitScheme);
-    const wp = unitWorld(engine, st.hermitChamber);
+  // hand-authored NPCs (hermit, other hermit, Scrag) — generic registry
+  engine.npcs = [];
+  for (const n of st.npcs ?? []) {
+    const npc = NPCS[n.npcId];
+    if (!npc) continue;
+    const rig = buildCharacter(npc.scheme);
+    const wp = unitWorld(engine, n.pos);
     rig.group.position.set(wp.x, wp.y, wp.z);
     rig.group.rotation.y = 0;
     rig.group.userData.baseY = wp.y;
     rig.anim.mode = 'idle';
     engine.scene.add(rig.group);
-    engine.hermitRig = rig;
 
     const bb = new THREE.Box3().setFromObject(rig.group);
     const rigH = Math.max(0.7, isFinite(bb.max.y - bb.min.y) ? bb.max.y - bb.min.y : 1.8);
@@ -123,11 +136,26 @@ export function setupDungeon(engine: any, L: any) {
       new THREE.CylinderGeometry(rigR, rigR, rigH, 8),
       new THREE.MeshBasicMaterial({ visible: false }),
     );
-    proxy.userData.hermitNpc = true;
+    proxy.userData.npcId = n.npcId;
     proxy.position.copy(wp).y += yOff;
     engine.scene.add(proxy);
     engine.unitProxies.push(proxy);
+    engine.npcs.push({ npcId: n.npcId, pos: { ...n.pos }, rig, proxy });
   }
+
+  // authored room lookup + narration (floor 50)
+  engine.roomOf = L.roomOf ?? null;
+  engine.roomNarration = L.roomNarration ?? null;
+  if (engine.roomOf) engine.setFlag?.('visited_r1');   // arrival narration covers R1
+  // register per-run interactables from the level
+  if (L.makeInteractables) engine.registerInteractables?.(L.makeInteractables(engine.runSeed ?? 0));
+  else engine.registerInteractables?.([]);
+  // environmental hazard tiles (wine press / bath tub shove targets)
+  engine.hazardTiles = new Set((L.hazards ?? []).map((h) => `${h.tile.x},${h.tile.z}`));
+  engine.hazardKind = new Map((L.hazards ?? []).map((h) => [`${h.tile.x},${h.tile.z}`, h.kind]));
+  engine.hazardUsed = new Set();
+  // per-run hidden treasures
+  engine.hiddenTreasures = L.makeHiddenTreasures ? L.makeHiddenTreasures(engine.runSeed ?? 0) : [];
 }
 
 /** Mount a burning torch in the hero's off-hand */
@@ -185,15 +213,152 @@ export function updateDungeon(engine: any, dt: number) {
   }
 
   if (engine.leverMesh && !engine.secretOpen && adj(st.secretLever)) pullLever(engine);
-  if (engine.ironDoor && !engine.ironDoorOpen && adj(st.bossDoor)) {
-    if (engine.hasIronKey) openIronDoor(engine);
-    else engine.setHoverInfoOnce('A great iron door, locked tight. Somewhere a warden holds its key.');
+  // boss door: iron key (Warren) or the level's open flag (floor 50)
+  if (engine.ironDoor && !engine.ironDoorOpen) {
+    const openCond = st.bossDoorOpenFlag ? engine.flags.has(st.bossDoorOpenFlag) : engine.hasIronKey;
+    if (openCond) openIronDoor(engine);
   }
   if (engine.goldenChest && !engine.goldenChestOpen && adj(st.goldenChest)) {
     if (engine.hasGoldenKey) openGoldenChest(engine);
     else engine.setHoverInfoOnce('An ornate golden chest. Only a golden key will open it.');
   }
-  if (engine.secretChestMesh && !engine.secretChestOpen && adj(st.secretChest)) openSecretChest(engine);
+  // floor 50: the vault chest is an interactable (cursed gold) — skip the generic path
+  if (engine.secretChestMesh && !engine.secretChestOpen && adj(st.secretChest) && !engine.structures?.rooms) openSecretChest(engine);
+
+  // ── authored doors: slide open when their flag is set ──
+  for (const d of engine.doorMeshes) {
+    if (d.mesh.userData.opened || !engine.flags.has(d.flag)) continue;
+    d.mesh.userData.opened = true;
+    if (d.flag === 'soap_gate_open') {
+      // the soap conundrum resolves however the gate opened (soap, force, charm)
+      if (!engine.questLog?.get('soap_conundrum')) engine.questLog?.start('soap_conundrum');
+      if (engine.questLog?.get('soap_conundrum')?.stage !== 'completed') {
+        engine.completeQuest?.('soap_conundrum');
+        engine.pushLog('🧼 The gate swings open. The soap conundrum is solved.', 'system');
+      }
+    }
+    engine.world.blocked[d.pos.x][d.pos.z] = false;
+    engine.audio.door();
+    const y0 = d.mesh.position.y;
+    animateTo(engine, () => d.mesh.position.y, (v: any) => { d.mesh.position.y = v; }, y0 + (d.mesh.userData.openY as number), 1.2);
+    const mesh = d.mesh;
+    setTimeout(() => { if (mesh.parent) mesh.parent.remove(mesh); }, 1500);
+  }
+  // ── blockers: rubble collapses / secret doors slide when flag set ──
+  for (const b of engine.blockerMeshes) {
+    if (b.mesh.userData.opened || !engine.flags.has(b.flag)) continue;
+    b.mesh.userData.opened = true;
+    engine.world.blocked[b.tile.x][b.tile.z] = false;
+    if (b.kind === 'rubble') {
+      engine.audio.crumble(0.7);
+      const g = b.mesh;
+      FX.impactDust(engine.particles, g.position.clone().setY(g.position.y + 0.1), [0x6f6a78, 0x413d47]);
+      animateTo(engine, () => g.scale.y, (v: any) => { g.scale.set(Math.max(0.01, v), Math.max(0.01, v), Math.max(0.01, v)); }, 0.01, 0.6);
+      setTimeout(() => { if (g.parent) g.parent.remove(g); }, 700);
+    } else {
+      engine.audio.door();
+      const y0 = b.mesh.position.y;
+      animateTo(engine, () => b.mesh.position.y, (v: any) => { b.mesh.position.y = v; }, y0 + (b.mesh.userData.openY as number), 1.2);
+      const mesh = b.mesh;
+      setTimeout(() => { if (mesh.parent) mesh.parent.remove(mesh); }, 1500);
+    }
+  }
+
+  // ── NPC rigs idle ──
+  for (const n of engine.npcs) {
+    if (n.rig) updateRig(n.rig, dt, 1);
+  }
+
+  // ── Scrag hostile path: attacked → he becomes a goblin guard ──
+  if (engine.flags?.has('scrag_hostile') && !engine.flags.has('scrag_hostile_done') && !engine.combat.inCombat && !engine.busy) {
+    engine.setFlag('scrag_hostile_done');
+    const scrag = engine.npcs.find((n: any) => n.npcId === 'scrag');
+    if (scrag) {
+      if (scrag.rig?.group?.parent) scrag.rig.group.parent.remove(scrag.rig.group);
+      if (scrag.proxy?.parent) scrag.proxy.parent.remove(scrag.proxy);
+      scrag.rig = null;
+      scrag.proxy = null;
+      const guard = SUMMON_TEMPLATES.goblin_guard();
+      guard.name = 'Scrag';
+      guard.title = 'Furious Goblin Guard';
+      guard.groupId = 'scrag_hostile';
+      guard.dormant = false;
+      engine.combat.summon(guard, scrag.pos);
+      engine.addUnit(guard);
+      engine.pushLog('⚔ Scrag drops the bored act. He was ALWAYS ready for this.', 'system');
+      engine.enqueue(engine.combat.start());
+    }
+  }
+
+  // ── interactables: nearest visible prompt ──
+  engine.updateInteractables();
+
+  // ── room-entry narration (first entry per room, skip during combat) ──
+  const leader = party[0];
+  if (engine.roomOf && engine.roomNarration && leader && !engine.combat.inCombat) {
+    const roomId = engine.roomOf(leader.pos.x, leader.pos.z);
+    if (roomId && !engine.flags.has(`visited_${roomId}`)) {
+      engine.setFlag(`visited_${roomId}`);
+      if (['r16', 'r17', 'r19'].includes(roomId)) engine.runStats.secretsFound += 1;
+      const text = engine.roomNarration[roomId];
+      if (text) void engine.narrate(`f50_room_${roomId}`, text, 5200);
+      maybeAmbush(engine, roomId, leader.pos);
+    }
+  }
+
+  // ── hidden treasures: first step onto a seeded tile → sparkle + loot ──
+  if (leader && engine.hiddenTreasures?.length) {
+    const k = `${leader.pos.x},${leader.pos.z}`;
+    const idx = engine.hiddenTreasures.findIndex((t: any) => `${t.x},${t.z}` === k);
+    if (idx >= 0 && !engine.flags.has(`ht_${idx}`)) {
+      engine.setFlag(`ht_${idx}`);
+      engine.runStats.secretsFound += 1;
+      FX.levelup(engine.particles, unitWorld(engine, leader.pos).clone().add(new THREE.Vector3(0, 0.6, 0)));
+      const gold = 2 + Math.floor(Math.random() * 6);
+      grantLoot(engine, [], gold);
+      engine.pushLog(`✨ You kick something under the muck — ${gold} gold!`, 'system');
+    }
+  }
+}
+
+/**
+ * Floor-50 ambushes: entering a dark sewer tunnel (3/7/11/12) with the
+ * torch OFF has a 50% (seeded) chance to summon a rat pack; entering the
+ * goblin rooms (21/22/24) after making noise summons a patrol. One per room.
+ */
+function maybeAmbush(engine: any, roomId: string, pos: GridPos) {
+  if (engine.combat.inCombat || engine.busy || engine.gameWon) return;
+  const seed = (engine.runSeed ?? 0) ^ roomId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const roll = ((seed * 1103515245 + 12345) >>> 16) % 100;
+  const torchOff = !engine.torchLit || engine.torchFuel <= 0;
+  const darkRooms = ['r3', 'r7', 'r11', 'r12'];
+  if (darkRooms.includes(roomId) && torchOff && roll < 50) {
+    engine.pushLog('Something moves in the dark. Something with too many teeth.', 'system');
+    void engine.narrate('f50_ambush', 'Something moves in the dark. Something with too many legs. Something with too many TEETH.', 3800);
+    for (let i = 0; i < 2; i++) {
+      const rat = SUMMON_TEMPLATES.small_rat();
+      engine.combat.summon(rat, pos);
+      engine.addUnit(rat);
+    }
+    const big = SUMMON_TEMPLATES.small_rat();
+    big.name = 'Large Rat';
+    big.title = 'Den Tyrant';
+    big.maxHp = 10; big.hp = 10; big.ac = 12; big.xpValue = 30;
+    big.scheme = { ...big.scheme, bulk: 1.25 };
+    big.onHit = { condition: 'bleeding', chance: 1, rounds: 2, saveAbility: 'con', saveDC: 10 };
+    engine.combat.summon(big, pos);
+    engine.addUnit(big);
+    engine.enqueue(engine.combat.start());
+    return;
+  }
+  if (['r21', 'r22', 'r24'].includes(roomId) && engine.flags.has('made_noise')) {
+    engine.pushLog('You hear goblin footsteps. They\'re looking for YOU.', 'system');
+    void engine.narrate('f50_patrol', 'You hear footsteps. You hear GOBLIN footsteps. They\'re looking for something. They\'re looking for YOU.', 3800);
+    const guard = SUMMON_TEMPLATES.goblin_guard();
+    engine.combat.summon(guard, pos);
+    engine.addUnit(guard);
+    engine.enqueue(engine.combat.start());
+  }
 }
 
 export function openIronDoor(engine: any) {
@@ -256,16 +421,19 @@ export function openGoldenChest(engine: any) {
   FX.levelup(engine.particles, engine.goldenChest.position.clone().add(new THREE.Vector3(0, 0.6, 0)));
   grantLoot(engine, items, gold);
   engine.pushLog(`👑 The golden chest bursts open: ${[...items.map((i: any) => `${i.icon} ${i.name}`), `🪙 ${gold} gold`].join(', ')}!`, 'system');
-  winGame(engine);
+  // no winGame here on floor 50 — the staircase behind Gribnab's bath is the exit
 }
 
+/** Floor Complete — the run recap screen (stats + New Run / Title). */
 export function winGame(engine: any) {
   engine.gameWon = true;
   engine.phase = 'victory';
   engine.audio.setDrums(false);
   engine.audio.setMusicDucked(false);
   engine.audio.play('victory', 0.95);
-  engine.bigMessage = 'VICTORY — The Warlord\'s hoard is yours!';
+  const s = engine.runStats ?? { kills: 0, deaths: 0, questsDone: 0, secretsFound: 0, startedAt: Date.now() };
+  engine.pushLog('🏆 Floor 50 cleared — The Sewer Cellar conquered!', 'system');
+  engine.bigMessage = `FLOOR 50 CLEARED — ${Math.max(0, Math.round((Date.now() - s.startedAt) / 1000))}s, ${s.kills} kills, ${s.deaths} deaths, ${s.questsDone} quests, ${s.secretsFound} secrets`;
   engine.emitSnapshot();
 }
 
@@ -281,30 +449,10 @@ export function grantKey(engine: any, kind: 'iron' | 'golden') {
   setTimeout(() => { if (engine.bigMessage?.includes(it.name)) { engine.bigMessage = null; engine.emitSnapshot(); } }, 2400);
 }
 
+// legacy module-level aggro — the canonical version lives on GameEngine
+// (engine.ts checkDungeonAggro), which handles the floor-50 boss arenas.
 export function checkDungeonAggro(engine: any) {
-  if (!engine.structures || engine.phase !== 'explore' || engine.combat.inCombat || engine.busy || engine.gameWon) return;
-  if (engine.aggroDisabled) return;
-  if (performance.now() / 1000 < engine.introGraceUntil) return;
-  const st = engine.structures;
-  const party = engine.combat.living('party');
-  if (!party.length) return;
-
-  if (!engine.bossCutscenePlayed && party.some((p: any) => inRect(p.pos, st.bossRoom))) {
-    engine.bossCutscenePlayed = true;
-    void engine.playBossCutscene();
-    return;
-  }
-
-  for (const f of engine.combat.units) {
-    if (!f.alive || f.team !== 'enemy' || !f.dormant || f.bossGroup) continue;
-    const range = (f.flying ? 5 : 4) - (engine.sneaking ? 2 : 0);
-    for (const p of party) {
-      if (Combat.dist(p.pos, f.pos) <= range || (!engine.sneaking && inEnemyCone(engine, p.pos, f))) {
-        aggroGroup(engine, f.groupId);
-        return;
-      }
-    }
-  }
+  if (typeof engine.checkDungeonAggro === 'function') { engine.checkDungeonAggro(); return; }
 }
 
 export function aggroGroup(engine: any, groupId: string | undefined) {
@@ -317,7 +465,9 @@ export function aggroGroup(engine: any, groupId: string | undefined) {
   else if (kind === 'skeleton') engine.audio.boneRattle();
   else engine.audio.roar();
   engine.pushLog(`⚔ ${grp.length} ${grp[0].title}${grp.length > 1 ? 's' : ''} lurch from the dark!`, 'system');
-  engine.enqueue(engine.combat.start());
+  // scouted through the R11 crack → the R12 den is caught flat-footed
+  const surprise = groupId === 'r12_rats' && engine.flags?.has('scouted_12');
+  engine.enqueue(surprise ? engine.combat.startDetection(true) : engine.combat.start());
 }
 
 export function inEnemyCone(engine: any, p: GridPos, enemy: any): boolean {

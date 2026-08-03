@@ -29,6 +29,30 @@ export interface Item {
   condition?: string;       // consumable cures this condition
   value: number;            // gold value
   desc: string;
+
+  // ── floor 50 additions ──
+  /** base-template id the item was made from (for flag/hook checks) */
+  _baseId?: string;
+  /** trinket/armor: flat +max HP */
+  hpBonus?: number;
+  /** armor: flat physical damage reduction (min 1 after reduction) */
+  physResist?: number;
+  /** equip requirement (level) — enforced in equipItem */
+  levelReq?: number;
+  /** tool tag (e.g. 'plumber' — counts as the Plumber class skill) */
+  tool?: string;
+  /** weapon: destroyed after its first successful hit */
+  fragile?: boolean;
+  /** weapon: chance (0..1) to shatter on a natural-1 attack roll */
+  fumbleBreak?: number;
+  /** weapon: chance (0..1) to drop out of the wielder's hands on a natural 1 */
+  fumbleDrop?: number;
+  /** weapon: chance to apply a condition to the target on a hit */
+  onHitCondition?: { id: string; chance: number; rounds: number };
+  /** consumable: chance to apply a condition to the drinker */
+  consumeCondition?: { id: string; chance: number; rounds: number };
+  /** consumable: strips every condition from the drinker */
+  cleanses?: boolean;
 }
 
 // ── enchantments ─────────────────────────────────────────────
@@ -62,6 +86,11 @@ interface ItemBase {
   kind: ItemKind; slot?: EquipSlot; name: string; icon: string; tier: Tier;
   weaponKind?: WeaponKind; damageDice?: string; damageType?: DamageType;
   acBonus?: number; healDice?: string; value: number; desc: string;
+  hpBonus?: number; physResist?: number; levelReq?: number; tool?: string;
+  fragile?: boolean; fumbleBreak?: number; fumbleDrop?: number;
+  onHitCondition?: { id: string; chance: number; rounds: number };
+  consumeCondition?: { id: string; chance: number; rounds: number };
+  cleanses?: boolean;
 }
 const B = (b: ItemBase) => b;
 
@@ -109,9 +138,59 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   golden_key: B({ kind: 'trinket', name: 'Golden Key', icon: '🔑', tier: 3, value: 0, desc: 'Ornate and warm to the touch. It hums with promise.' }),
   // ── the boss reward (special epic loot) ──
   warlord_blade: B({ kind: 'weapon', name: "Warlord's Cleaver", icon: '⚔️', tier: 3, weaponKind: 'sword', damageDice: '2d8+4', damageType: 'slashing', value: 320, desc: 'A brutal greatblade taken from a bathing tyrant. Still faintly soapy.' }),
-  severed_finger: B({ kind: 'trinket', name: "Merv's Severed Finger", icon: '\uD83D\uDD90\uFE0F', tier: 1, value: 0, desc: 'A gnawed-off ring finger, still wearing a tarnished silver band. The ring is engraved: "Agnes".' }),
-  stupid_shirt: B({ kind: 'armor', name: "Stupid Shirt", icon: '\uD83D\uDC55', tier: 1, acBonus: 0, value: 0, desc: "A shirt. It's stupid. Merv gave it to you as a pre-reward. It smells like moss and regret." }),
+  severed_finger: B({ kind: 'trinket', name: "The Hermit's Severed Finger", icon: '\uD83D\uDD90\uFE0F', tier: 1, value: 0, desc: 'A gnawed-off ring finger, still wearing a tarnished silver band. The ring is engraved: "Agnes".' }),
   toeless_boots: B({ kind: 'armor', name: "Toeless Boots", icon: '\uD83D\uDC62', tier: 2, acBonus: 1, value: 50, desc: "Fine leather boots. Missing the toes. Don't ask. +1 AC. +1 movement." }),
+
+  // ── floor 50 — the sewer cellar ──
+  // improvised weapons
+  broken_bottle: B({ kind: 'weapon', slot: 'weapon', name: 'Broken Bottle', icon: '🍾', tier: 1, weaponKind: 'dagger', damageDice: '1d4', damageType: 'slashing', value: 1, fragile: true, onHitCondition: { id: 'bleeding', chance: 1, rounds: 2 }, desc: 'A jagged bottle edge. One good swing and it\'s gone.' }),
+  rat_bone: B({ kind: 'weapon', slot: 'weapon', name: 'Rat Bone', icon: '🦴', tier: 1, weaponKind: 'club', damageDice: '1d4', damageType: 'bludgeoning', value: 2, desc: 'A gnawed femur. Surprisingly sturdy. The rat it came from had opinions.' }),
+  rusty_sword: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Sword', icon: '🗡️', tier: 1, weaponKind: 'sword', damageDice: '1d6+1', damageType: 'slashing', value: 18, fumbleBreak: 0.1, desc: 'A blade that has seen better centuries. 10% chance to snap on a fumble.' }),
+  rusty_axe: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Axe', icon: '🪓', tier: 1, weaponKind: 'sword', damageDice: '1d8', damageType: 'slashing', value: 22, desc: 'Mostly rust, technically an axe.' }),
+  rusty_mace: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Mace', icon: '🔨', tier: 1, weaponKind: 'mace', damageDice: '1d6+1', damageType: 'bludgeoning', value: 20, onHitCondition: { id: 'stunned', chance: 0.1, rounds: 1 }, desc: 'Dents armor. 10% chance to rattle the target\'s brain.' }),
+  rusty_spear: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Spear', icon: '🔱', tier: 1, weaponKind: 'staff', damageDice: '1d6', damageType: 'piercing', value: 16, desc: 'Pointy end, rusted end, middle is a mystery.' }),
+  goblin_spear: B({ kind: 'weapon', slot: 'weapon', name: 'Goblin Spear', icon: '🔱', tier: 1, weaponKind: 'staff', damageDice: '1d6', damageType: 'piercing', value: 14, desc: 'Crude, sharp, and smug about it.' }),
+  wrench: B({ kind: 'weapon', slot: 'weapon', name: 'Wrench', icon: '🔧', tier: 1, weaponKind: 'mace', damageDice: '1d4+1', damageType: 'bludgeoning', value: 12, tool: 'plumber', desc: 'Heavy, greasy, and it opens pipes AND skulls. Counts as a Plumber\'s tool.' }),
+  plunger: B({ kind: 'weapon', slot: 'weapon', name: 'Plunger', icon: '🪠', tier: 1, weaponKind: 'club', damageDice: '1d4', damageType: 'bludgeoning', value: 6, onHitCondition: { id: 'stunned', chance: 0.25, rounds: 1 }, desc: 'The most feared weapon in any sewer. 25% chance to stun.' }),
+  drowned_majesty: B({ kind: 'weapon', slot: 'weapon', name: "The Drowned Majesty", icon: '🛁', tier: 3, weaponKind: 'club', damageDice: '1d10+1', damageType: 'bludgeoning', value: 320, levelReq: 3, onHitCondition: { id: 'slippery', chance: 0.15, rounds: 2 }, fumbleDrop: 0.05, desc: "Gribnab's soap-crusted club. It smells like strawberries and tyranny. 15% slippery on hit, and it WILL slide out of your hands on a fumble." }),
+  towel: B({ kind: 'weapon', slot: 'weapon', name: 'Towel', icon: '🧻', tier: 1, weaponKind: 'club', damageDice: '1d2', damageType: 'bludgeoning', value: 3, onHitCondition: { id: 'blinded', chance: 0.5, rounds: 1 }, desc: 'A towel from Gribnab\'s rack. Whip-crack! 50% chance to blind.' }),
+  rope: B({ kind: 'weapon', slot: 'weapon', name: 'Rope', icon: '🪢', tier: 1, weaponKind: 'club', damageDice: '1d4', damageType: 'bludgeoning', value: 4, desc: 'A length of old well-rope. Good for climbing, acceptable for hitting.' }),
+  wooden_bucket: B({ kind: 'weapon', slot: 'weapon', name: 'Wooden Bucket', icon: '🪣', tier: 1, weaponKind: 'club', damageDice: '1d2', damageType: 'bludgeoning', value: 3, desc: 'A bucket. As a weapon it\'s mostly a statement. The narrator has SO many comments.' }),
+  goblin_banner: B({ kind: 'armor', name: 'Goblin Banner', icon: '🚩', tier: 1, acBonus: 1, value: 12, desc: 'Torn from the throne-room wall. +1 AC. It smells like a parade.' }),
+  // armor
+  tattered_cloak: B({ kind: 'armor', name: 'Tattered Cloak', icon: '🧥', tier: 1, acBonus: 1, value: 15, desc: '+1 AC. The Hermit\'s gift. It has seen better days and worse centuries.' }),
+  sturdy_boots: B({ kind: 'armor', name: 'Sturdy Boots', icon: '👢', tier: 1, acBonus: 1, value: 12, desc: '+1 AC. Physical damage taken −1. The Hermit insists they\'re lucky.' }),
+  leather_boot: B({ kind: 'armor', name: 'Leather Boot', icon: '🥾', tier: 1, acBonus: 1, value: 10, desc: '+1 AC. Found on a floating body. The body didn\'t mind.' }),
+  leather_vest: B({ kind: 'armor', name: 'Leather Vest', icon: '🦺', tier: 1, acBonus: 1, value: 18, desc: '+1 AC. Boiled leather, goblin-grade stitching.' }),
+  chain_shirt: B({ kind: 'armor', name: 'Chain Shirt', icon: '⛓️', tier: 2, acBonus: 2, value: 55, desc: '+2 AC. Rings of questionable provenance.' }),
+  guards_cap: B({ kind: 'armor', name: "Guard's Cap", icon: '🎖️', tier: 1, acBonus: 1, value: 8, desc: '+1 AC. Smells faintly of the guard who lost it. Probably Scrag\'s.' }),
+  pipe_helmet: B({ kind: 'armor', name: 'Pipe-Fitting Helmet', icon: '🪖', tier: 1, acBonus: 0, physResist: 1, value: 9, desc: 'Physical damage taken −1. Waterproof, too. Probably.' }),
+  ribcage_armor: B({ kind: 'armor', name: 'Ribcage Armor', icon: '🩻', tier: 1, acBonus: 0, physResist: 1, value: 14, desc: 'Physical damage taken −1. Worn by someone who no longer needs it.' }),
+  soap_crown: B({ kind: 'armor', name: 'Soap Crown', icon: '👑', tier: 2, acBonus: 1, levelReq: 2, value: 60, desc: '+1 AC. Goblins respect you. Equipping it earns the throne\'s respect — and everyone smells strawberries.' }),
+  // trinkets
+  hermits_ring: B({ kind: 'trinket', name: "Hermit's Ring", icon: '💍', tier: 2, value: 40, desc: '+5% XP. Warm against the finger. Which finger is a question you stop asking.' }),
+  leather_belt: B({ kind: 'trinket', name: 'Leather Belt', icon: '🧷', tier: 1, hpBonus: 2, value: 10, desc: '+2 max HP. Holds your pants up, emotionally speaking.' }),
+  blessed_penny: B({ kind: 'trinket', name: 'Blessed Penny', icon: '🪙', tier: 2, value: 25, desc: '+5% gold found. It has a tiny saint on it. The saint looks hungover too.' }),
+  rat_whisker: B({ kind: 'trinket', name: 'Rat Whisker', icon: '🐭', tier: 1, acBonus: 1, value: 6, desc: '+1 AC. The whisker of a very large, very unlucky rat.' }),
+  lockpick: B({ kind: 'trinket', name: 'Lockpick', icon: '🪛', tier: 1, value: 15, desc: 'Opens locked chests and doors. The dungeon calls it cheating. The dungeon is a hypocrite.' }),
+  water_flask: B({ kind: 'trinket', name: 'Water Flask', icon: '🧴', tier: 1, value: 2, desc: 'Clean-ish water from the pipe junction. Pour it into the fountain at the intersection.' }),
+  goblin_soap: B({ kind: 'trinket', name: "Goblin King's Soap", icon: '🧼', tier: 1, value: 5, desc: 'Pink. Smells like strawberries. Scrag will lose his mind for this.' }),
+  premium_soap: B({ kind: 'trinket', name: 'Premium Soap', icon: '🧼', tier: 2, value: 25, desc: 'Unscented, triple-milled, vault-fresh. Scrag has never seen such luxury.' }),
+  soap_chunk: B({ kind: 'trinket', name: 'Soap Chunk', icon: '🧼', tier: 1, value: 2, desc: 'A partial bar of soap. Not enough for the guard. Or maybe it is. Who knows.' }),
+  rusty_key: B({ kind: 'trinket', name: 'Rusty Key', icon: '🗝️', tier: 1, value: 0, desc: 'A rusted key. It opens things. Probably. Drop it on the boss rat and find out.' }),
+  love_letter: B({ kind: 'trinket', name: 'Love Letter', icon: '💌', tier: 1, value: 0, desc: 'Addressed to Scrag. From someone named Bliss. It is VERY graphic. You put it back.' }),
+  waterlogged_book: B({ kind: 'trinket', name: 'Waterlogged Book', icon: '📖', tier: 1, value: 0, desc: 'The ink has mostly run. What survives is a recipe for stew and a poem about a duck.' }),
+  // consumables
+  moldy_cheese: B({ kind: 'consumable', name: 'Moldy Cheese', icon: '🧀', tier: 1, healDice: '15', value: 8, consumeCondition: { id: 'nauseated', chance: 0.5, rounds: 3 }, desc: 'Heals 15 HP. 50% chance of Nauseated. The mold adds flavor.' }),
+  glowing_mushroom: B({ kind: 'consumable', name: 'Glowing Mushroom', icon: '🍄', tier: 1, healDice: '5', value: 4, desc: 'Heals 5 HP. Also faintly luminous. Do not ask what it\'s glowing with.' }),
+  poison_mushroom: B({ kind: 'consumable', name: 'Poison Mushroom', icon: '🍄‍🟫', tier: 1, healDice: '0', value: 1, consumeCondition: { id: 'poisoned', chance: 1, rounds: 3 }, desc: 'The OTHER mushroom. Poisoned for 3 rounds. Weaponizing it is a problem for another Greg.' }),
+  wine_bottle: B({ kind: 'consumable', name: 'Ancient Wine', icon: '🍷', tier: 1, healDice: '10', value: 6, consumeCondition: { id: 'poisoned', chance: 0.25, rounds: 2 }, desc: 'Heals 10 HP. It\'s basically vinegar. 25% of the bottles are poisoned. Gambler\'s choice.' }),
+  holy_water: B({ kind: 'consumable', name: 'Holy Water', icon: '⛲', tier: 2, healDice: '0', value: 30, cleanses: true, desc: 'Removes every condition, including the Cursed Gold\'s curse. The saint on the flask looks smug.' }),
+  dwarven_ale: B({ kind: 'consumable', name: 'Dwarven Ale', icon: '🍺', tier: 2, healDice: '0', value: 20, desc: '+4 damage, −2 attack for 1 round. The dwarves swear by it. The dwarves are also wrong a lot.' }),
+  ghost_soup: B({ kind: 'consumable', name: 'Ghost Soup', icon: '🍲', tier: 2, healDice: '99', value: 40, desc: 'Full heal + Well Fed (99 rounds). It\'s warm. It should not be warm. It is not yours.' }),
+  sewer_water_flask: B({ kind: 'consumable', name: 'Sewer Water', icon: '🧪', tier: 1, healDice: '5', value: 1, consumeCondition: { id: 'nauseated', chance: 0.5, rounds: 3 }, desc: '50% heal 5 HP, 50% Nauseated. The sewer plays fair.' }),
+  bubble_bath: B({ kind: 'consumable', name: 'Bubble Bath', icon: '🫧', tier: 2, healDice: '0', value: 15, desc: 'Pour it at your feet: Slippery for 2 rounds. Gribnab would be proud.' }),
+  rubber_duck: B({ kind: 'consumable', name: 'Rubber Duck', icon: '🦆', tier: 1, healDice: '0', value: 3, desc: 'Squeeze it. All enemies become Distracted for 1 round. It works every time.' }),
 };
 
 let iid = 0;
@@ -126,6 +205,10 @@ export function makeItem(baseId: string, enchantId?: string, rarity?: Rarity): I
     id: `it${iid++}`, kind: b.kind, name, icon: b.icon, tier: b.tier, rarity: r,
     weaponKind: b.weaponKind, damageDice: b.damageDice, damageType: b.damageType,
     acBonus: b.acBonus, healDice: b.healDice, enchantId, value, desc: b.desc,
+    _baseId: baseId,
+    hpBonus: b.hpBonus, physResist: b.physResist, levelReq: b.levelReq, tool: b.tool,
+    fragile: b.fragile, fumbleBreak: b.fumbleBreak, fumbleDrop: b.fumbleDrop,
+    onHitCondition: b.onHitCondition, consumeCondition: b.consumeCondition, cleanses: b.cleanses,
   };
 }
 
@@ -140,11 +223,27 @@ function pickWeighted<T>(pairs: [T, number][]): T {
   return pairs[0][0];
 }
 
+/**
+ * Cursed (floor 50 vault gold): loot rarity is downgraded one step while
+ * the party leader carries the `cursed` condition. The engine flips this
+ * flag from the condition; generateLoot/rollLootTable read it. Module-level
+ * because loot is rolled deep inside combat.ts with no engine handle.
+ */
+let cursedLoot = false;
+export function setCursedLoot(v: boolean) { cursedLoot = v; }
+export function isCursedLoot(): boolean { return cursedLoot; }
+
+/** rarity one step down (common stays common) */
+const DOWN: Record<Rarity, Rarity> = { common: 'common', uncommon: 'common', rare: 'uncommon', epic: 'rare' };
+
+const RARITY_ORDER: Record<Rarity, number> = { common: 0, uncommon: 1, rare: 2, epic: 3 };
+
 export function generateLoot(opts?: { minTier?: Tier; maxTier?: Tier; rarityBoost?: number; kind?: ItemKind }): Item {
   const minT = opts?.minTier ?? 1, maxT = opts?.maxTier ?? 2;
   // rarity (boost shifts weight away from common)
   const boost = opts?.rarityBoost ?? 0;
-  const rarity = pickWeighted(RARITY_WEIGHTS.map(([r, w], i) => [r, w * (1 + boost * i)] as [Rarity, number]));
+  let rarity = pickWeighted(RARITY_WEIGHTS.map(([r, w], i) => [r, w * (1 + boost * i)] as [Rarity, number]));
+  if (cursedLoot && RARITY_ORDER[rarity] > 0) rarity = DOWN[rarity];
   // kind
   const kind = opts?.kind ?? pickWeighted<ItemKind>([['weapon', 35], ['armor', 25], ['trinket', 15], ['consumable', 25]]);
   // base: match kind & tier band
@@ -187,10 +286,13 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
     case 'chest':
       items.push(generateLoot({ minTier: 1, maxTier: 2, rarityBoost: 1.2 }));
       if (Math.random() < 0.5) items.push(generateLoot({ minTier: 1, maxTier: 2 }));
+      if (Math.random() < 0.25) items.push(makeItem('wine_bottle'));
+      if (Math.random() < 0.15) items.push(makeItem('holy_water'));
       gold = g(15, 30);
       break;
     case 'goblin':
       if (Math.random() < 0.3) items.push(generateLoot({ minTier: 1, maxTier: 1 }));
+      if (Math.random() < 0.2) items.push(makeItem('goblin_spear'));
       if (Math.random() < 0.4) gold = g(2, 6);
       break;
     case 'boss':
@@ -200,6 +302,8 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
       break;
     case 'beast':
       if (Math.random() < 0.2) items.push(generateLoot({ minTier: 1, maxTier: 1, kind: 'consumable' }));
+      if (Math.random() < 0.1) items.push(makeItem('rat_whisker'));
+      if (Math.random() < 0.15) items.push(makeItem('moldy_cheese'));
       if (Math.random() < 0.35) gold = g(1, 5);
       break;
     case 'undead':

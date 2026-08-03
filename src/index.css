@@ -102,6 +102,61 @@ html, body, #root {
   background: rgba(8,10,18,0.88); border: 1px solid #3d465e; border-radius: 6px;
   color: #d8dce8; font-size: 13px; padding: 5px 14px; pointer-events: none;
 }
+/* interact prompt (floor 50) — same pattern as the targeting hint */
+.interact-prompt {
+  position: absolute; bottom: 112px; left: 50%; transform: translateX(-50%);
+  background: rgba(10, 30, 20, 0.92); border: 1px solid #3e8a5a; border-radius: 6px;
+  color: #b8ffd0; font-size: 13.5px; padding: 6px 16px;
+  pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  animation: promptPulse 1.6s ease-in-out infinite;
+}
+@keyframes promptPulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(62, 138, 90, 0); }
+  50% { box-shadow: 0 0 14px rgba(62, 138, 90, 0.55); }
+}
+/* floor banner (Floor 50 — The Sewer Cellar) */
+.floor-banner {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  background: rgba(10, 12, 20, 0.72); border: 1px solid rgba(140, 160, 120, 0.3);
+  border-radius: 5px; color: #b8c8a8; font-size: 12px; letter-spacing: 0.08em;
+  padding: 3px 14px; pointer-events: none; text-transform: uppercase;
+}
+/* torch fuel bar */
+.torch-indicator { display: flex; flex-direction: column; gap: 2px; }
+.torch-fuel {
+  width: 72px; height: 5px; background: rgba(0,0,0,0.5); border-radius: 3px; overflow: hidden;
+  border: 1px solid rgba(255, 180, 69, 0.25);
+}
+.torch-fuel-fill { height: 100%; background: linear-gradient(90deg, #ff7a1f, #ffb545); }
+/* quest log panel */
+.quest-log {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 460px; max-height: 60vh; background: rgba(12, 14, 24, 0.96);
+  border: 1px solid #3d465e; border-radius: 10px; padding: 14px 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6); z-index: 50;
+}
+.quest-log-title {
+  display: flex; justify-content: space-between; align-items: center;
+  color: #e8d8a0; font-size: 15px; font-weight: 700; margin-bottom: 10px;
+}
+.quest-log-title button { background: none; border: none; color: #8a90a8; cursor: pointer; font-size: 15px; }
+.quest-log-body { overflow-y: auto; max-height: 46vh; display: flex; flex-direction: column; gap: 8px; }
+.quest-log-body.empty { color: #8a90a8; font-size: 13px; text-align: center; padding: 20px 0; }
+.quest-entry { border-left: 3px solid #555c76; padding: 6px 10px; background: rgba(30,34,52,0.5); border-radius: 4px; }
+.quest-entry.accepted, .quest-entry.in_progress { border-left-color: #e8b53a; }
+.quest-entry.completed { border-left-color: #4ade80; opacity: 0.85; }
+.quest-entry.failed { border-left-color: #ef4444; opacity: 0.8; }
+.quest-name { color: #e8e8f0; font-size: 13.5px; font-weight: 600; }
+.quest-desc { color: #9aa0b8; font-size: 12px; margin-top: 2px; }
+/* victory recap */
+.run-stats { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; font-size: 14px; color: #e8e8f0; margin: 6px 0 2px; }
+.victory-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
+.btn-secondary {
+  padding: 10px 22px; border-radius: 8px; cursor: pointer; font-size: 14px;
+  background: linear-gradient(180deg, #2a3048, #1a2034); color: #b8c0d8;
+  border: 1px solid #3d465e;
+}
+.btn-secondary:hover { border-color: #c9a227; }
 .targeting-hint {
   position: absolute; top: 74px; left: 50%; transform: translateX(-50%);
   background: rgba(60,20,10,0.9); border: 1px solid #a05030; border-radius: 6px;

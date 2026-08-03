@@ -92,6 +92,7 @@ export interface SkillDef {
   fxColor: number;
   fx: ParticleFX;
   appliesCondition?: string; // condition id applied on failed save / hit
+  appliesRounds?: number;    // duration of appliesCondition (default 3)
   selfCentered?: boolean;    // AoE radiates from the caster
   targetsAllies?: boolean;   // heal / buff
   selfOnly?: boolean;        // caster-only (second wind, arcane shield)
@@ -107,6 +108,16 @@ export interface SkillDef {
   stacking?: string;          // stacking notes (combo metadata)
   combo?: string[];           // [COMBO] partner skill ids
   capstone?: boolean;         // level-50 capstone skill
+
+  // ── boss-gate fields (aiStep honors these) ──
+  /** only usable while the caster is BELOW this HP percentage (0..1) */
+  hpBelowPct?: number;
+  /** only usable while the caster is ABOVE this HP percentage (0..1) */
+  hpAbovePct?: number;
+  /** usable only once per fight (tracked on unit.cooldowns['once_<skillId>']) */
+  oncePerFight?: boolean;
+  /** summon template id from SUMMON_TEMPLATES on use */
+  summonId?: string;
 }
 
 /** A playable class from the design bible (15 total). */
@@ -128,6 +139,8 @@ export interface Condition {
   id: string;             // 'blessed' | 'slowed' | 'burning' ...
   name: string;
   roundsLeft: number;
+  /** damage-over-time tick applied at the start of the carrier's turn */
+  dot?: { dice: string; type: DamageType };
 }
 
 export interface Unit {
@@ -177,6 +190,16 @@ export interface Unit {
   dropKey?: 'iron' | 'golden';  // guaranteed key drop on death
   flying?: boolean;       // hovers above the floor (bats)
   restedAtBonfire?: boolean;
+  /** AI flees (full-move away) once HP drops to this value or below */
+  fleesAtHp?: number;
+  /** guaranteed item/gold drop on death (items via makeItem ids) */
+  deathDrops?: { itemIds: string[]; gold: number };
+  /** monster passive: chance to apply a condition on a landed hit */
+  onHit?: { condition: string; chance: number; rounds: number; saveAbility?: Ability; saveDC?: number };
+  /** home bath tile — bath_time teleports here */
+  bathPos?: GridPos;
+  /** last damage type received (death hooks: bone rat vs fire) */
+  lastDamageKind?: DamageType;
   // ── idle patrolling (M8) ──
   /** home tile the mob patrols around (anchor point) */
   home?: GridPos;
@@ -190,6 +213,9 @@ export interface LogEntry { id: number; text: string; kind: LogKind; }
 /** Snapshot pushed to the React HUD whenever anything changes. */
 export interface UISnapshot {
   phase: GamePhase;
+  /** current floor number (50) + display name */
+  floor?: number;
+  floorName?: string;
   units: Unit[];
   activeId: string | null;
   turnOrder: string[];
@@ -218,7 +244,18 @@ export interface UISnapshot {
   showBonfireUI?: boolean;
   showBonfireLoadout?: boolean;
   showFullMap?: boolean;
-  hermitTalk?: boolean;
+  /** quest-log panel open (J key) */
+  showQuestLog?: boolean;
+  /** nearest talkable NPC id (generic registry) */
+  talkTarget?: string | null;
+  /** active interactable prompt, e.g. "[E] Drink from the puddle" */
+  interactPrompt?: string | null;
+  /** remaining torch fuel (seconds) */
+  torchFuel?: number;
+  /** quest log entries for the J panel */
+  quests?: { id: string; name: string; stage: string; desc: string }[];
+  /** run recap counters (victory screen) */
+  runStats?: { kills: number; deaths: number; questsDone: number; secretsFound: number; startedAt: number };
   showDialogue?: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null;
   /** cheat console overlay (backtick key) */
   showConsole?: boolean;
@@ -242,4 +279,5 @@ export type CombatEvent =
   | { type: 'phase'; phase: GamePhase }
   | { type: 'loot'; items: import('./items').Item[]; gold: number }
   | { type: 'levelup'; unitId: string }
-  | { type: 'shake'; power: number };
+  | { type: 'shake'; power: number }
+  | { type: 'summon'; unit: Unit };  // a new unit fades in (boss summons, Scrag hostile)

@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { Combat } from '../combat';
 import { SKILLS } from '../skills';
 import type { GridPos, SkillDef, Unit } from '../types';
-import { NPCS, type NPCDef } from '../npc';
+import { NPCS, type NPCDef, type DialogueAction, type ChoiceCondition } from '../npc';
 import { makeItem } from '../items';
 import { QUESTS } from '../quest';
 import { unitWorld } from './visuals';
@@ -214,16 +214,18 @@ export function clickExplore(engine: any, unitId: string | undefined, tile: Grid
     if (u?.team === 'party') { engine.selectedId = u.id; engine.audio.play('ui_click'); engine.emitSnapshot(); return; }
   }
 
-  const hermitProxy = engine.unitProxies.find((p: any) => p.userData.hermitNpc);
-  if (!unitId && hermitProxy) {
+  // generic NPC registry (hermit, other hermit, Scrag, …)
+  if (!unitId) {
     engine.ray.setFromCamera(engine.pointer, engine.iso.cam);
     const hit = engine.ray.intersectObjects(engine.unitProxies, false)[0];
-    if (hit?.object === hermitProxy && engine.hermitPos) {
+    const npcId = hit?.object?.userData?.npcId as string | undefined;
+    if (npcId) {
+      const entry = engine.npcs?.find((n: any) => n.npcId === npcId);
       const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat.living('party')[0];
-      if (leader && Combat.dist(leader.pos, engine.hermitPos) <= 1.5) {
-        talkToNpc(engine, 'hermit_merv');
+      if (entry && leader && Combat.dist(leader.pos, entry.pos) <= 1.5) {
+        talkToNpc(engine, npcId);
       } else {
-        setHoverInfoOnce(engine, 'Old Merv the hermit — get closer to talk.');
+        setHoverInfoOnce(engine, `${NPCS[npcId]?.name ?? 'The figure'} — get closer to talk.`);
       }
       return;
     }
@@ -368,63 +370,97 @@ export function trySmashInCombat(engine: any, active: Unit, propId: string, pref
 }
 
 // ══ NPC dialogue ═══════════════════════════════════════════
-export function talkToNpc(engine: any, npcId: string) {
-  const npc = NPCS[npcId];
-  if (!npc) return;
-  const questNode = engine.questLog.nodeFor(npcId, hasItemInInventory(engine, 'severed_finger'));
-  const nodeId = questNode ?? npc.entryNode;
+function visibleChoice(engine: any, c: { visibleIf?: ChoiceCondition }): boolean {
+  const v = c.visibleIf;
+  if (!v) return true;
+  if (v.item && !hasItemInInventory(engine, v.item)) return false;
+  if (v.flag && !engine.flags?.has(v.flag)) return false;
+  if (v.notFlag && engine.flags?.has(v.notFlag)) return false;
+  if (v.ability) {
+    const g = engine.combat?.living('party')[0];
+    if (!g) return false;
+    const mod = Math.floor((g.abilities[v.ability.stat] - 10) / 2);
+    if (g.abilities[v.ability.stat] + mod < v.ability.min) return false;
+  }
+  return true;
+}
+
+function runActions(engine: any, actions: DialogueAction[] | undefined, npc: NPCDef) {
+  if (!actions) return;
+  for (const a of actions) executeDialogueAction(engine, a, npc);
+}
+
+/** current dialogue node id (persists across clicks so trees can branch) */
+function nodeIdFor(engine: any, npc: NPCDef): string {
+  const questNode = engine.questLog.nodeFor(npc.id, hasItemInInventory(engine, 'severed_finger'));
+  return engine.dialogueNodeId ?? questNode ?? npc.entryNode;
+}
+
+function presentNode(engine: any, npc: NPCDef, nodeId: string) {
   const node = npc.dialogue[nodeId];
-  if (!node) return;
+  if (!node) { engine.showDialogue = null; engine.dialogueNodeId = null; engine.emitSnapshot(); return; }
+  engine.dialogueNodeId = nodeId;
+  // node-level actions fire when the node is presented (hermit's reward node, …)
+  runActions(engine, node.actions ?? (node.action ? [node.action] : []), npc);
   engine.audio.play('ui_click', 0.6);
   engine.showDialogue = {
-    npcId,
+    npcId: npc.id,
     npcName: npc.name,
     text: node.text,
     caption: node.caption,
-    choices: node.choices?.map((c: any, i: number) => ({ label: c.label, index: i })),
+    choices: node.choices
+      ?.filter((c) => visibleChoice(engine, c))
+      .map((c: any, i: number) => ({ label: c.label, index: i })),
   };
   engine.emitSnapshot();
+}
+
+export function talkToNpc(engine: any, npcId: string) {
+  const npc = NPCS[npcId];
+  if (!npc) return;
+  if (npcId === 'scrag' && !engine.flags?.has('met_scrag')) engine.setFlag('met_scrag');
+  engine.dialogueNodeId = null;   // fresh conversation — resolve the quest-aware entry
+  presentNode(engine, npc, nodeIdFor(engine, npc));
 }
 
 export function dialogueChoice(engine: any, npcId: string, choiceIndex: number) {
   const npc = NPCS[npcId];
   if (!npc) return;
-  const questNode = engine.questLog.nodeFor(npcId, hasItemInInventory(engine, 'severed_finger'));
-  const nodeId = questNode ?? npc.entryNode;
+  const nodeId = nodeIdFor(engine, npc);
   const node = npc.dialogue[nodeId];
   if (!node?.choices?.[choiceIndex]) {
     engine.showDialogue = null;
+    engine.dialogueNodeId = null;
     engine.emitSnapshot();
     return;
   }
   const choice = node.choices[choiceIndex];
-  if (choice.action) executeDialogueAction(engine, choice.action, npc);
-  if (choice.next) {
-    const nextNode = npc.dialogue[choice.next];
-    if (nextNode) {
-      engine.showDialogue = {
-        npcId,
-        npcName: npc.name,
-        text: nextNode.text,
-        caption: nextNode.caption,
-        choices: nextNode.choices?.map((c: any, i: number) => ({ label: c.label, index: i })),
-      };
-      if (nextNode.action) executeDialogueAction(engine, nextNode.action, npc);
-      engine.emitSnapshot();
-      return;
-    }
+  runActions(engine, choice.actions ?? (choice.action ? [choice.action] : []), npc);
+  if (choice.next && npc.dialogue[choice.next]) {
+    presentNode(engine, npc, choice.next);
+    return;
   }
   engine.showDialogue = null;
+  engine.dialogueNodeId = null;
   engine.emitSnapshot();
 }
 
-export function executeDialogueAction(engine: any, action: { type: string; itemId?: string; questId?: string }, npc: NPCDef) {
+export function executeDialogueAction(engine: any, action: DialogueAction, npc: NPCDef) {
   switch (action.type) {
     case 'giveItem': {
       if (action.itemId) {
         const it = makeItem(action.itemId);
         engine.inventory.push(it);
         engine.pushLog(`${npc.name} gives you ${it.icon} ${it.name}.`, 'system');
+        engine.emitSnapshot();
+      }
+      break;
+    }
+    case 'takeItem': {
+      if (action.itemId && engine.takeItem) engine.takeItem(action.itemId);
+      else if (action.itemId) {
+        const idx = engine.inventory.findIndex((i: any) => i.id === action.itemId || (i as any)._baseId === action.itemId);
+        if (idx >= 0) engine.inventory.splice(idx, 1);
       }
       break;
     }
@@ -432,6 +468,7 @@ export function executeDialogueAction(engine: any, action: { type: string; itemI
       if (action.questId) {
         engine.questLog.start(action.questId);
         engine.pushLog(`📜 Quest started: ${QUESTS[action.questId]?.name ?? action.questId}`, 'system');
+        engine.emitSnapshot();
       }
       break;
     }
@@ -448,6 +485,12 @@ export function executeDialogueAction(engine: any, action: { type: string; itemI
           engine.inventory.push(it);
           engine.pushLog(`${npc.name} gives you ${it.icon} ${it.name}.`, 'system');
         }
+        if (q.rewardGold) engine.addGold?.(q.rewardGold);
+        if (q.xpReward) {
+          const hero = engine.combat?.living('party')[0];
+          if (hero) hero.xp += q.xpReward;
+          engine.pushLog(`The party gains ${q.xpReward} XP.`, 'system');
+        }
         engine.questLog.complete(action.questId);
         engine.pushLog(`📜 Quest complete: ${q.name}!`, 'system');
         engine.bigMessage = `Quest Complete: ${q.name}!`;
@@ -456,8 +499,34 @@ export function executeDialogueAction(engine: any, action: { type: string; itemI
       }
       break;
     }
+    case 'setFlag': {
+      if (action.flag) engine.setFlag(action.flag);
+      break;
+    }
+    case 'gamble': {
+      // Scrag's dice table: wager 5g, roll d20 vs hidden 3d6+2
+      if (engine.gold < 5) { engine.setHoverInfoOnce('You need 5 gold to gamble.'); break; }
+      engine.gold -= 5;
+      const roll = 1 + Math.floor(Math.random() * 20);
+      const house = (1 + Math.floor(Math.random() * 6)) + (1 + Math.floor(Math.random() * 6)) + (1 + Math.floor(Math.random() * 6)) + 2;
+      engine.pushLog(`🎲 You bet 5 gold. You roll ${roll}; the house rolls ${house}.`, 'roll');
+      if (roll > house) {
+        engine.gold += 10;
+        engine.audio.play('dice', 0.7);
+        engine.pushLog('🎉 You win 10 gold! The goblin across the table glares at the dice like they betrayed him.', 'system');
+      } else {
+        engine.pushLog('😔 The house wins. Your 5 gold is gone. The dice glint smugly.', 'system');
+      }
+      engine.emitSnapshot();
+      break;
+    }
+    case 'bossParley': {
+      if (engine.onBossParley) engine.onBossParley(action.outcome);
+      break;
+    }
     case 'endConvo': {
       engine.showDialogue = null;
+      engine.dialogueNodeId = null;
       break;
     }
   }

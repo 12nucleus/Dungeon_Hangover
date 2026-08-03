@@ -30,16 +30,18 @@ export const TRAP_DEFS: Record<string, TrapDef> = {
   spike: { id: 'spike', name: 'Spike Trap', icon: '🕳️', damageDice: '2d6', damageType: 'piercing' },
   fire: { id: 'fire', name: 'Fire Trap', icon: '🔥', damageDice: '3d6', damageType: 'fire', appliesCondition: 'burning', conditionRounds: 2 },
   snare: { id: 'snare', name: 'Snare Trap', icon: '🪢', damageDice: '0', damageType: 'piercing', appliesCondition: 'rooted', conditionRounds: 2 },
+  // ── floor 50 — sewer cellar traps ──
+  darts: { id: 'darts', name: 'Dart Trap', icon: '🎯', damageDice: '2d6', damageType: 'piercing', appliesCondition: 'poisoned', conditionRounds: 3 },
+  spore: { id: 'spore', name: 'Mold Spore Trap', icon: '🍄', damageDice: '0', damageType: 'poison', appliesCondition: 'nauseated', conditionRounds: 3 },
+  flood: { id: 'flood', name: 'Sewer Flood', icon: '🌊', damageDice: '1d6', damageType: 'bludgeoning' },
 };
 
-export const TRAP_PLACEMENTS: [string, number, number][] = [
-  ['spike', 28, 16],
-  ['spike', 30, 13],
-  ['fire', 36, 7],
-  ['snare', 40, 14],
-  ['spike', 27, 24],
-  ['fire', 38, 22],
-];
+/**
+ * Placement table: [defId, x, z] — floor levels supply their own table
+ * (the Warlord's Warren placements moved into floor50/engine init); the
+ * generic defaults are kept for the original 7-room map path.
+ */
+export const TRAP_PLACEMENTS: [string, number, number][] = [];
 
 export class TrapManager {
   traps: Trap[] = [];
@@ -50,9 +52,15 @@ export class TrapManager {
     this.world = world;
   }
 
-  init() {
+  /**
+   * (Re)build the trap list from a placement table `[defId, x, z][]`.
+   * Clears any previously placed traps first (idempotent — safe to call
+   * again when a fresh run re-rolls trap tiles).
+   */
+  init(placements: [string, number, number][] = TRAP_PLACEMENTS) {
+    this.traps = [];
     let tid = 0;
-    for (const [defId, x, z] of TRAP_PLACEMENTS) {
+    for (const [defId, x, z] of placements) {
       const def = TRAP_DEFS[defId];
       if (!def) continue;
       this.traps.push({

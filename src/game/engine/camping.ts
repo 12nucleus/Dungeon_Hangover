@@ -7,10 +7,10 @@
 import * as THREE from 'three';
 import { setWeapon } from '../characters';
 import { FX } from '../particles';
-import { effMaxHp } from '../stats';
+import { effMaxHp, MAX_LEVEL, XP_THRESHOLDS } from '../stats';
 import { classPoolSkillIdsForLevel } from '../classSkills';
 import { canUnlock, treeFor } from '../skilltree';
-import type { Item } from '../items';
+import { makeItem, type Item } from '../items';
 import { unitWorld } from './visuals';
 import { enqueue } from './combatAnimation';
 import { spawnBonfireFlame } from './gameFlow';
@@ -50,6 +50,7 @@ export function lightBonfire(engine: any) {
     ? { ...engine.structures.checkpoint }
     : { x: 10, z: 10 };
   spawnBonfireFlame(engine);
+  if (typeof engine.torchFuel === 'number') engine.torchFuel = 100;   // bonfire refills the torch
   engine.pushLog('The bonfire roars to life. This place feels safer now...', 'system');
   engine.audio.play('ui_click', 0.6);
   engine.audio.play('bonfire_lit', 1.0);
@@ -93,6 +94,12 @@ export function restAtBonfire(engine: any) {
 
   engine.props.resetAll();
 
+  if (typeof engine.torchFuel === 'number') engine.torchFuel = 100;
+  // per-rest-cycle interactables refresh (straw mat, bunk)
+  if (engine.flags) {
+    engine.flags.delete('rest_mat_used');
+    engine.flags.delete('rest_bunk_used');
+  }
   engine.showBonfireUI = true;
   engine.pushLog('🔥 You rest at the bonfire. Your wounds close. The dungeon stirs...', 'system');
   engine.pushLog('Spend your XP here to level up, or change your skill loadout.', 'system');
@@ -112,19 +119,36 @@ export function closeBonfireUI(engine: any) {
   engine.emitSnapshot();
 }
 
+const SOBER_LINES: Record<number, string> = {
+  2: "Your head clears. Slightly. The ringing is now a hum.",
+  3: "You remember your name. It's Greg. Probably.",
+  4: "Your hands stop shaking. You miss them already.",
+  5: "Sober-ish. You can see the dungeon for what it is. It's worse.",
+  6: "Stone cold sober. This is the worst thing that has ever happened to you.",
+};
+
+/** swap Greg's hungover condition as sobriety improves (L3 → mild, L5+ → gone) */
+function recomputeHangover(u: any) {
+  u.conditions = u.conditions.filter((c: any) => c.id !== 'hungover' && c.id !== 'hungover_mild');
+  if (u.level < 3) {
+    u.conditions.push({ id: 'hungover', name: 'Hungover', roundsLeft: 99 });
+  } else if (u.level < 5) {
+    u.conditions.push({ id: 'hungover_mild', name: 'Hungover (Mild)', roundsLeft: 99 });
+  }
+}
+
 export function levelUpAtBonfire(engine: any, unitId: string) {
   const u = engine.byId(unitId);
   if (!u || u.team !== 'party' || !engine.restingAtBonfire) return;
-  if (u.level >= 5) {
-    engine.setHoverInfoOnce('Already at maximum level.');
+  if (u.level >= MAX_LEVEL) {
+    engine.setHoverInfoOnce('Stone cold sober — already at maximum level.');
     return;
   }
-  const threshold = u.level === 3 ? 300 : u.level === 4 ? 650 : 9999;
-  if (u.xp < threshold) {
-    engine.setHoverInfoOnce(`Need ${threshold} XP to level up (have ${u.xp}).`);
+  const need = XP_THRESHOLDS[u.level + 1] ?? Infinity;
+  if (u.xp < need) {
+    engine.setHoverInfoOnce(`Need ${need} XP to level up (have ${u.xp}).`);
     return;
   }
-  u.xp -= threshold;
   u.level++;
   // hydrate the class pool: skills the hero has now reached the level for
   // become known (tier-1 at Lv2, tier-2 at Lv3, tier-3+ at Lv4)
@@ -134,8 +158,11 @@ export function levelUpAtBonfire(engine: any, unitId: string) {
   u.maxHp += 6;
   u.hp = Math.min(effMaxHp(u), u.hp + 6);
   u.skillPoints += 1;
+  recomputeHangover(u);
   engine.audio.play('heal', 0.9, 1.3);
-  engine.pushLog(`⬆ ${u.name} reaches level ${u.level}! (+6 max HP, +1 skill point). You feel slightly less drunk.`, 'system');
+  const line = SOBER_LINES[u.level];
+  if (line) void engine.narrate(`sober_${u.level}`, line, 3600);
+  engine.pushLog(`⬆ ${u.name} reaches level ${u.level}! (+6 max HP, +1 skill point).`, 'system');
   FX.levelup(engine.particles, unitWorld(engine, u.pos).add(new THREE.Vector3(0, 0.6, 0)));
   engine.emitSnapshot();
 }
@@ -319,7 +346,18 @@ export function useConsumable(engine: any, itemId: string, unitId: string) {
     engine.setHoverInfoOnce('No bonus action left.');
     return;
   }
+  const wasCursed = u.conditions.some((c: any) => c.id === 'cursed');
   engine.inventory.splice(idx, 1);
   engine.audio.play('heal', 0.5, 1.6);
   enqueue(engine, engine.combat.useConsumable(u, item, u.id));
+  // holy water breaks the vault curse — the cursed-gold quest resolves
+  if (item._baseId === 'holy_water' && wasCursed) {
+    engine.flags?.add('curse_broken');
+    if (!engine.questLog?.get('cursed_gold')) engine.questLog?.start('cursed_gold');
+    if (engine.questLog?.get('cursed_gold')?.stage !== 'completed') {
+      engine.grantLoot?.([makeItem('blessed_penny')], 0);
+      engine.completeQuest?.('cursed_gold');
+      engine.pushLog('🪙 The curse lifts. The vault\'s saint pays you back with a Blessed Penny.', 'system');
+    }
+  }
 }

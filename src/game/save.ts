@@ -35,8 +35,10 @@ export interface SaveData {
   name: string;
   /** epoch ms — used for "most recent" sorting + display */
   timestamp: number;
-  /** dungeon floor (1-based); the game currently has a single level */
+  /** dungeon floor (50 — the sewer cellar) */
   floor: number;
+  /** display name of the floor (for the HUD header) */
+  floorName?: string;
   units: Unit[];
   gold: number;
   inventory: Item[];
@@ -55,6 +57,16 @@ export interface SaveData {
   };
   selectedId: string | null;
   phase: GamePhase;
+
+  // ── floor-50 run state (save v2) ──
+  /** per-run string flags (doors, quests, one-shot interactables) */
+  flags?: string[];
+  /** remaining torch fuel in seconds */
+  torchFuel?: number;
+  /** seeded run — replays the same trap tiles / poison bottles on load */
+  runSeed?: number;
+  /** victory-screen recap counters */
+  runStats?: { kills: number; deaths: number; questsDone: number; secretsFound: number; startedAt: number };
 }
 
 /** Lightweight metadata shown in the slot list (no full state). */
@@ -65,9 +77,9 @@ export interface SaveSlotMeta {
   floor: number;
 }
 
-const SAVES_KEY = 'dh_saves_v1';
+const SAVES_KEY = 'dh_saves_v2';
 const SETTINGS_KEY = 'dh_settings_v1';
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 
 type SaveStore = Record<string, { meta: SaveSlotMeta; data: SaveData }>;
 
@@ -118,7 +130,10 @@ export const SaveManager = {
   },
 
   load(slotId: string): SaveData | null {
-    return readStore()[slotId]?.data ?? null;
+    const data = readStore()[slotId]?.data ?? null;
+    // v1 saves are incompatible (floor-50 release) — treat as absent
+    if (data && data.version !== SAVE_VERSION_NUMBER) return null;
+    return data;
   },
 
   delete(slotId: string) {

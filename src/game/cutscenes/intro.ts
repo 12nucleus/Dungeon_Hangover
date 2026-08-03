@@ -481,7 +481,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   if (h.fadeEl) h.fadeEl.style.transition = '';
   h.fadeTo(0);
   await delay(700);
-  await h.narrate('narr_wake', 'You wake at the bottom of a fifty floor dungeon. In your underwear. With a headache that could crush a small kingdom.', 6200);
+  await h.narrate('narr_wake', "You wake up. You are lying on cold stone. You are wearing underwear. This is not how you thought today would go, and you once thought you'd marry a chandelier.", 6200);
   if (h.introSkipped) { finishIntro(h); return; }
 
   // Greg comes to — cursing, confused, no idea where or who he is.
@@ -494,7 +494,9 @@ export async function playIntroCutscene(h: CutsceneHost) {
 
   const starPos = floorWp.clone().add(new THREE.Vector3(0, 1.7, 0));
   h.spawnStars(starPos);
-  await h.narrate('narr_premise', 'A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that probably won\'t last. The only way out is up.', 6600);
+  await h.narrate('narr_premise', 'You stand. The room spins. You are not sure if it\'s the hangover or the dungeon. Both, probably.', 4800);
+  if (h.introSkipped) { finishIntro(h); return; }
+  await h.narrate('narr_premise_2', 'A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that probably won\'t last. Somewhere in the dark, something squeaks.', 6600);
   if (h.introSkipped) { finishIntro(h); return; }
 
   // ── character creation: stats, 2 classes, 2 starting skills ──
@@ -519,7 +521,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.desiredPitch = 0.62;
   h.spawnStars(starPos);
   await delay(900);
-  await h.narrate('narr_floor', 'Floor one of the Warren. The bonfire behind you is the last warm thing you\'ll see for a long, long time. Get up, Greg. We\'ve got fifty floors of regret to climb.', 6800);
+  await h.narrate('narr_floor', 'Floor 50 — The Sewer Cellar. The bottom of everything. The bonfire behind you is the last warm thing you\'ll see for a long, long time. Get up, Greg. We\'ve got fifty floors of regret to climb.', 6800);
   if (h.introSkipped) { finishIntro(h); return; }
   finishIntro(h);
 }
@@ -571,6 +573,6 @@ export function finishIntro(h: CutsceneHost) {
   h.busy = false;
   h.phase = 'explore';
   h.onIntroComplete();
-  h.pushLog('Floor 1 — The Warlord\'s Warren. (B) jumps to the boss cutscene. Light the bonfire to set your respawn.', 'system');
+  h.pushLog('Floor 50 — The Sewer Cellar. The bottom of everything. Light the bonfire to set your respawn.', 'system');
   h.emitSnapshot();
 }

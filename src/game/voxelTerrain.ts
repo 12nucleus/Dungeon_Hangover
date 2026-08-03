@@ -469,6 +469,9 @@ export const DEFAULT_PALETTE: Record<string, number> = {
   dirt:       0x51504a,
   sand:       0x8d8473,
   grass:      0x4d6b3a,
+  // floor 50 — sewer cellar: mossy fungal floors + pale marble
+  moss:       0x46503a,
+  marble:     0x8d8a86,
   // walls — darker gray so they read as recessed rock from the lighter floor
   wall_dark:   0x3a3a3e,
   wall_light:  0x4a4a4e,

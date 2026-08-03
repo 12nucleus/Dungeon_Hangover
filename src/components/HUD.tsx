@@ -157,17 +157,29 @@ export function HUD({ snap, engine }: Props) {
       {(phase === 'victory' || phase === 'defeat') && (
         <div className={`overlay-screen ${phase}`}>
           <div className="menu-inner">
-            <h1>{phase === 'victory' ? '🏆 VICTORY' : '💀 DEFEAT'}</h1>
-            <h2>{phase === 'victory' ? 'The goblin warband is broken.' : 'Your party has fallen...'}</h2>
-            {phase === 'victory' && snap.loot.length > 0 && (
+            <h1>{phase === 'victory' ? '🏆 FLOOR 50 CLEARED' : '💀 DEFEAT'}</h1>
+            <h2>{phase === 'victory' ? 'The Sewer Cellar is behind you. The bath is behind you. The bottom of everything is behind you. Only up remains.' : 'Your party has fallen...'}</h2>
+            {phase === 'victory' && (
               <div className="loot-box">
-                <div className="loot-title">Spoils of war</div>
+                <div className="loot-title">Run summary</div>
+                <div className="run-stats">
+                  <span>⏱ {Math.max(0, Math.round((Date.now() - (snap.runStats?.startedAt ?? Date.now())) / 1000))}s</span>
+                  <span>💀 {snap.runStats?.kills ?? 0} kills</span>
+                  <span>🕯 {snap.runStats?.deaths ?? 0} deaths</span>
+                  <span>📜 {snap.runStats?.questsDone ?? 0} quests</span>
+                  <span>🗝 {snap.runStats?.secretsFound ?? 0} secrets</span>
+                </div>
+                {snap.loot.length > 0 && <div className="loot-title" style={{ marginTop: 8 }}>Spoils of war</div>}
                 {snap.loot.map((l, i) => <div key={i} className="loot-item">{l}</div>)}
               </div>
             )}
-            {phase === 'victory'
-              ? <button className="btn-primary" onClick={() => engine?.continueAfterVictory()}>🧭 Keep exploring</button>
-              : <button className="btn-primary" onClick={() => engine?.respawn()}>🔥 Kindle again</button>}
+            {phase === 'victory' && (
+              <div className="victory-actions">
+                <button className="btn-primary" onClick={() => engine?.startNewGame(engine.currentSlotId ?? 'slot1')}>🔄 New Run</button>
+                <button className="btn-secondary" onClick={() => engine?.returnToTitle()}>🏠 Title</button>
+              </div>
+            )}
+            {phase === 'defeat' && <button className="btn-primary" onClick={() => engine?.respawn()}>🔥 Kindle again</button>}
           </div>
         </div>
       )}
@@ -199,6 +211,33 @@ export function HUD({ snap, engine }: Props) {
       {snap.targeting && playerTurn && (
         <div className="targeting-hint">
           🎯 Aiming <b>{SKILLS[snap.selectedSkill!]?.name}</b> — click a target · right-click / Esc to cancel
+        </div>
+      )}
+
+      {/* ══ INTERACT PROMPT ══ */}
+      {snap.interactPrompt && phase === 'explore' && !snap.showDialogue && (
+        <div className="interact-prompt">{snap.interactPrompt}</div>
+      )}
+
+      {/* ══ QUEST LOG (J) ══ */}
+      {snap.showQuestLog && phase !== 'menu' && (
+        <div className="quest-log">
+          <div className="quest-log-title">📜 Quest Log <button onClick={() => engine?.closeQuestLog()}>✕</button></div>
+          {snap.quests && snap.quests.length > 0 ? (
+            <div className="quest-log-body">
+              {snap.quests.map((q) => (
+                <div key={q.id} className={`quest-entry ${q.stage}`}>
+                  <div className="quest-name">
+                    {q.stage === 'completed' ? '✔' : q.stage === 'failed' ? '✖' : q.stage === 'accepted' || q.stage === 'in_progress' ? '◑' : '◔'}{' '}
+                    {q.name}
+                  </div>
+                  <div className="quest-desc">{q.desc}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="quest-log-body empty">No quests yet. Talk to the Hermit in the next cell.</div>
+          )}
         </div>
       )}
 
@@ -289,10 +328,15 @@ export function HUD({ snap, engine }: Props) {
             ))}
           </div>
 
-          {/* torch indicator */}
+          {/* torch indicator + fuel bar */}
           {snap.torchEquipped && (
             <div className="torch-indicator" onClick={() => engine?.toggleTorch()} title="Toggle torch [T]">
-              {snap.torchLit ? '🔥' : '🕯'} Torch {snap.torchLit ? 'ON' : 'OFF'}
+              <span>{snap.torchLit ? '🔥' : '🕯'} Torch {snap.torchLit ? 'ON' : 'OFF'}</span>
+              {typeof snap.torchFuel === 'number' && (
+                <div className="torch-fuel">
+                  <div className="torch-fuel-fill" style={{ width: `${Math.max(0, Math.min(100, (snap.torchFuel / 100) * 100))}%` }} />
+                </div>
+              )}
             </div>
           )}
 
@@ -305,6 +349,13 @@ export function HUD({ snap, engine }: Props) {
             <div className="explore-hint">🧭 Click ground to move · I Inventory · K Skill tree · C Sneak · Space Rest</div>
           )}
 
+          {/* floor banner (Floor 50 — The Sewer Cellar) */}
+          {snap.floorName && (
+            <div className="floor-banner" title={`Floor ${snap.floor ?? ''}`}>
+              Floor {snap.floor ?? 50} — {snap.floorName}
+            </div>
+          )}
+
           {/* right controls */}
           {/* sneak toggle */}
           {phase === 'explore' && (
@@ -313,6 +364,7 @@ export function HUD({ snap, engine }: Props) {
             </button>
           )}
           <div className="hud-right">
+            <button className={`hud-btn ${snap.showQuestLog ? 'on' : ''}`} onClick={() => engine?.toggleQuestLog()} title="Quest log [J]">📖</button>
             <button className="hud-btn" onClick={() => engine?.toggleStats()} title="Character stats [U]">📊</button>
             <button className="hud-btn" onClick={() => engine?.toggleSkillTree()} title="Skill tree [K]">📜</button>
             <button className="hud-btn" onClick={() => engine?.toggleInventory()} title="Inventory [I]">🎒</button>

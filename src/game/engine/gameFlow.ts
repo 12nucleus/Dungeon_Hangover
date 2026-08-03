@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { SKILLS } from '../skills';
 import { setWeapon } from '../characters';
-import { SaveManager, SettingsManager } from '../save';
+import { SaveManager, SettingsManager, SAVE_VERSION_NUMBER } from '../save';
 import type { GameSettings, SaveData } from '../save';
 import { unitWorld } from './visuals';
 import { clearHighlights, showTargeting } from './targeting';
@@ -180,11 +180,11 @@ export function saveGame(engine: any, slotId?: string, label?: string) {
   const id = slotId ?? engine.currentSlotId;
   if (!id) return;
   const data: SaveData = {
-    version: 1,
+    version: SAVE_VERSION_NUMBER,
     slotId: id,
     name: label ?? partyName(engine),
     timestamp: Date.now(),
-    floor: 1,
+    floor: engine.floorNumber ?? 50,
     units: engine.combat.units.map((u: any) => clone(u)),
     gold: engine.gold,
     inventory: engine.inventory.map((i: any) => clone(i)),
@@ -202,6 +202,10 @@ export function saveGame(engine: any, slotId?: string, label?: string) {
     },
     selectedId: engine.selectedId,
     phase: engine.phase,
+    flags: engine.flags ? [...engine.flags] : [],
+    torchFuel: engine.torchFuel,
+    runSeed: engine.runSeed,
+    runStats: engine.runStats ? { ...engine.runStats } : undefined,
   };
   SaveManager.save(id, data);
   engine.pushLog('💾 Game saved.', 'system');
@@ -230,6 +234,11 @@ export function loadGame(engine: any, slotId: string): boolean {
   engine.bonfireLit = data.bonfireLit;
   engine.defeatedSpecialMobs = new Set(data.defeatedSpecialMobs);
   engine.explored = data.explored.map((r: any) => [...r]);
+  if (data.flags) engine.flags = new Set(data.flags);
+  if (typeof data.torchFuel === 'number') engine.torchFuel = data.torchFuel;
+  if (data.runSeed) engine.runSeed = data.runSeed;
+  if (data.runStats) engine.runStats = { ...engine.runStats, ...data.runStats };
+  if (data.floor) engine.floorNumber = data.floor;
   engine.combat.turnOrder = [...data.combat.turnOrder];
   engine.combat.activeIdx = data.combat.activeIdx;
   engine.combat.round = data.combat.round;

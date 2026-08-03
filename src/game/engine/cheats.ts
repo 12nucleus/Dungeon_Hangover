@@ -150,5 +150,5 @@ export function animateTo(engine: any, get: () => number, set: (v: number) => vo
 
 async function playBossCutscene(engine: any) {
   if (!engine.cutsceneDirector) return;
-  await engine.cutsceneDirector.play('boss');
+  await engine.cutsceneDirector.play('gribnab');
 }

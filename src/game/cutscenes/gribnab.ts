@@ -1,25 +1,29 @@
 // ─────────────────────────────────────────────────────────────
-// cutscenes/boss — "The Bathing Tyrant" boss reveal cutscene
-// ═════════════════════════════════════════════════════════════
+// cutscenes/gribnab — "The Soapy King" boss reveal.
+// Same bath-song structure as the Warren's warlord, but the captions
+// are the bible's Pre-Fight blocks and they vary on how the player got
+// the door open: knocked (calm, soapy) vs door_forced (very upset).
+// ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
 import type { CutsceneHost } from './types';
-import type { GridPos, Unit } from '../types';
+import { NPCS } from '../npc';
 
-export async function playBossCutscene(h: CutsceneHost) {
+export async function playGribnabCutscene(h: CutsceneHost) {
   if (!h.structures) return;
   const st = h.structures;
   h.busy = true;
   h.bossCineActive = true;
   h.introSkipped = false;
 
-  const boss = h.combat.units.find((u) => (u as any).bossGroup && (u as any).dropKey === 'golden') as Unit | undefined;
+  const forced = !!(h as any).flags?.has?.('door_forced');
+  const introLine = forced ? NPCS.gribnab.dialogue.pre_fight_door.text : NPCS.gribnab.dialogue.pre_fight_soap.text;
+
+  const boss = h.combat.units.find((u) => u.name === 'Gribnab') as any;
   const v = boss ? h.visuals.get(boss.id) : null;
   const bathWp = h.unitWorld(st.bossBath);
   const bathTop = bathWp.clone().add(new THREE.Vector3(0, 0.55, 0));
   const headWp = bathWp.clone().add(new THREE.Vector3(0, 1.25, 0));
   const westWp = h.unitWorld({ x: st.bossBath.x - 3, z: st.bossBath.z });
-  const rackApproach: GridPos = { x: st.bossBath.x + 1, z: st.bossBath.z };
-  const rackWp = h.unitWorld({ x: st.bossBath.x + 2, z: st.bossBath.z });
 
   const savedDist = h.iso.desiredDist, savedYaw = h.iso.desiredYaw, savedPitch = h.iso.desiredPitch;
   h.iso.lerp = 2.1;
@@ -28,17 +32,16 @@ export async function playBossCutscene(h: CutsceneHost) {
     boss.pos = { ...st.bossBath };
     v.rig.group.position.copy(bathWp);
     v.rig.anim.mode = 'idle';
-    v.rig.anim.crouch = 1.2;
+    v.rig.anim.crouch = 1.15;
     v.rig.anim.lunge = 0; v.rig.anim.flinch = 0;
     h.setWeapon(v.rig, null, boss.scheme.accent);
-    if (h.rackClub) h.rackClub.visible = true;
     h.faceToward(v, westWp, true);
   }
 
-  // ── BEAT 1: push-in + pan ──
+  // ── BEAT 1: push-in on the steam ──
   h.iso.focus(headWp);
   h.iso.desiredDist = 7.5; h.iso.desiredPitch = 0.62; h.iso.desiredYaw = -Math.PI * 0.28;
-  h.showCine('The Warlord\'s Warren — the innermost chamber…');
+  h.showCine('The Bath Chamber of the Goblin King — steam, candles, and off-key humming…');
   h.audio.splash();
   await h.cineDelay(2200);
   h.clearCine();
@@ -50,14 +53,14 @@ export async function playBossCutscene(h: CutsceneHost) {
   h.iso.focus(bathWp.clone().add(new THREE.Vector3(-5.0, 1.0, 2)));
   await h.cineDelay(1500);
 
-  // ── BEAT 2: bath-time song ──
+  // ── BEAT 2: the bath-time song ──
   h.iso.desiredDist = 6.5; h.iso.desiredPitch = 0.6; h.iso.desiredYaw = -Math.PI * 0.28;
   h.iso.focus(headWp);
   h.audio.sing();
-  h.showCine('♪ Rub-a-dub-dub, a warlord in his tub… ♪');
+  h.showCine('♪ Rub-a-dub-dub, a goblin king in his tub… ♪');
   for (let i = 0; i < 6; i++) { if (v) v.rig.anim.lunge = 0.35; h.waterPlink(bathTop); await h.cineDelay(950); }
   h.audio.sing(0.8);
-  h.showCine('♪ …scrubbin\' off the blood of the fools I clubbed~ ♪');
+  h.showCine('♪ …with ducks, and bubbles, and ZERO plans to be disturbed~ ♪');
   for (let i = 0; i < 6; i++) { if (v) v.rig.anim.lunge = 0.35; h.waterPlink(bathTop); await h.cineDelay(950); }
   h.clearCine();
 
@@ -68,20 +71,16 @@ export async function playBossCutscene(h: CutsceneHost) {
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.12);
   await h.cineDelay(900);
 
-  // ── BEAT 4: bellow ──
+  // ── BEAT 4: the greeting (varies on knocked vs forced) ──
   if (v) h.faceToward(v, westWp);
   h.audio.roar();
   if (v) v.rig.anim.flinch = 1;
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.34);
-  h.showCine('"WHO DARES DISTURB MY ROYAL BATH?!"');
-  await h.cineDelay(2600);
-  h.audio.roar(0.85);
-  h.iso.shake = Math.max(h.iso.shake ?? 0, 0.28);
-  h.showCine('"MY ONE HOUR OF PEACE — RUINED!!"');
-  await h.cineDelay(2400);
+  h.showCine(introLine);
+  await h.cineDelay(3600);
   h.clearCine();
 
-  // ── BEAT 5: erupts from the water ──
+  // ── BEAT 5: rises from the water ──
   h.iso.desiredDist = 9.0; h.iso.desiredPitch = 0.82; h.iso.focus(bathTop);
   if (v) {
     h.animateTo(() => v.rig.anim.crouch, (val) => { v.rig.anim.crouch = val; }, 0, 0.9);
@@ -94,16 +93,13 @@ export async function playBossCutscene(h: CutsceneHost) {
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.32);
   await h.cineDelay(1300);
 
-  // ── BEAT 6: wade to the rack ──
+  // ── BEAT 6: wade to the rack, seize the club ──
   if (v) {
+    const rackWp = h.unitWorld({ x: st.bossBath.x + 2, z: st.bossBath.z });
     h.iso.focus(rackWp.clone().add(new THREE.Vector3(0, 0.9, 0)));
-    await h.walkRigTo(v, rackApproach, 1.4);
+    await h.walkRigTo(v, { x: st.bossBath.x + 1, z: st.bossBath.z }, 1.4);
     h.faceToward(v, rackWp, true);
     await h.cineDelay(450);
-  }
-
-  // ── BEAT 7: seize the club ──
-  if (v && boss) {
     h.iso.desiredDist = 7.0; h.iso.desiredPitch = 0.62;
     v.rig.anim.lunge = 1;
     await h.cineDelay(360);
@@ -112,11 +108,11 @@ export async function playBossCutscene(h: CutsceneHost) {
     h.audio.play('sword_hit', 0.6, 0.6);
     h.audio.bossSting();
     h.iso.shake = Math.max(h.iso.shake ?? 0, 0.3);
-    h.fx.impactDust(h.particles, rackWp.clone().setY((v.rig.group.userData.baseY as number) + 0.9), [0x5a3a1e, 0x2a1f1a]);
+    h.fx.impactDust(h.particles, rackWp.clone().setY((v.rig.group.userData.baseY as number) + 0.9), [0x5a3a1e, 0xff9ac0]);
     await h.cineDelay(900);
   }
 
-  // ── BEAT 8: round on the party ──
+  // ── BEAT 7: round on the party ──
   if (v) {
     h.iso.focus(bathTop); h.iso.desiredDist = 8.0; h.iso.desiredPitch = 0.7;
     await h.walkRigTo(v, st.bossBath, 1.1);
@@ -127,19 +123,19 @@ export async function playBossCutscene(h: CutsceneHost) {
   h.audio.bossSting();
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.45);
   if (boss) boss.pos = { ...st.bossBath };
-  h.showCine('"NONE LEAVE MY WARREN ALIVE!"');
-  await h.cineDelay(2400);
+  h.showCine("You fight well for someone in underwear! I am almost proud! Almost! But the bath demands a sacrifice! And you are IT!");
+  await h.cineDelay(2600);
   h.clearCine();
 
-  // ── hand the camera back to the player ──
+  // ── hand the camera back ──
   h.iso.desiredDist = savedDist; h.iso.desiredYaw = savedYaw; h.iso.desiredPitch = savedPitch;
   if (v) h.iso.focus(v.rig.group.position.clone());
   await h.cineDelay(700);
   h.iso.lerp = 7;
 
-  // ── wake his honour-guard & begin the battle ──
+  // ── begin the battle (Gribnab fights alone — his guards are already gone) ──
   for (const u of h.combat.units) if ((u as any).bossGroup) (u as any).dormant = false;
-  h.pushLog('👑 Warlord Gorruk heaves his greatclub from the rack — the fight begins!', 'system');
+  h.pushLog('🫧 Gribnab the Soapy raises his soap-crusted club — the fight begins!', 'system');
   h.bossCineActive = false;
   h.busy = false;
   h.enqueue(h.combat.start());

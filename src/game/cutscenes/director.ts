@@ -4,7 +4,10 @@
 import type { CutsceneHost } from './types';
 import { playIntroCutscene } from './intro';
 import { playTitleSequence } from './title';
-import { playBossCutscene } from './boss';
+import { playBossRatCutscene } from './bossRat';
+import { playGribnabCutscene } from './gribnab';
+
+export type CutsceneId = 'intro' | 'title' | 'boss_rat' | 'gribnab';
 
 /**
  * DIRECTOR — the one object the engine creates & talks to.
@@ -13,7 +16,7 @@ import { playBossCutscene } from './boss';
 export class CutsceneDirector {
   private host: CutsceneHost;
   /** currently-running cutscene id (null = none). */
-  activeId: 'intro' | 'title' | 'boss' | null = null;
+  activeId: CutsceneId | null = null;
 
   constructor(host: CutsceneHost) { this.host = host; }
 
@@ -28,7 +31,7 @@ export class CutsceneDirector {
   }
 
   /** start a cutscene by id. returns once it has finished (skipped or natural). */
-  async play(id: 'intro' | 'title' | 'boss'): Promise<void> {
+  async play(id: CutsceneId): Promise<void> {
     if (this.activeId) return;   // never overlap cutscenes
     this.activeId = id;
     this.host.introSkipped = false;
@@ -36,7 +39,8 @@ export class CutsceneDirector {
     try {
       if (id === 'title') await playTitleSequence(this.host);
       else if (id === 'intro') await playIntroCutscene(this.host);
-      else if (id === 'boss') await playBossCutscene(this.host);
+      else if (id === 'boss_rat') await playBossRatCutscene(this.host);
+      else if (id === 'gribnab') await playGribnabCutscene(this.host);
     } finally {
       this.activeId = null;
     }

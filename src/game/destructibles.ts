@@ -39,16 +39,10 @@ export const DESTRUCTIBLE_DEFS: Record<string, DestructibleDef> = {
 };
 
 // ── placement (hand-authored) ────────────────────────────────
-const SPOTS: [string, number, number][] = [
-  ['crate', 30, 8], ['crate', 31, 8], ['crate', 30, 10],          // west pillar cluster
-  ['crate', 40, 16], ['crate', 41, 16],                           // east pillar cluster
-  ['barrel', 33, 7], ['barrel', 37, 7], ['barrel', 39, 7],        // along the north wall
-  ['vase', 29, 8], ['vase', 41, 17], ['vase', 29, 16],            // corners
-  ['chest_small', 35, 8],                                         // deeper in the ruins
-  ['sack', 32, 9], ['urn', 40, 15],                               // extra flavour
-  ['crate', 33, 30], ['barrel', 30, 25], ['vase', 36, 22],        // path from party start
-  ['sack', 28, 33], ['urn', 22, 26],
-];
+// Floor levels supply their own placement tables via LevelDef.destructibles;
+// the table below is the default for levels that ship none (unused by the
+// authored floor 50).
+const SPOTS: [string, number, number][] = [];
 
 export interface Destructible {
   id: string;
@@ -71,9 +65,9 @@ export class DestructibleManager {
   private seq = 0;
   private world: VoxelWorld;
 
-  constructor(world: VoxelWorld) {
+  constructor(world: VoxelWorld, placements: [string, number, number][] = SPOTS) {
     this.world = world;
-    for (const [defId, x, z] of SPOTS) this.place(defId, x, z);
+    for (const [defId, x, z] of placements) this.place(defId, x, z);
   }
 
   worldPos(p: Destructible, out = new THREE.Vector3()): THREE.Vector3 {

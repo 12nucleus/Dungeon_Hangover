@@ -4,14 +4,23 @@
 // This separation is what makes the game LLM-extensible:
 // rules live here, presentation lives in engine.ts.
 // ─────────────────────────────────────────────────────────────
-import type { CombatEvent, GridPos, SkillDef, Unit, GamePhase } from './types';
-import { CONDITIONS } from './skills';
+import type { CombatEvent, GridPos, SkillDef, Unit, GamePhase, DamageType } from './types';
+import { CONDITIONS, SUMMON_TEMPLATES } from './skills';
 import { skillById } from './skillLookup';
 import { rollD20, rollDice, abilityMod, fmtMod } from './dice';
 import { VoxelWorld } from './world';
 import { ENCHANTS, rollLootTable, type Item } from './items';
-import { effAC, effMove, effMaxHp, effAtkBonus, XP_THRESHOLDS, MAX_LEVEL } from './stats';
+import { effAC, effMove, effMaxHp, effAtkBonus, effPhysResist, hangoverPenalty, XP_THRESHOLDS, MAX_LEVEL } from './stats';
 import { classPoolSkillIdsForLevel } from './classSkills';
+
+/** damage-over-time by condition id (ticked at the start of the carrier's turn) */
+const DOT_BY_ID: Record<string, { dice: string; type: DamageType }> = {
+  burning: { dice: '1d6', type: 'fire' },
+  poisoned: { dice: '1d4', type: 'poison' },
+  bleeding: { dice: '1d4', type: 'piercing' },
+  infected: { dice: '1', type: 'poison' },
+  scalded: { dice: '1d4', type: 'fire' },
+};
 
 export class Combat {
   units: Unit[] = [];
@@ -34,6 +43,45 @@ export class Combat {
   }
   byId(id: string) { return this.units.find((u) => u.id === id) ?? null; }
   living(team: 'party' | 'enemy') { return this.units.filter((u) => u.alive && u.team === team); }
+
+  private summonSeq = 0;
+
+  /**
+   * Place a fresh copy of `template` on the nearest free walkable tile to
+   * `near` and join it to the fight (inserted right after the summoner in
+   * initiative). Works outside combat too — the caller decides when to
+   * `start()` the fight. The engine animates the summon event.
+   */
+  summon(template: Unit, near: GridPos, summonerId?: string): Unit {
+    const clone: Unit = JSON.parse(JSON.stringify(template));
+    clone.id = `summon_${this.summonSeq++}`;
+    clone.alive = true;
+    clone.hp = clone.maxHp;
+    clone.dormant = false;
+    clone.bossGroup = false;
+    clone.conditions = [];
+    clone.cooldowns = {};
+    clone.hasAction = true;
+    clone.hasBonus = true;
+    clone.movementLeft = effMove(clone);
+    // nearest free walkable tile to `near`
+    let best: GridPos | null = null;
+    let bestD = Infinity;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const x = near.x + dx, z = near.z + dz;
+      if (!this.world.isWalkable(x, z) || this.occupied(x, z)) continue;
+      const d = Math.abs(x - near.x) + Math.abs(z - near.z);
+      if (d < bestD) { bestD = d; best = { x, z }; }
+    }
+    clone.pos = best ?? { ...near };
+    this.units.push(clone);
+    if (this.inCombat) {
+      const idx = summonerId ? this.turnOrder.indexOf(summonerId) : -1;
+      if (idx >= 0) this.turnOrder.splice(idx + 1, 0, clone.id);
+      else this.turnOrder.push(clone.id);
+    }
+    return clone;
+  }
   /** enemies that are actually part of the CURRENT fight (aggroed, i.e. not dormant) */
   activeEnemies() { return this.units.filter((u) => u.alive && u.team === 'enemy' && !u.dormant); }
 
@@ -147,6 +195,21 @@ export class Combat {
     const ev: CombatEvent[] = [];
     // tick cooldowns & conditions (happen at start of turn regardless)
     for (const k of Object.keys(u.cooldowns)) if (u.cooldowns[k] > 0) u.cooldowns[k]--;
+
+    // damage-over-time: applied before decrement so the condition still
+    // deals its damage on the round it expires
+    for (const c of [...u.conditions]) {
+      const dot = c.dot ?? DOT_BY_ID[c.id];
+      if (!dot) continue;
+      const dmg = rollDice(dot.dice);
+      u.hp = Math.max(0, u.hp - dmg.total);
+      ev.push({ type: 'damage', unitId: u.id, amount: dmg.total, kind: dot.type, crit: false });
+      ev.push({ type: 'float', unitId: u.id, text: `☠ -${dmg.total}`, cls: 'dmg' });
+      ev.push({ type: 'log', text: `${u.name} suffers ${dmg.total} ${dot.type} damage (${c.name})`, kind: 'hit' });
+      if (u.hp <= 0 && u.alive) ev.push(...this.onDeath(u));
+      if (!u.alive) return ev;
+    }
+
     for (const c of u.conditions) c.roundsLeft--;
     u.conditions = u.conditions.filter((c) => c.roundsLeft > 0);
     if (u.conditions.some((c) => c.id === 'surprised')) {
@@ -157,11 +220,29 @@ export class Combat {
       ev.push({ type: 'turn', unitId: u.id, round: this.round });
       return ev;
     }
+    // stunned: skips the turn entirely (like surprised)
+    if (u.conditions.some((c) => c.id === 'stunned')) {
+      u.conditions = u.conditions.filter((c) => c.id !== 'stunned');
+      u.hasAction = false; u.hasBonus = false; u.movementLeft = 0;
+      ev.push({ type: 'log', text: `${u.name} is stunned and skips their turn!`, kind: 'system' });
+      ev.push({ type: 'turn', unitId: u.id, round: this.round });
+      return ev;
+    }
+    // prone: the unit stands back up at the start of its turn
+    if (u.conditions.some((c) => c.id === 'prone')) {
+      u.conditions = u.conditions.filter((c) => c.id !== 'prone');
+      ev.push({ type: 'log', text: `${u.name} clambers back to their feet.`, kind: 'system' });
+    }
     u.hasAction = true;
     u.hasBonus = true;
     u.movementLeft = effMove(u);
     if (u.conditions.some((c) => c.id === 'slowed')) u.movementLeft = Math.ceil(u.movementLeft / 2);
     if (u.conditions.some((c) => c.id === 'rooted')) u.movementLeft = 0;
+    // frenzy passive: below 50% HP the carrier acts twice this turn (the
+    // extra action is granted in useSkill after the first action skill)
+    const hasFrenzy = u.equippedSkills.includes('frenzy') || u.knownSkills.includes('frenzy');
+    if (hasFrenzy && u.hp / effMaxHp(u) < 0.5) u.cooldowns['frenzy_extra'] = 1;
+    else delete u.cooldowns['frenzy_extra'];
     ev.push({ type: 'turn', unitId: u.id, round: this.round });
     ev.push({ type: 'log', text: `▶ ${u.name}'s turn`, kind: 'system' });
     return ev;
@@ -181,6 +262,16 @@ export class Combat {
     }
     ev.push(...this.beginTurn());
     return ev;
+  }
+
+  /** end combat early without victory/defeat (Gribnab truce) */
+  endEarly(): CombatEvent[] {
+    this.inCombat = false;
+    this.phase = 'explore';
+    return [
+      { type: 'log', text: '— ☮ The fight ends. —', kind: 'system' },
+      { type: 'phase', phase: 'explore' },
+    ];
   }
 
   private checkEnd(): CombatEvent[] {
@@ -208,6 +299,16 @@ export class Combat {
   moveActiveTo(tile: GridPos): CombatEvent[] {
     const u = this.active;
     if (!u || u.team !== 'party') return [];
+    // slippery (soap splash / bubble bath): 50% to slip mid-step and end the move
+    if (u.conditions.some((c) => c.id === 'slippery') && Math.random() < 0.5) {
+      u.movementLeft = 0;
+      u.conditions = u.conditions.filter((c) => c.id !== 'slippery');
+      u.conditions.push({ id: 'prone', name: CONDITIONS.prone.name, roundsLeft: 1 });
+      return [
+        { type: 'log', text: `${u.name} slips on the soap and lands hard!`, kind: 'system' },
+        { type: 'float', unitId: u.id, text: 'Prone!', cls: 'debuff' },
+      ];
+    }
     const paths = this.reachable(u, u.movementLeft);
     const path = paths.get(`${tile.x},${tile.z}`);
     if (!path || !path.length) return [];
@@ -222,6 +323,7 @@ export class Combat {
     if (s.cost === 'action' && !u.hasAction) return 'No action left';
     if (s.cost === 'bonus' && !u.hasBonus) return 'No bonus action left';
     if ((u.cooldowns[s.id] ?? 0) > 0) return `Cooldown: ${u.cooldowns[s.id]} round(s)`;
+    if (s.oncePerFight && (u.cooldowns[`once_${s.id}`] ?? 0) > 0) return 'Already used this fight.';
     return null;
   }
 
@@ -235,7 +337,11 @@ export class Combat {
     // resolve targets
     let center: GridPos;
     let targets: Unit[] = [];
-    if (s.selfOnly) {
+    if (s.id === 'duck_distraction') {
+      // Gribnab's duck: EVERYONE is distracted (both teams)
+      center = { ...u.pos };
+      targets = this.units.filter((t) => t.alive);
+    } else if (s.selfOnly) {
       center = { ...u.pos };
       targets = [u];
     } else if (s.allAllies) {
@@ -262,25 +368,119 @@ export class Combat {
       return [{ type: 'log', text: 'No target selected.', kind: 'info' }];
     }
 
-    // pay costs
-    if (s.cost === 'action') u.hasAction = false;
-    if (s.cost === 'bonus') u.hasBonus = false;
-    if (s.cooldown > 0) u.cooldowns[s.id] = s.cooldown + 1; // +1 because it ticks at next turn start
-
     const ev: CombatEvent[] = [];
     ev.push({ type: 'log', text: `${u.name} uses ${s.icon} ${s.name}`, kind: 'info' });
 
-    // buffs (bless / arcane shield): apply to allies (or self), done
+    // pay costs
+    if (s.cost === 'action') {
+      u.hasAction = false;
+      // frenzy: the carrier's extra action is granted after its first action
+      if (u.cooldowns['frenzy_extra']) {
+        delete u.cooldowns['frenzy_extra'];
+        u.hasAction = true;
+        ev.push({ type: 'log', text: `${u.name} is FRENZIED — they act again!`, kind: 'system' });
+      }
+    }
+    if (s.cost === 'bonus') u.hasBonus = false;
+    if (s.cooldown > 0) u.cooldowns[s.id] = s.cooldown + 1; // +1 because it ticks at next turn start
+    if (s.oncePerFight) u.cooldowns[`once_${s.id}`] = 999;
+
+    // ── shove: a contested shove, resolved here (no attack roll) ──
+    if (s.id === 'shove') {
+      const t = targets[0];
+      if (!t) return ev;
+      const atk = rollD20(abilityMod(u.abilities.str));
+      const dc = 10 + abilityMod(t.abilities.str);
+      ev.push({ type: 'log', text: `${u.name} shoves ${t.name}: STR ${atk.roll}${fmtMod(atk.bonus)} vs DC ${dc}`, kind: 'roll' });
+      if (atk.total < dc) {
+        ev.push({ type: 'float', unitId: t.id, text: 'Holds!', cls: 'miss' });
+        ev.push({ type: 'log', text: `${t.name} holds their ground.`, kind: 'info' });
+        ev.push(...this.checkEnd());
+        return ev;
+      }
+      // displace 1 tile directly away from the attacker
+      const dx = Math.sign(t.pos.x - u.pos.x), dz = Math.sign(t.pos.z - u.pos.z);
+      const dest = { x: t.pos.x + dx, z: t.pos.z + dz };
+      if (dx !== 0 || dz !== 0) {
+        if (this.world.isWalkable(dest.x, dest.z) && !this.occupied(dest.x, dest.z) && Math.abs(this.world.heightAt(dest.x, dest.z) - this.world.heightAt(t.pos.x, t.pos.z)) <= 1) {
+          t.pos = { ...dest };
+          ev.push({ type: 'move', unitId: t.id, path: [dest] });
+          ev.push({ type: 'float', unitId: t.id, text: '🫸 Shoved!', cls: 'dmg' });
+          ev.push({ type: 'log', text: `${u.name} shoves ${t.name} one tile away!`, kind: 'hit' });
+        } else {
+          // slammed against a wall / into a crate
+          const thud = rollDice('1d4');
+          ev.push({ type: 'log', text: `${t.name} slams into the wall!`, kind: 'hit' });
+          this.applyDamage(ev, t, thud.total, 'bludgeoning', false);
+          if (t.alive && !t.conditions.some((x) => x.id === 'prone')) {
+            t.conditions.push({ id: 'prone', name: CONDITIONS.prone.name, roundsLeft: 1 });
+            ev.push({ type: 'float', unitId: t.id, text: 'Prone!', cls: 'debuff' });
+          }
+        }
+      } else {
+        ev.push({ type: 'log', text: `${t.name} is pushed back!`, kind: 'system' });
+      }
+      ev.push(...this.checkEnd());
+      return ev;
+    }
+
+    // ── summons (boss minions): clone the template onto a free tile ──
+    if (s.summonId) {
+      const tpl = SUMMON_TEMPLATES[s.summonId];
+      if (!tpl) return ev;
+      const count = s.id === 'rat_summon' ? 2 : 1;
+      for (let i = 0; i < count; i++) {
+        const unit = this.summon(tpl(), u.pos, u.id);
+        ev.push({ type: 'summon', unit });
+        ev.push({ type: 'log', text: `${unit.name} scurries in from the dark!`, kind: 'system' });
+      }
+      ev.push({ type: 'skillfx', skill: s, at: center, targets: this.living(u.team).map((t) => t.id) });
+      ev.push(...this.checkEnd());
+      return ev;
+    }
+
+    // ── bath_time: Gribnab hops back in the tub and heals ──
+    if (s.id === 'bath_time') {
+      if (u.bathPos) {
+        u.pos = { ...u.bathPos };
+        ev.push({ type: 'move', unitId: u.id, path: [{ ...u.bathPos }] });
+      }
+      const heal = rollDice(s.healDice!);
+      const amt = Math.min(heal.total, effMaxHp(u) - u.hp);
+      u.hp += amt;
+      ev.push({ type: 'skillfx', skill: s, at: center, targets: [u.id] });
+      ev.push({ type: 'heal', unitId: u.id, amount: amt });
+      ev.push({ type: 'log', text: `${u.name} sinks back into the bath and heals ${amt} HP!`, kind: 'heal' });
+      ev.push(...this.checkEnd());
+      return ev;
+    }
+
+    // duck distraction: applies to every living unit, both teams
+    if (s.id === 'duck_distraction') {
+      for (const t of targets) {
+        if (!t.conditions.some((c) => c.id === s.appliesCondition)) {
+          t.conditions.push({ id: s.appliesCondition!, name: CONDITIONS[s.appliesCondition!].name, roundsLeft: s.appliesRounds ?? 1 });
+        }
+        ev.push({ type: 'float', unitId: t.id, text: '🦆 SQUEAK!', cls: 'debuff' });
+      }
+      ev.push({ type: 'skillfx', skill: s, at: center, targets: targets.map((t) => t.id) });
+      ev.push({ type: 'log', text: 'The duck squeaks. Everyone flinches.', kind: 'system' });
+      ev.push(...this.checkEnd());
+      return ev;
+    }
+
+    // buffs (bless / arcane shield / bubble shield / sovereign sudds)
     if (s.kind === 'buff') {
       for (const ally of (s.selfOnly ? [u] : this.living(u.team))) {
         if (!ally.conditions.some((c) => c.id === s.appliesCondition)) {
-          ally.conditions.push({ id: s.appliesCondition!, name: CONDITIONS[s.appliesCondition!].name, roundsLeft: 3 });
+          ally.conditions.push({ id: s.appliesCondition!, name: CONDITIONS[s.appliesCondition!].name, roundsLeft: s.appliesRounds ?? 3 });
         } else {
-          ally.conditions.find((c) => c.id === s.appliesCondition)!.roundsLeft = 3;
+          ally.conditions.find((c) => c.id === s.appliesCondition)!.roundsLeft = s.appliesRounds ?? 3;
         }
-        ev.push({ type: 'float', unitId: ally.id, text: '✨ Blessed', cls: 'buff' });
+        ev.push({ type: 'float', unitId: ally.id, text: `✨ ${CONDITIONS[s.appliesCondition!]?.name ?? 'Buff'}`, cls: 'buff' });
       }
       ev.push({ type: 'skillfx', skill: s, at: center, targets: this.living(u.team).map((t) => t.id) });
+      ev.push(...this.checkEnd());
       return ev;
     }
 
@@ -332,9 +532,22 @@ export class Combat {
       const ench = weapon?.enchantId ? ENCHANTS[weapon.enchantId] : undefined;
       const blessed = u.conditions.some((c) => c.id === 'blessed');
       const keen = weapon ? effAtkBonus(u) : 0;
-      const atk = rollD20(abilityMod(u.abilities[s.attackAbility]) + u.proficiency + keen, blessed ? '1d4' : '');
+      // ── condition modifiers on the attack roll (floor 50) ──
+      let atkMod = abilityMod(u.abilities[s.attackAbility]) + u.proficiency + keen;
+      for (const c of u.conditions) {
+        switch (c.id) {
+          case 'nauseated': atkMod -= 1; break;
+          case 'dazed': case 'disgusted': case 'distracted': case 'hallucinating': atkMod -= 2; break;
+          case 'blinded': atkMod -= 5; break;
+          case 'hungover': atkMod -= hangoverPenalty(u.level); break;
+          case 'hungover_mild': atkMod -= 1; break;
+          case 'well_fed': atkMod += 1; break;
+        }
+      }
+      const atk = rollD20(atkMod, blessed ? '1d4' : '');
       const auto = s.id === 'magic_missile';
-      const tgtAC = effAC(t);
+      // prone targets are easier to hit (+2)
+      const tgtAC = effAC(t) - (t.conditions.some((x) => x.id === 'prone') ? 2 : 0);
       const surpriseCrit = this.surpriseRound && u.team === 'party' && this.surpriseHits.has(u.id) && !!diceExpr;
       if (surpriseCrit) this.surpriseHits.delete(u.id);
       const hit = auto || atk.crit || surpriseCrit || (!atk.fumble && atk.total >= tgtAC);
@@ -353,7 +566,46 @@ export class Combat {
       const dmg = rollDice(diceExpr);
       let amount = dmg.total;
       if (crit) amount += rollDice(diceExpr.replace(/[+-]\d+$/, '')).total; // double the dice
+      // damage-dealt modifiers (intimidated / enraged / dwarven ale)
+      if (u.conditions.some((x) => x.id === 'intimidated')) amount = Math.max(1, amount - 4);
+      if (u.conditions.some((x) => x.id === 'enraged')) amount += 4;
       this.applyDamage(ev, t, amount, s.damageType, crit);
+      // skill rider condition on a landed hit (soap splash → slippery, …)
+      if (t.alive && s.appliesCondition && !t.conditions.some((x) => x.id === s.appliesCondition)) {
+        t.conditions.push({ id: s.appliesCondition, name: CONDITIONS[s.appliesCondition].name, roundsLeft: s.appliesRounds ?? 2 });
+        ev.push({ type: 'float', unitId: t.id, text: `❄ ${CONDITIONS[s.appliesCondition].name}`, cls: 'debuff' });
+      }
+      // weapon on-hit condition + fragile / fumble break / fumble drop
+      if (t.alive && weapon?.onHitCondition && Math.random() < weapon.onHitCondition.chance) {
+        t.conditions.push({ id: weapon.onHitCondition.id, name: CONDITIONS[weapon.onHitCondition.id]?.name ?? weapon.onHitCondition.id, roundsLeft: weapon.onHitCondition.rounds });
+        ev.push({ type: 'float', unitId: t.id, text: `❄ ${CONDITIONS[weapon.onHitCondition.id]?.name ?? weapon.onHitCondition.id}`, cls: 'debuff' });
+      }
+      // monster on-hit rider (leech bleeding, baby-rat infected)
+      if (t.alive && u.onHit && Math.random() < u.onHit.chance) {
+        let applies = true;
+        if (u.onHit.saveAbility) {
+          const sv = rollD20(abilityMod(t.abilities[u.onHit.saveAbility]));
+          applies = sv.total < (u.onHit.saveDC ?? 12);
+          ev.push({ type: 'save', unitId: t.id, success: !applies, total: sv.total });
+        }
+        if (applies && !t.conditions.some((x) => x.id === u.onHit!.condition)) {
+          t.conditions.push({ id: u.onHit!.condition, name: CONDITIONS[u.onHit!.condition]?.name ?? u.onHit!.condition, roundsLeft: u.onHit!.rounds });
+          ev.push({ type: 'float', unitId: t.id, text: `❄ ${CONDITIONS[u.onHit!.condition]?.name ?? u.onHit!.condition}`, cls: 'debuff' });
+        }
+      }
+      if (weapon?.fragile) {
+        u.equipment.weapon = undefined;
+        ev.push({ type: 'log', text: `The ${weapon.name} shatters on impact!`, kind: 'system' });
+      }
+      if (atk.fumble && weapon?.fumbleBreak && Math.random() < weapon.fumbleBreak) {
+        u.equipment.weapon = undefined;
+        ev.push({ type: 'log', text: `The ${weapon.name} snaps in your hands!`, kind: 'system' });
+      }
+      if (atk.fumble && weapon?.fumbleDrop && Math.random() < weapon.fumbleDrop) {
+        const dropped = u.equipment.weapon;
+        u.equipment.weapon = undefined;
+        ev.push({ type: 'log', text: `You dropped the ${dropped?.name ?? 'weapon'}! It slides out of your soapy hands.`, kind: 'system' });
+      }
       // enchantment rider: extra elemental damage + frost slow
       if (ench?.elemDice && t.alive) {
         const extra = rollDice(ench.elemDice);
@@ -369,27 +621,39 @@ export class Combat {
     return ev;
   }
 
-  private applyDamage(ev: CombatEvent[], t: Unit, amount: number, kind: import('./types').DamageType, crit: boolean) {
+  private applyDamage(ev: CombatEvent[], t: Unit, amount: number, kind: DamageType, crit: boolean) {
     if (this.godMode && t.team === 'party') return;   // cheat: party takes no damage
+    // armor physResist (sturdy boots, pipe helmet, ribcage…) — physical only, min 1
+    if (kind === 'slashing' || kind === 'piercing' || kind === 'bludgeoning') {
+      const resist = effPhysResist(t);
+      if (resist > 0) amount = Math.max(1, amount - resist);
+    }
     t.hp = Math.max(0, t.hp - amount);
+    t.lastDamageKind = kind;
     ev.push({ type: 'damage', unitId: t.id, amount, kind, crit });
     ev.push({ type: 'float', unitId: t.id, text: `${crit ? '💥' : ''}-${amount}`, cls: crit ? 'crit' : 'dmg' });
     ev.push({ type: 'log', text: `${t.name} takes ${amount} ${kind} damage (${t.hp}/${effMaxHp(t)} HP left)`, kind: crit ? 'crit' : 'hit' });
-    if (t.hp <= 0 && t.alive) {
-      t.alive = false;
-      ev.push({ type: 'death', unitId: t.id });
-      ev.push({ type: 'log', text: `☠ ${t.name} is slain!`, kind: 'death' });
-      if (t.team === 'enemy') {
-        ev.push(...this.awardXP(t));
-        const src = t.bossGroup ? 'boss'
-          : t.scheme.monster === 'skeleton' ? 'undead'
-          : (t.scheme.monster === 'rat' || t.scheme.monster === 'bat') ? 'beast'
-          : 'goblin';
-        const drop = rollLootTable(src);
-        if (drop.items.length || drop.gold) ev.push({ type: 'loot', items: drop.items, gold: drop.gold });
-      }
-      ev.push(...this.checkEnd());
+    if (t.hp <= 0 && t.alive) ev.push(...this.onDeath(t));
+  }
+
+  /** shared death pipeline: corpse flag, XP, loot, end-of-combat check */
+  private onDeath(t: Unit): CombatEvent[] {
+    const out: CombatEvent[] = [];
+    if (!t.alive) return out;
+    t.alive = false;
+    out.push({ type: 'death', unitId: t.id });
+    out.push({ type: 'log', text: `☠ ${t.name} is slain!`, kind: 'death' });
+    if (t.team === 'enemy') {
+      out.push(...this.awardXP(t));
+      const src = t.bossGroup ? 'boss'
+        : t.scheme.monster === 'skeleton' ? 'undead'
+        : (t.scheme.monster === 'rat' || t.scheme.monster === 'bat') ? 'beast'
+        : 'goblin';
+      const drop = rollLootTable(src);
+      if (drop.items.length || drop.gold) out.push({ type: 'loot', items: drop.items, gold: drop.gold });
     }
+    out.push(...this.checkEnd());
+    return out;
   }
 
   /** every living party member gains the slain enemy's xpValue; level up on thresholds */
@@ -397,10 +661,16 @@ export class Combat {
     const ev: CombatEvent[] = [];
     const party = this.living('party');
     if (!party.length || !slain.xpValue) return ev;
-    ev.push({ type: 'log', text: `The party gains ${slain.xpValue} XP.`, kind: 'system' });
+    // the Hermit's Ring (+5% XP) multiplies gains for its wearer
+    const ringBonus = (p: Unit) => {
+      const ring = p.equipment.ring1 ?? p.equipment.ring2;
+      return ring?._baseId === 'hermits_ring' ? 1.05 : 1;
+    };
+    const gained = Math.round(slain.xpValue * ringBonus(party[0]));
+    ev.push({ type: 'log', text: `The party gains ${gained} XP.`, kind: 'system' });
     for (const p of party) {
-      p.xp += slain.xpValue;
-      while (p.level < MAX_LEVEL && p.xp >= (XP_THRESHOLDS[p.level] ?? Infinity)) {
+      p.xp += Math.round(slain.xpValue * ringBonus(p));
+      while (p.level < MAX_LEVEL && p.xp >= (XP_THRESHOLDS[p.level + 1] ?? Infinity)) {
         p.level++;
         // hydrate the class pool: skills the hero has now reached the level
         // for become known (tier-1 at Lv2, tier-2 at Lv3, tier-3+ at Lv4)
@@ -420,19 +690,57 @@ export class Combat {
   /** drink a consumable (bonus action in combat; free in explore). Engine removes the item first. */
   useConsumable(u: Unit, item: Item, targetId: string): CombatEvent[] {
     const ev: CombatEvent[] = [];
-    if (item.kind !== 'consumable' || !item.healDice) return ev;
+    if (item.kind !== 'consumable') return ev;
     const t = this.byId(targetId);
     if (!t || !t.alive || t.team !== u.team) return [{ type: 'log', text: 'Invalid target.', kind: 'info' }];
     if (this.inCombat) {
       if (!u.hasBonus) return [{ type: 'log', text: 'No bonus action left', kind: 'info' }];
       u.hasBonus = false;
     }
-    const heal = rollDice(item.healDice);
-    const amt = Math.min(heal.total, effMaxHp(t) - t.hp);
-    t.hp += amt;
-    ev.push({ type: 'log', text: `${u.name} drinks ${item.icon} ${item.name}`, kind: 'info' });
-    ev.push({ type: 'heal', unitId: t.id, amount: amt });
-    ev.push({ type: 'log', text: `${t.name} heals ${amt} HP (${heal.expr}: [${heal.rolls.join(',')}])`, kind: 'heal' });
+    ev.push({ type: 'log', text: `${u.name} uses ${item.icon} ${item.name}`, kind: 'info' });
+    // heal — numeric expressions ('15', '99') heal that many; dice roll otherwise
+    if (item.healDice && item.healDice !== '0') {
+      const m = item.healDice.match(/^\d+$/);
+      const total = m ? parseInt(m[0], 10) : rollDice(item.healDice).total;
+      const amt = Math.min(total, effMaxHp(t) - t.hp);
+      t.hp += amt;
+      ev.push({ type: 'heal', unitId: t.id, amount: amt });
+      ev.push({ type: 'log', text: `${t.name} heals ${amt} HP.`, kind: 'heal' });
+    }
+    // cleanses: strip every condition
+    if (item.cleanses && t.conditions.length) {
+      const stripped = t.conditions.map((c) => c.name).join(', ');
+      t.conditions = [];
+      ev.push({ type: 'log', text: `${t.name} is cleansed! (${stripped})`, kind: 'heal' });
+      ev.push({ type: 'float', unitId: t.id, text: '✨ Cleansed', cls: 'buff' });
+    }
+    // chance condition on the drinker (moldy cheese, wine, sewer water…)
+    if (item.consumeCondition && Math.random() < item.consumeCondition.chance) {
+      const cc = item.consumeCondition;
+      if (!t.conditions.some((x) => x.id === cc.id)) {
+        t.conditions.push({ id: cc.id, name: CONDITIONS[cc.id]?.name ?? cc.id, roundsLeft: cc.rounds });
+        ev.push({ type: 'float', unitId: t.id, text: `❄ ${CONDITIONS[cc.id]?.name ?? cc.id}`, cls: 'debuff' });
+      }
+    }
+    // flat condition riders that always land (dwarven ale, bubble bath, duck)
+    if (item._baseId === 'dwarven_ale') {
+      if (!t.conditions.some((x) => x.id === 'enraged')) t.conditions.push({ id: 'enraged', name: CONDITIONS.enraged.name, roundsLeft: 1 });
+      if (!t.conditions.some((x) => x.id === 'dazed')) t.conditions.push({ id: 'dazed', name: CONDITIONS.dazed.name, roundsLeft: 1 });
+      ev.push({ type: 'log', text: `${t.name} feels a surge of dwarven courage (and regret).`, kind: 'system' });
+    }
+    if (item._baseId === 'bubble_bath') {
+      if (!t.conditions.some((x) => x.id === 'slippery')) t.conditions.push({ id: 'slippery', name: CONDITIONS.slippery.name, roundsLeft: 2 });
+      ev.push({ type: 'log', text: `${t.name} pours bubble bath at their feet. The floor gleams.`, kind: 'system' });
+    }
+    if (item._baseId === 'rubber_duck') {
+      for (const foe of this.living('enemy')) {
+        if (foe.alive && !foe.conditions.some((x) => x.id === 'distracted')) {
+          foe.conditions.push({ id: 'distracted', name: CONDITIONS.distracted.name, roundsLeft: 1 });
+        }
+      }
+      ev.push({ type: 'log', text: 'SQUEAK! The enemies flinch.', kind: 'system' });
+    }
+    ev.push(...this.checkEnd());
     return ev;
   }
 
@@ -456,9 +764,11 @@ export class Combat {
     // keep a safe ranged distance when we only have ranged tools
     const wantsRange = !hasMelee && maxRange > 1;
 
-    // ── 1. flee: below 30% HP, back off to the farthest safe reachable tile
+    // ── 1. flee: below 30% HP (or a unit's fleesAtHp), back off to the
+    // farthest safe reachable tile
     const hpPct = u.hp / effMaxHp(u);
-    if (hpPct < 0.3 && u.movementLeft > 0) {
+    const shouldFlee = u.fleesAtHp !== undefined ? u.hp <= u.fleesAtHp : hpPct < 0.3;
+    if (shouldFlee && u.movementLeft > 0) {
       const nearestFoe = foes.reduce((a, b) => Combat.dist(u.pos, a.pos) < Combat.dist(u.pos, b.pos) ? a : b);
       const reach = this.reachable(u, u.movementLeft);
       let best: GridPos[] | null = null; let bestD = -1;
@@ -481,7 +791,27 @@ export class Combat {
     // otherwise focus-fire the weakest living party member.
     const usable = u.equippedSkills
       .map((id) => skillById(id))
-      .filter((s): s is SkillDef => !!s && !this.canUse(u, s));
+      .filter((s): s is SkillDef => {
+        if (!s) return false;
+        if (s.passive) return false;                       // passives are never cast
+        if (this.canUse(u, s)) return false;               // cost/cooldown/once-per-fight
+        const pct = u.hp / effMaxHp(u);
+        if (s.hpBelowPct !== undefined && pct > s.hpBelowPct) return false;  // boss gates
+        if (s.hpAbovePct !== undefined && pct < s.hpAbovePct) return false;
+        return true;
+      });
+
+    // summon first when the gate is met (boss rats call for help at 75%)
+    const summonSkill = usable.find((s) => s.summonId);
+    if (summonSkill) {
+      if (summonSkill.summonId === 'baby_rat') {
+        const babies = this.units.filter((x) => x.alive && x.team === 'enemy' && x.name === 'Baby Rat').length;
+        if (babies >= 4) { /* nest is full — fall through */ }
+        else return this.useSkill(u, summonSkill.id, u.id);
+      } else {
+        return this.useSkill(u, summonSkill.id, u.id);
+      }
+    }
 
     // AoE: self-centered sweep hits the most foes; else find a center
     for (const s of usable) {
@@ -520,6 +850,16 @@ export class Combat {
 
     // ── 3. move: close distance (or kite for ranged-only units) ──
     if (u.movementLeft > 0) {
+      // slippery: 50% to slip and end the turn prone
+      if (u.conditions.some((c) => c.id === 'slippery') && Math.random() < 0.5) {
+        u.movementLeft = 0;
+        u.conditions = u.conditions.filter((c) => c.id !== 'slippery');
+        u.conditions.push({ id: 'prone', name: CONDITIONS.prone.name, roundsLeft: 1 });
+        return [
+          { type: 'log', text: `${u.name} slips on the soap and lands hard!`, kind: 'system' },
+          { type: 'float', unitId: u.id, text: 'Prone!', cls: 'debuff' },
+        ];
+      }
       const nearest = foes.reduce((a, b) => Combat.dist(u.pos, a.pos) < Combat.dist(u.pos, b.pos) ? a : b);
       const reach = this.reachable(u, u.movementLeft);
       let best: GridPos[] | null = null; let bestScore = -Infinity;

@@ -4,23 +4,26 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { VoxelWorld, WORLD_SIZE } from './world';
-import { dungeonLevel } from '../levels/dungeon';
+import { FLOORS, START_FLOOR, levelForFloor } from '../levels';
+import { registerInteractables as registerInteractablesModule, updateInteractables as updateInteractablesModule, triggerActiveInteractable as triggerActiveInteractableModule, type Interactable } from './engine/interactables';
+import { setCursedLoot } from './items';
 import { ParticleSystem, FX } from './particles';
 import { updateRig, setWeapon, equip, unequip, itemToEquipVisual, type Rig } from './characters';
 import { Combat } from './combat';
-import { SKILLS, createRoster } from './skills';
-import { ALL_CLASS_SKILLS, classPoolSkillIdsForLevel } from './classSkills';
+import { SKILLS, CONDITIONS, createRoster } from './skills';
+import { ALL_CLASS_SKILLS, classPoolSkillIdsForLevel, classPoolSkillIds } from './classSkills';
 import { AudioManager } from './audio';
 import { DestructibleManager, type Destructible } from './destructibles';
-import type { Item } from './items';
-import type { LevelStructures } from '../levels/levelTypes';
+import { makeItem, type Item } from './items';
+import type { LevelDef, LevelStructures } from '../levels/levelTypes';
 import { effMaxHp } from './stats';
-import { SaveManager, SettingsManager, type GameSettings, type SaveData, type SaveSlotMeta } from './save';
+import { rollD20, abilityMod, fmtMod } from './dice';
+import { SaveManager, SettingsManager, type GameSettings, type SaveData, type SaveSlotMeta, SAVE_VERSION_NUMBER } from './save';
 import { canUnlock, treeFor } from './skilltree';
 import { TrapManager } from './traps';
-import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot } from './types';
-import { NPCS, type NPCDef } from './npc';
-import { QuestLog } from './quest';
+import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot, Ability } from './types';
+import { type NPCDef, type DialogueAction } from './npc';
+import { QuestLog, QUESTS } from './quest';
 import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes/index';
 
 import { IsoCamera } from './engine/IsoCamera';
@@ -28,9 +31,9 @@ import { addUnit, updateDroppedWeapons } from './engine/visuals';
 import { buildTavernExterior } from './engine/tavernExterior';
 import { buildTavern } from './engine/tavern';
 import { buildSheep } from './engine/sheep';
-import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone } from './engine/dungeonSetup';
+import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone, grantKey as grantKeyModule, winGame as winGameModule, grantLoot as grantLootModule } from './engine/dungeonSetup';
 import { smashProp, checkCombatTrigger, enqueue, triggerTrap as triggerTrapModule } from './engine/combatAnimation';
-import { updateFog, updateExploredVisibility, executeDialogueAction, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule } from './engine/interaction';
+import { updateFog, updateExploredVisibility, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
 import { showTargeting as showTargetingModule, showMoveTiles as showMoveTilesModule } from './engine/targeting';
 import { bindInput as bindInputModule, onPointerMove as onPointerMoveModule, onPointerDown as onPointerDownModule, onKeyDown as onKeyDownModule, onResize as onResizeModule } from './engine/input';
@@ -98,10 +101,32 @@ export class GameEngine {
   public showInventory = false;
   public showSkillTree = false;
   public showStats = false;
+  public showQuestLog = false;
   public questLog = new QuestLog();
-  public hermitRig: Rig | null = null;
-  public hermitPos: GridPos | null = null;
+
+  // ── floor 50 — run state ──
+  /** current floor number (registry key) */
+  public floorNumber = START_FLOOR;
+  /** per-run seed — drives trap tiles, poison bottles, spawn jitter, … */
+  public runSeed = Math.floor(Date.now() / 1000) ^ 0x5eed;
+  /** string flags: quest progress, doors opened, one-shot interactables */
+  public flags = new Set<string>();
+  /** torch fuel in seconds (bonfire refills to 100; 0 → torch off) */
+  public torchFuel = 100;
+  /** hand-authored interactables (proximity prompts) */
+  public interactables: Interactable[] = [];
+  public activeInteractable: Interactable | null = null;
+  /** environmental hazard tiles (shove targets): key = wine_press | bath */
+  public hazardTiles = new Set<string>();
+  public hazardKind = new Map<string, string>();
+  public hazardUsed = new Set<string>();
+  /** spawned NPCs (id → tile + rig + proxy) */
+  public npcs: { npcId: string; pos: GridPos; rig: Rig | null; proxy: THREE.Object3D | null }[] = [];
+  /** run recap for the victory screen */
+  public runStats = { kills: 0, deaths: 0, questsDone: 0, secretsFound: 0, startedAt: Date.now() };
   public showDialogue: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null = null;
+  /** current dialogue tree node (persists across clicks; null = fresh) */
+  public dialogueNodeId: string | null = null;
   public sneaking = false;
   public running = false;
   public crouchLerp = 0;
@@ -202,12 +227,21 @@ export class GameEngine {
   public weaponRack: THREE.Group | null = null;
   public rackClub: THREE.Object3D | null = null;
   public rubbleMeshes: { mesh: THREE.Group; tile: GridPos }[] = [];
+  /** authored doors (floor 50): id → mesh + open flag */
+  public doorMeshes: { id: string; pos: GridPos; flag: string; mesh: THREE.Group }[] = [];
+  /** authored blockers (rubble / secret doors) keyed by open flag */
+  public blockerMeshes: { id: string; kind: 'rubble' | 'secretDoor'; flag: string; tile: GridPos; mesh: THREE.Group }[] = [];
+  /** authored room lookup + narration (floor 50) */
+  public roomOf: ((x: number, z: number) => string | null) | null = null;
+  public roomNarration: Record<string, string> | null = null;
   public propAnims: ((dt: number) => boolean)[] = [];   // returns true when finished
   public ironDoorOpen = false;
   public secretOpen = false;
   public goldenChestOpen = false;
   public secretChestOpen = false;
   public bossCutscenePlayed = false;
+  public bossRatCutscenePlayed = false;
+  public gribnabCutscenePlayed = false;
   public introPlayed = false;
   public introActive = false;
   public titleIdle = false;
@@ -303,7 +337,7 @@ export class GameEngine {
     this.container.appendChild(this.renderer.domElement);
 
     this.iso = new IsoCamera(w / h);
-    const L = dungeonLevel;
+    const L = levelForFloor(this.floorNumber);
     this.scene.fog = new THREE.FogExp2(L.fogColor, L.fogDensity);
     this.scene.background = new THREE.Color(L.fogColor);
 
@@ -355,8 +389,8 @@ export class GameEngine {
   private _initWorldAndDressing() {
     const w = this.container.clientWidth, h = this.container.clientHeight;
 
-    // world ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ underground cave level
-    this.world = new VoxelWorld(dungeonLevel, 1337);
+    // world — the authored Floor 50 sewer cellar
+    this.world = new VoxelWorld(levelForFloor(this.floorNumber), this.runSeed & 0xffff);
     this.scene.add(this.world.group);
 
     // -- fog of war: initialize the explored grid (all dark) + overlay group --
@@ -417,8 +451,10 @@ export class GameEngine {
     this.clickPing.renderOrder = 3;
     this.scene.add(this.clickPing);
 
-    // destructible props (crates/barrels/vases) ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ mark tiles blocked
-    this.props = new DestructibleManager(this.world);
+    // destructible props (crates/barrels/vases) — placements come from the level
+    const destLevel = levelForFloor(this.floorNumber);
+    const destSpots = (destLevel.destructibles ?? []).map((d) => [d.defId, d.x, d.z] as [string, number, number]);
+    this.props = new DestructibleManager(this.world, destSpots);
     this.scene.add(this.props.group);
 
     // vision cones ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ pre-built geometry reused per frame
@@ -447,15 +483,20 @@ export class GameEngine {
     this.playerCone.renderOrder = 0;
     this.scene.add(this.playerCone);
 
-    // traps
+    // traps — placements come from the level (per-run seed for floor 50)
     this.trapManager = new TrapManager(this.world);
-    this.trapManager.init();
+    const trapLevel = levelForFloor(this.floorNumber);
+    const trapSpots = typeof trapLevel.traps === 'function'
+      ? trapLevel.traps(this.runSeed).map((t) => [t.defId, t.x, t.z] as [string, number, number])
+      : (trapLevel.traps ?? []).map((t) => [t.defId, t.x, t.z] as [string, number, number]);
+    this.trapManager.init(trapSpots);
     this.scene.add(this.trapManager.group);
 
     // combat + units
     this.combat = new Combat(this.world);
+    this.onBossParley = (outcome) => this.handleGribnabParley(outcome);
     this.spawnUnits();
-    this.setupDungeon(dungeonLevel);
+    this.setupDungeon(levelForFloor(this.floorNumber));
     this.iso.focus(this.unitWorld(this.combat.units[0].pos));
 
     // wire the cutscene director ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ every cinematic runs through this one
@@ -504,17 +545,27 @@ export class GameEngine {
       if (this.disposed) return;
       const dt = Math.min(0.05, (t - this.lastT) / 1000);
       this.lastT = t;
-      this.update(dt);
+      try {
+        this.update(dt);
+      } catch (err) {
+        // a transient error must never kill the render loop
+        // eslint-disable-next-line no-console
+        console.error('[engine.update]', err);
+        this.pushLog(`⚠ engine error: ${err instanceof Error ? err.message : String(err)}`, 'system');
+      }
       this.composer.render();
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);
     this.emitSnapshot();
     this.onReady?.();
+    // dev hook: lets scripts/browser automation drive the engine directly
+    (window as unknown as Record<string, unknown>).__dh_engine = this;
   }
 
   public spawnUnits() {
-    this.combat.units = dungeonLevel.makeRoster ? dungeonLevel.makeRoster() : createRoster();
+    const L = levelForFloor(this.floorNumber);
+    this.combat.units = L.makeRoster ? L.makeRoster(this.runSeed) : createRoster();
     for (const u of this.combat.units) this.addUnit(u);
   }
 
@@ -643,6 +694,207 @@ export class GameEngine {
     });
   }
 
+  // ── floor 50 — flags / ability checks / item hooks ────────
+  public setFlag(f: string) { this.flags.add(f); }
+  public hasFlag(f: string): boolean { return this.flags.has(f); }
+
+  /** remove one inventory item with this base id (returns success) */
+  public takeItem(baseId: string): boolean {
+    const idx = this.inventory.findIndex((i) => (i as any)._baseId === baseId || i.id === baseId);
+    if (idx < 0) return false;
+    this.inventory.splice(idx, 1);
+    this.emitSnapshot();
+    return true;
+  }
+
+  public addGold(n: number) { this.gold += n; this.emitSnapshot(); }
+
+  public healGreg(n: number) {
+    const g = this.combat?.living('party')[0];
+    if (g) g.hp = Math.min(effMaxHp(g), g.hp + n);
+    this.emitSnapshot();
+  }
+
+  public damageGreg(n: number, source: string) {
+    const g = this.combat?.living('party')[0];
+    if (!g) return;
+    g.hp = Math.max(0, g.hp - n);
+    this.pushLog(`☠ ${g.name} takes ${n} damage${source ? ` (${source})` : ''}.`, 'hit');
+    this.emitSnapshot();
+    if (g.hp <= 0 && g.alive) {
+      g.alive = false;
+      this.runStats.deaths += 1;
+      this.pushLog(`💀 ${g.name} has fallen!`, 'death');
+    }
+  }
+
+  public applyCondition(unitId: string, condId: string, rounds: number) {
+    const u = this.combat?.byId(unitId);
+    if (!u) return;
+    if (!u.conditions.some((c) => c.id === condId)) {
+      u.conditions.push({ id: condId, name: CONDITIONS[condId]?.name ?? condId, roundsLeft: rounds });
+    } else {
+      u.conditions.find((c) => c.id === condId)!.roundsLeft = Math.max(u.conditions.find((c) => c.id === condId)!.roundsLeft, rounds);
+    }
+    this.emitSnapshot();
+  }
+
+  /** does Greg know a class pool skill of the given class? */
+  public hasClassSkill(classId: string): boolean {
+    const g = this.combat?.living('party')[0];
+    if (!g) return false;
+    return classPoolSkillIds(g.classes).includes(classId) || g.equipment.weapon?._baseId === 'wrench';
+  }
+
+  /** d20 + ability mod + proficiency vs DC (the trap-reveal math) */
+  public abilityCheck(stat: string, dc: number): boolean {
+    const g = this.combat?.living('party')[0];
+    if (!g) return false;
+    const mod = abilityMod(g.abilities[stat as Ability]);
+    const r = rollD20(mod + g.proficiency);
+    const total = r.total;
+    this.pushLog(`🎲 ${stat.toUpperCase()} check: ${r.roll}${fmtMod(mod)} +${g.proficiency} prof = ${total} vs DC ${dc}`, 'roll');
+    return total >= dc;
+  }
+
+  public startQuest(questId: string) {
+    if (!this.questLog.get(questId)) {
+      this.questLog.start(questId);
+      this.pushLog(`📜 Quest started: ${QUESTS[questId]?.name ?? questId}`, 'system');
+    }
+    this.emitSnapshot();
+  }
+
+  /** complete a quest (no item rewards — those flow through dialogue/interactables) */
+  public completeQuest(questId: string) {
+    const qs = this.questLog.complete(questId);
+    if (qs) {
+      this.runStats.questsDone += 1;
+      this.pushLog(`📜 Quest complete: ${QUESTS[questId]?.name ?? questId}!`, 'system');
+    }
+    this.emitSnapshot();
+  }
+
+  public playSfx(name: string, vol = 0.7, pitch = 1) { this.audio.play(name as never, vol, pitch); }
+
+  /** Gribnab parley — set once at init; the bossParley dialogue action calls it */
+  public onBossParley: ((outcome: 'fight' | 'truce') => void) | null = null;
+
+  private handleGribnabParley(outcome: 'fight' | 'truce') {
+    const grib = this.combat?.units.find((u) => u.name === 'Gribnab');
+    if (outcome === 'fight') {
+      this.showDialogue = null;
+      this.setFlag('gribnab_parley_fight');
+      if (grib) this.applyCondition(grib.id, 'enraged', 99);
+      this.pushLog('So be it. The bath will have its sacrifice.', 'system');
+      this.busy = false;
+      this.bossCineActive = false;
+      this.emitSnapshot();
+      return;
+    }
+    // truce — the bath is OURS now
+    this.showDialogue = null;
+    this.setFlag('gribnab_befriended');
+    if (grib) {
+      grib.dormant = true;
+      grib.alive = true;
+      this.combat.turnOrder = this.combat.turnOrder.filter((id) => id !== grib.id);
+    }
+    if (this.combat) this.enqueue(this.combat.endEarly());
+    this.grantKey('golden');
+    for (const itemId of ['drowned_majesty', 'soap_crown']) {
+      const it = makeItem(itemId);
+      this.inventory.push(it);
+      this.pushLog(`Gribnab presses ${it.icon} ${it.name} into your hands.`, 'system');
+    }
+    this.addGold(50);
+    this.busy = false;
+    this.bossCineActive = false;
+    this.pushLog('🫧 Gribnab is your partner now. The bath is OURS.', 'system');
+    this.emitSnapshot();
+  }
+
+  public grantKey(kind: 'iron' | 'golden') { grantKeyModule(this, kind); }
+  public grantLoot(items: unknown[], gold: number) { grantLootModule(this, items, gold); }
+
+  /** the mid-fight parley: first time Gribnab drops to ≤10% HP */
+  public maybeParley(unitId: string) {
+    const u = this.combat?.byId(unitId);
+    if (!u || u.name !== 'Gribnab' || !u.alive) return;
+    if (this.flags.has('gribnab_parleyed')) return;
+    if (this.flags.has('gribnab_befriended') || this.flags.has('gribnab_dead')) return;
+    if (u.hp > Math.ceil(u.maxHp * 0.1)) return;
+    this.setFlag('gribnab_parleyed');
+    this.pushLog('Gribnab lowers his club. The bubbles settle.', 'system');
+    this.talkToNpc('gribnab');
+  }
+
+  /** nearest NPC within talk range (generic registry) */
+  public activeTalkTarget(): string | null {
+    if (this.phase !== 'explore' || this.combat.inCombat || this.busy) return null;
+    const leader = this.combat?.living('party')[0];
+    if (!leader) return null;
+    for (const n of this.npcs) {
+      if (Combat.dist(leader.pos, n.pos) <= 1.5) return n.npcId;
+    }
+    return null;
+  }
+
+  // ── interactables (floor 50) ───────────────────────────────
+  public registerInteractables(defs: Interactable[]) { registerInteractablesModule(this, defs); }
+  public updateInteractables() { updateInteractablesModule(this); }
+  public triggerActiveInteractable() { triggerActiveInteractableModule(this); }
+
+  /** teleport the party leader (well drop, …) */
+  public teleportGreg(tile: GridPos) {
+    const g = this.combat?.living('party')[0];
+    if (!g) return;
+    g.pos = { ...tile };
+    const v = this.visuals.get(g.id);
+    if (v) {
+      const wp = this.unitWorld(tile);
+      v.rig.group.position.copy(wp);
+      v.rig.group.userData.baseY = wp.y;
+      v.walker = null;
+    }
+    this.explored[tile.x] ??= [];
+    for (let x = tile.x - 1; x <= tile.x + 1; x++) for (let z = tile.z - 1; z <= tile.z + 1; z++) {
+      if (x >= 0 && z >= 0 && x < WORLD_SIZE && z < WORLD_SIZE) this.explored[x][z] = true;
+    }
+    this.fogDirty = true;
+    const wp = this.unitWorld(tile);
+    this.iso.focus(wp);
+    this.iso.desiredTarget?.copy(wp);
+    this.emitSnapshot();
+  }
+
+  /** mark a rect explored (goblin map) */
+  public exploreRect(rect: { x0: number; z0: number; x1: number; z1: number }) {
+    for (let x = rect.x0; x <= rect.x1; x++) for (let z = rect.z0; z <= rect.z1; z++) {
+      if (x >= 0 && z >= 0 && x < WORLD_SIZE && z < WORLD_SIZE) this.explored[x][z] = true;
+    }
+    this.fogDirty = true;
+    this.emitSnapshot();
+  }
+
+  /** set every trap of a def id as triggered (valve/altar drain the flood) */
+  public deactivateTrap(defId: string) {
+    for (const t of this.trapManager?.traps ?? []) {
+      if (t.def.id === defId) {
+        t.triggered = true;
+        if (t.mesh) {
+          this.trapManager.group.remove(t.mesh);
+          t.mesh.geometry.dispose();
+          (t.mesh.material as THREE.Material).dispose();
+          t.mesh = undefined;
+        }
+      }
+    }
+  }
+
+  /** floor clear: departure narration → victory screen with run stats */
+  public winGame() { winGameModule(this); }
+
   // -- dungeon aggro & boss cutscene -------------------------
   public checkDungeonAggro() {
     if (!this.structures || this.phase !== 'explore' || this.combat.inCombat || this.busy || this.gameWon) return;
@@ -657,16 +909,27 @@ export class GameEngine {
     const party = this.combat.living('party');
     if (!party.length) return;
 
-    // entering the boss room the first time ? the bathing tyrant cutscene
-    if (!this.bossCutscenePlayed && party.some((p) => GameEngine.inRect(p.pos, st.bossRoom))) {
-      this.bossCutscenePlayed = true;
-      void this.playBossCutscene();
+    // entering the boss arena the first time — Baron Gnaw (room 5) or
+    // Gribnab's bath chamber (room 25) each fire their own cutscene
+    const arena = st.arenaRect;
+    const inArena = !!arena && party.some((p) => GameEngine.inRect(p.pos, arena));
+    const inBath = party.some((p) => GameEngine.inRect(p.pos, st.bossRoom));
+    if (inArena && !this.flags.has('boss_pacified') && !this.bossRatCutscenePlayed) {
+      this.bossRatCutscenePlayed = true;
+      void this.playBossRatCutscene();
+      return;
+    }
+    if (inBath && this.flags.has('gribnab_door_open') && !this.gribnabCutscenePlayed) {
+      this.gribnabCutscenePlayed = true;
+      void this.playGribnabCutscene();
       return;
     }
 
     // group proximity aggro (never wakes the boss group by proximity)
     for (const f of this.combat.units) {
       if (!f.alive || f.team !== 'enemy' || !f.dormant || f.bossGroup) continue;
+      // goblin respect (throne room): goblins stay neutral unless provoked
+      if (f.scheme?.orc === true && this.flags.has('goblin_respect') && !this.flags.has('goblins_provoked')) continue;
       const range = (f.flying ? 5 : 4) - (this.sneaking ? 2 : 0);
       for (const p of party) {
         if (Combat.dist(p.pos, f.pos) <= range || (!this.sneaking && this.inEnemyCone(p.pos, f))) {
@@ -878,13 +1141,21 @@ export class GameEngine {
   }
 
   /**
-   * Boss reveal cinematic ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ "the bathing tyrant". The script lives in
-   * src/game/cutscenes.ts; this engine method just routes through the
-   * director (and lets the debug warp key still call this entrypoint).
+   * Boss reveal cinematics — Baron Gnaw (Room 5) and Gribnab (Room 25).
+   * The scripts live in cutscenes/; these engine methods just route
+   * through the director (and let the debug warp key call in).
    */
   public async playBossCutscene() {
     if (!this.cutsceneDirector) return;
-    await this.cutsceneDirector.play('boss');
+    await this.cutsceneDirector.play('gribnab');
+  }
+  public async playBossRatCutscene() {
+    if (!this.cutsceneDirector) return;
+    await this.cutsceneDirector.play('boss_rat');
+  }
+  public async playGribnabCutscene() {
+    if (!this.cutsceneDirector) return;
+    await this.cutsceneDirector.play('gribnab');
   }
 
   // -- unit visuals ------------------------------------------
@@ -926,41 +1197,20 @@ export class GameEngine {
 
   // -- NPC dialogue -----------------------------------------
 
-  dialogueChoice(npcId: string, choiceIndex: number) {
-    const npc = NPCS[npcId];
-    if (!npc) return;
-    const questNode = this.questLog.nodeFor(npcId, this.hasItemInInventory('severed_finger'));
-    const nodeId = questNode ?? npc.entryNode;
-    const node = npc.dialogue[nodeId];
-    if (!node?.choices?.[choiceIndex]) {
-      this.showDialogue = null;
-      this.emitSnapshot();
-      return;
-    }
-    const choice = node.choices[choiceIndex];
-    if (choice.action) this.executeDialogueAction(choice.action, npc);
-    if (choice.next) {
-      const nextNode = npc.dialogue[choice.next];
-      if (nextNode) {
-        this.showDialogue = {
-          npcId,
-          npcName: npc.name,
-          text: nextNode.text,
-          caption: nextNode.caption,
-          choices: nextNode.choices?.map((c, i) => ({ label: c.label, index: i })),
-        };
-        if (nextNode.action) this.executeDialogueAction(nextNode.action, npc);
-        this.emitSnapshot();
-        return;
-      }
-    }
-    this.showDialogue = null;
-    this.emitSnapshot();
-  }
+  public dialogueChoice(npcId: string, choiceIndex: number) { dialogueChoiceModule(this, npcId, choiceIndex); }
 
   public hasItemInInventory(baseId: string): boolean {
     return this.inventory.some(i => i.id === baseId || (i as any)._baseId === baseId || (baseId === 'severed_finger' && i.name.includes('Severed Finger')));
   }
+
+  // -- quest log (J key) --------------------------------------
+  public toggleQuestLog() {
+    if (this.phase === 'menu' || this.showBonfireUI) return;
+    this.showQuestLog = !this.showQuestLog;
+    this.audio.play('ui_click', 0.5);
+    this.emitSnapshot();
+  }
+  public closeQuestLog() { this.showQuestLog = false; this.emitSnapshot(); }
 
   // -- HUD API (called from React) ----------------------------
   startGame() {
@@ -1213,7 +1463,87 @@ export class GameEngine {
   /** start a brand-new playthrough in the given slot, then play the intro */
   startNewGame(slotId: string) {
     this.currentSlotId = slotId;
+    // fresh run seed → fresh trap tiles / poison bottles / spawn jitter
+    this.runSeed = (Math.floor(Date.now() / 1000) ^ 0x5eed ^ Math.floor(Math.random() * 0xffff)) >>> 0;
+    this.flags = new Set();
+    this.torchFuel = 100;
+    this.gold = 0;
+    this.inventory = [];
+    this.questLog = new QuestLog();
+    this.defeatedSpecialMobs = new Set();
+    this.gameWon = false;
+    this.runStats = { kills: 0, deaths: 0, questsDone: 0, secretsFound: 0, startedAt: Date.now() };
+    this.explored = this.explored.map((row) => row.map(() => false));
+    this.fogDirty = true;
+    this.hazardUsed = new Set();
+
+    // clear dressing from the previous run (doors, blockers, rubble, NPCs)
+    for (const d of this.doorMeshes) if (d.mesh.parent) d.mesh.parent.remove(d.mesh);
+    for (const b of this.blockerMeshes) if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
+    for (const r of this.rubbleMeshes) if (r.mesh.parent) r.mesh.parent.remove(r.mesh);
+    for (const n of this.npcs) {
+      if (n.rig?.group?.parent) n.rig.group.parent.remove(n.rig.group);
+      if (n.proxy?.parent) n.proxy.parent.remove(n.proxy);
+    }
+    this.doorMeshes = [];
+    this.blockerMeshes = [];
+    this.rubbleMeshes = [];
+    this.npcs = [];
+    this.ironDoor = null;
+    this.ironDoorOpen = false;
+    this.secretOpen = false;
+    this.secretChestOpen = false;
+    this.goldenChestOpen = false;
+    this.bossCutscenePlayed = false;
+    this.bossRatCutscenePlayed = false;
+    this.gribnabCutscenePlayed = false;
+    // rebuild seed-dependent state on the SAME world
+    this.clearUnitVisuals();
+    this.combat.units = [];
+    // drop any starting bags from the previous run (setupDungeon re-places one)
+    for (const p of [...this.props.list]) if (p.def.id === 'starting') this.props.destroy(p);
+    this.spawnUnits();
+    const L = levelForFloor(this.floorNumber);
+    const trapSpots = typeof L.traps === 'function'
+      ? L.traps(this.runSeed).map((t) => [t.defId, t.x, t.z] as [string, number, number])
+      : (L.traps ?? []).map((t) => [t.defId, t.x, t.z] as [string, number, number]);
+    this.trapManager.init(trapSpots);
+    this.setupDungeon(L);
+
+    // in-session restart: the tavern/title backdrop was consumed on the first
+    // run — rebuild it so the wake intro can play again, then drop into it
+    if (this.titleExt) { this.scene.remove(this.titleExt); this.titleExt = null; }
+    if (this.titlePrevBg) { this.scene.background = this.titlePrevBg; this.titlePrevBg = null; }
+    this.inTavern = false;
+    this.introActive = false;
+    this.introPlayed = false;
+    this.introSkipped = false;
+    this.bossCineActive = false;
+    this.phase = 'menu';
+    this.keys.clear();
+    this.paused = false;
+    this.combat.inCombat = false;
+    this.queue = [];
+    this.eventQueue = [];
+    if (this.cutsceneHost) {
+      const title = setupTitleScene(this.cutsceneHost);
+      this.titleExt = title.ext;
+      this.titlePrevBg = title.prevBg;
+      this.titleIdle = true;
+    }
     this.enterDungeon();
+  }
+
+  /** remove every unit rig/proxy/bar from the scene (fresh-run reset) */
+  private clearUnitVisuals() {
+    for (const [, v] of this.visuals) {
+      if (v.rig.group.parent) v.rig.group.parent.remove(v.rig.group);
+      if (v.proxy.parent) v.proxy.parent.remove(v.proxy);
+      if (v.bar.parentElement) v.bar.parentElement.removeChild(v.bar);
+    }
+    this.visuals.clear();
+    this.unitProxies = [];
+    this.droppedWeapons = [];
   }
 
   /** capture the current state into the active (or given) slot */
@@ -1221,11 +1551,12 @@ export class GameEngine {
     const id = slotId ?? this.currentSlotId;
     if (!id) return;
     const data: SaveData = {
-      version: 1,
+      version: SAVE_VERSION_NUMBER,
       slotId: id,
       name: label ?? this.partyName(),
       timestamp: Date.now(),
-      floor: 1,
+      floor: this.floorNumber,
+      floorName: FLOORS[this.floorNumber]?.name ?? 'Unknown',
       units: this.combat.units.map((u) => this.clone(u)),
       gold: this.gold,
       inventory: this.inventory.map((i) => this.clone(i)),
@@ -1243,6 +1574,11 @@ export class GameEngine {
       },
       selectedId: this.selectedId,
       phase: this.phase,
+      // floor-50 run state
+      flags: [...this.flags],
+      torchFuel: this.torchFuel,
+      runSeed: this.runSeed,
+      runStats: { ...this.runStats },
     };
     SaveManager.save(id, data);
     this.pushLog('?? Game saved.', 'system');
@@ -1273,6 +1609,16 @@ export class GameEngine {
     this.bonfirePos = data.bonfirePos ? { ...data.bonfirePos } : null;
     this.bonfireLit = data.bonfireLit;
     this.defeatedSpecialMobs = new Set(data.defeatedSpecialMobs);
+    // floor-50 run state
+    if (data.flags) this.flags = new Set(data.flags);
+    if (typeof data.torchFuel === 'number') this.torchFuel = data.torchFuel;
+    if (data.runSeed) this.runSeed = data.runSeed;
+    if (data.runStats) this.runStats = { ...this.runStats, ...data.runStats };
+    this.floorNumber = data.floor ?? START_FLOOR;
+    // hazard state is per-fight — reset on load
+    this.hazardUsed = new Set();
+    this.hazardTiles = new Set();
+    this.hazardKind = new Map();
     this.explored = data.explored.map((r) => [...r]);
     this.combat.turnOrder = [...data.combat.turnOrder];
     this.combat.activeIdx = data.combat.activeIdx;
@@ -1970,20 +2316,6 @@ export class GameEngine {
       if (r.mesh.parent) r.mesh.parent.remove(r.mesh);
     }
     this.rubbleMeshes = [];
-    // 7c. Hermit rig (it's a Rig, not a plain Object3D — dispose its group)
-    if (this.hermitRig && this.hermitRig.group) {
-      this.hermitRig.group.traverse((o: THREE.Object3D) => {
-        const m = o as THREE.Mesh;
-        if (m.geometry) m.geometry.dispose();
-        if (m.material) {
-          const mats = Array.isArray(m.material) ? m.material : [m.material];
-          mats.forEach((mat) => mat.dispose());
-        }
-      });
-      if (this.hermitRig.group.parent) this.hermitRig.group.parent.remove(this.hermitRig.group);
-      this.hermitRig = null;
-      this.hermitPos = null;
-    }
     // 7d. Pickable meshes (loot on the ground before pickup)
     for (const p of this.pickables) {
       p.traverse((o: THREE.Object3D) => {
@@ -2019,7 +2351,7 @@ export class GameEngine {
   }
 
   // dungeon setup
-  public setupDungeon(L: typeof dungeonLevel) { setupDungeon(this, L); }
+  public setupDungeon(L: LevelDef) { setupDungeon(this, L); }
   public attachHeroTorch(rig: Rig) { attachHeroTorch(this, rig); }
   public updateDungeon(dt: number) { updateDungeon(this, dt); }
   public inEnemyCone(p: GridPos, enemy: Unit): boolean { return inEnemyCone(this, p, enemy); }
@@ -2037,7 +2369,7 @@ export class GameEngine {
 
   // interaction
   public updateFog(_dt: number) { updateFog(this, _dt); }
-  public executeDialogueAction(action: { type: string; itemId?: string; questId?: string }, npc: NPCDef) { executeDialogueAction(this, action, npc); }
+  public executeDialogueAction(action: DialogueAction, npc: NPCDef) { executeDialogueActionModule(this, action, npc); }
   public pickTile(): GridPos | null { return pickTileModule(this); }
   public updateHover() { updateHoverModule(this); }
   public clickExplore(unitId: string | undefined, tile: GridPos | null, propId?: string) { clickExploreModule(this, unitId, tile, propId); }
@@ -2064,9 +2396,22 @@ export class GameEngine {
   public buildSheep(): THREE.Group { return buildSheep(); }
 
   public update(dt: number) {
-    // pause ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ freeze all simulation while the in-game menu is open.
+    // pause — freeze all simulation while the in-game menu is open.
     // The render loop (composer.render) still runs, so the frozen frame shows.
     if (this.paused) return;
+
+    // torch fuel (floor 50): drains while lit in explore, auto-off at 0
+    if (this.torchLit && this.phase === 'explore' && !this.combat.inCombat) {
+      this.torchFuel = Math.max(0, this.torchFuel - dt);
+      if (this.torchFuel <= 0 && this.torchLit) {
+        this.torchLit = false;
+        this.pushLog('Your torch gutters out. Darkness swallows you.', 'system');
+        this.emitSnapshot();
+      }
+    }
+    // cursed gold: loot quality downgraded while the leader is cursed
+    const leader = this.combat?.living('party')[0];
+    setCursedLoot(!!leader?.conditions.some((c) => c.id === 'cursed'));
     // keyboard pan ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ suspended while a cutscene is driving the camera
     if (!(this.busy && (this.introActive || this.bossCineActive))) {
       const pan = dt * 9;
@@ -2145,8 +2490,6 @@ export class GameEngine {
         if (u && v.rig.anim.mode !== 'dead') updateRig(v.rig, dt, 1);
       }
     }
-    // hermit NPC
-    if (this.hermitRig) updateRig(this.hermitRig, dt, 1);
     // units
     for (const [id, v] of this.visuals) {
       const u = this.byId(id);
@@ -2374,6 +2717,8 @@ export class GameEngine {
     }
     this.onSnapshot({
       phase: this.phase,
+      floor: this.floorNumber,
+      floorName: FLOORS[this.floorNumber]?.name ?? 'The Sewer Cellar',
       units: this.combat.units.map((u) => ({ ...u, conditions: [...u.conditions], abilities: { ...u.abilities }, cooldowns: { ...u.cooldowns }, pos: { ...u.pos }, equipment: { ...u.equipment }, knownSkills: [...u.knownSkills], equippedSkills: [...u.equippedSkills], unlockedNodes: [...u.unlockedNodes] })),
       activeId: this.combat.inCombat ? this.combat.active?.id ?? null : null,
       turnOrder: this.combat.inCombat ? this.combat.turnOrder.filter((id) => this.byId(id)?.alive) : [],
@@ -2401,7 +2746,17 @@ export class GameEngine {
       showBonfireUI: this.showBonfireUI,
       showBonfireLoadout: this.showBonfireLoadout,
       showFullMap: this.showFullMap,
-      hermitTalk: this.hermitPos ? this.combat.living('party').some(p => Combat.dist(p.pos, this.hermitPos!) <= 3) : false,
+      talkTarget: this.activeTalkTarget(),
+      interactPrompt: this.activeInteractable?.label ?? null,
+      torchFuel: this.torchFuel,
+      showQuestLog: this.showQuestLog,
+      quests: this.questLog.all().map((q) => ({
+        id: q.id,
+        name: q.name,
+        stage: q.stage,
+        desc: q.desc,
+      })),
+      runStats: { ...this.runStats },
       showDialogue: this.showDialogue,
       showConsole: this.consoleOpen,
       consoleInput: this.consoleInput,
