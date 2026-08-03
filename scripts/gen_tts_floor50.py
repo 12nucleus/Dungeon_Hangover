@@ -9,6 +9,10 @@
 #   • the sobriety level-up lines   (sober_2 … sober_6)
 #   • the CHANGED intro lines       (narr_wake, narr_premise,
 #                                    narr_premise_2, narr_floor)
+#   • the NPC *_cap.mp3 flavor captions (narrator-voiced).
+#
+# NPC *spoken* lines are NOT generated here — they use per-character
+# designed voices via scripts/gen_voice_design.py.
 #
 # Line texts are extracted VERBATIM from the game sources so the audio
 # always matches the subtitles (the old gen_tts.py hard-coded the
@@ -159,6 +163,10 @@ def main():
 
     todo = {}
     for oid, text in list(lines.items()) + list(npc_lines.items()):
+        # NPC *spoken* lines are owned by gen_voice_design.py (per-character
+        # designed voices) — only the narrator-voiced _cap captions stay here
+        if oid.startswith("npc:") and not oid.endswith(":cap"):
+            continue
         if args.force or oid in CHANGED or not os.path.exists(mp3_for(oid)):
             todo[oid] = text
     print(f"{len(lines)} narration + {len(npc_lines)} NPC lines found; {len(todo)} to generate.")

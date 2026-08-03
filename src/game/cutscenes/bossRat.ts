@@ -64,6 +64,7 @@ export async function playBossRatCutscene(h: CutsceneHost) {
   h.audio.bossSting();
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.4);
   h.showCine("BARON GNAW claims the finger. The finger is his. The ring is his. EVERYTHING IS HIS.");
+  h.speakDialogue('baron_gnaw', 'claims');
   await h.cineDelay(2400);
   h.clearCine();
 

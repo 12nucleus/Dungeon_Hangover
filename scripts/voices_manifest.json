@@ -1,0 +1,27 @@
+{
+  "hermit": {
+    "sample": "Voice_sample_for_tts_cloning/hermit.mp3",
+    "sample_text": "Ah, you're awake! I was starting to think you'd sleep through the apocalypse. Again.",
+    "instruct": "Male senior in his seventies, warm weathered voice with a cheerful lilt, slightly cracked and husky, gentle and playful, speaks with a knowing smile, unhurried pace."
+  },
+  "other_hermit": {
+    "sample": "Voice_sample_for_tts_cloning/other_hermit.mp3",
+    "sample_text": "You found me. Good. Or bad. Depends on which Hermit you've been talking to.",
+    "instruct": "Male senior in his seventies, flat gruff monotone, low and blunt, tired and world-weary, no warmth in the voice, clipped sentences, speaks like he has given up on being liked."
+  },
+  "scrag": {
+    "sample": "Voice_sample_for_tts_cloning/scrag.mp3",
+    "sample_text": "Halt. State your business. Soap. The King wants soap. Everyone wants soap.",
+    "instruct": "Small wiry goblin guard, raspy reedy voice, bored and grumpy, slightly nasal with a wheeze, talks in short dismissive bursts, a tired underpaid soldier who has seen it all."
+  },
+  "gribnab": {
+    "sample": "Voice_sample_for_tts_cloning/gribnab.mp3",
+    "sample_text": "I am Gribnab, King of the Goblins, Lord of the Bath, Sovereign of Suds!",
+    "instruct": "Adult male goblin king, deep gravelly voice with a growling edge, booming and commanding, slightly slimy and menacing, speaks slowly with theatrical menace, every word dripping with smug authority. Definitely masculine, never high-pitched or childlike."
+  },
+  "baron_gnaw": {
+    "sample": "Voice_sample_for_tts_cloning/baron_gnaw.mp3",
+    "sample_text": "The finger is mine. The ring is mine. Everything is mine.",
+    "instruct": "Enormous monstrous rat, deep guttural growl, snarling and menacing, low rumbling gravel with a wet hiss, each word a threat."
+  }
+}
