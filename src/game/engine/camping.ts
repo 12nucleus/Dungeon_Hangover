@@ -9,6 +9,7 @@ import { setWeapon } from '../characters';
 import { FX } from '../particles';
 import { effMaxHp, MAX_LEVEL, XP_THRESHOLDS } from '../stats';
 import { classPoolSkillIdsForLevel } from '../classSkills';
+import type { GridPos } from '../types';
 import { canUnlock, treeFor } from '../skilltree';
 import { makeItem, type Item } from '../items';
 import { unitWorld } from './visuals';
@@ -168,8 +169,19 @@ export function levelUpAtBonfire(engine: any, unitId: string) {
   engine.emitSnapshot();
 }
 
+/** a free walkable tile next to the bonfire (the bonfire itself blocks) */
+function bonfireStandingSpot(engine: any): GridPos {
+  const b = engine.bonfirePos;
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    const tx = b.x + dx, tz = b.z + dz;
+    if (engine.world.isWalkable(tx, tz) && !engine.world.blocked[tx]?.[tz]) return { x: tx, z: tz };
+  }
+  return { ...b };
+}
+
 export function respawn(engine: any) {
   if (!engine.bonfireLit || !engine.bonfirePos) return;
+  const spot = bonfireStandingSpot(engine);
   engine.phase = 'explore';
   engine.gameWon = false;
   engine.busy = false;
@@ -192,10 +204,10 @@ export function respawn(engine: any) {
     u.hasAction = true;
     u.hasBonus = true;
     u.movementLeft = u.moveRange;
-    u.pos = { ...engine.bonfirePos };
+    u.pos = { ...spot };
     const v = engine.visuals.get(u.id);
     if (v) {
-      const wp = unitWorld(engine, engine.bonfirePos);
+      const wp = unitWorld(engine, spot);
       v.rig.group.position.copy(wp);
       v.rig.group.userData.baseY = wp.y;
       v.rig.anim.mode = 'idle';

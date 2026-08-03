@@ -212,7 +212,8 @@ export async function animMove(engine: any, unitId: string, path: GridPos[]) {
   if (u) {
     const dest = path[path.length - 1];
     const trap = engine.trapManager.at(dest.x, dest.z);
-    if (trap && !trap.triggered) void triggerTrap(engine, u, trap);
+    // traps are for the adventurer — the dungeon's own rats/mobs never trip them
+    if (trap && !trap.triggered && u.team !== 'enemy') void triggerTrap(engine, u, trap);
     // environmental hazards — shoved into the wine press / the bath tub
     if (engine.hazardTiles?.has(`${dest.x},${dest.z}`)) {
       const key = engine.hazardKind?.get(`${dest.x},${dest.z}`) ?? 'hazard';

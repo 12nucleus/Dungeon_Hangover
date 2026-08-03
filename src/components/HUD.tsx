@@ -12,6 +12,7 @@ import { Hotbar } from './Hotbar';
 import { BonfireLoadout } from './BonfireLoadout';
 import { VoxelItemIcon } from './VoxelItemIcon';
 import { ItemInspect } from './ItemInspect';
+import { VoxelD20 } from './VoxelD20';
 import type { Item } from '@/game/items';
 import { isQuestLoot } from '@/game/engine/loot';
 
@@ -33,7 +34,8 @@ function Portrait({ u, size = 44, active = false }: { u: Unit; size?: number; ac
   );
 }
 
-/** BG3-style dice roll — a tumbling 3D die with the result, shown briefly. */
+/** BG3-style dice roll — a real 3D voxel d20 tumbles with a random spin,
+ *  then the total + reason pop in. */
 function DiceRollOverlay({ snap }: { snap: UISnapshot }) {
   const d = snap.diceShow;
   if (!d) return null;
@@ -42,13 +44,10 @@ function DiceRollOverlay({ snap }: { snap: UISnapshot }) {
   return (
     <div className="dice-overlay" key={d.at}>
       <div className="dice-scene">
-        <div className={`dice-cube ${d.die === 'd20' ? 'd20' : ''}`}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className={`dice-face f${i}`}>{d.total}</div>
-          ))}
-        </div>
+        <VoxelD20 seed={d.at} />
+        <div className="dice-total">{d.total}</div>
       </div>
-      <div className="dice-reason">{d.reason} — {d.die}</div>
+      <div className="dice-reason">{d.reason} · {d.die}</div>
     </div>
   );
 }

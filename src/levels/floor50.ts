@@ -336,8 +336,9 @@ for (const t of corridorTiles) {
 }
 
 put('bonfire', sc(20), sc(37), 0.5);   // the respawn checkpoint fire
-// room 1 braziers (bright corner lights before the bonfire is lit)
-put('brazier', sc(19), sc(35), 0.5);
+// room 1 braziers (bright corner lights before the bonfire is lit) —
+// keep them in the far corners so Greg doesn't spawn inside one
+put('brazier', sc(18), sc(35), 0.5);
 put('brazier', sc(21), sc(38), 0.5);
 // ── room 2 (Hermit's Cell) — his camp: a tent, a crackling campfire,
 //    braziers, a bedroll and a crate. The hermit sits by the fire (his NPC

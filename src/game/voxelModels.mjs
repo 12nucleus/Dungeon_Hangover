@@ -457,33 +457,40 @@ export function propRubble(seed = 0.5) {
   return { name: 'rubble', voxels: v.list(), cube };
 }
 
-// TENT — the Hermit's canvas A-frame (room 2)
+// TENT — the Hermit's canvas A-frame (room 2). A proper 3D wedge:
+// two sloped roof panels meeting at a ridge pole, open door flap,
+// corner guy-ropes. Big enough to read as a real tent.
 export function propTent(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 41);
   const v = new Vox();
-  const cube = 0.055;
+  const cube = 0.07;
   const CANVAS = 0x9a7a4a, CANVAS_D = 0x7a5e38, CANVAS_HI = 0xb8975f;
-  const POLE = 0x6b4a2e, POLE_D = 0x4a3320;
-  // ridge pole + A-frame ends
-  for (let y = 0; y <= 20; y++) v.add(0, y, 0, y % 5 === 2 ? POLE : POLE_D);
-  for (const sgn of [-1, 1]) {
-    for (let k = 0; k <= 12; k++) {
-      const y = Math.round((1 - k / 12) * 16);
-      v.add(sgn * k, y, 0, k % 4 === 1 ? POLE_D : POLE);
-    }
-  }
-  // canvas panels (sloping sides, 3 deep)
-  for (let z = 0; z < 4; z++) {
-    for (let x = -11; x <= 11; x++) {
-      const h = Math.max(1, 16 - Math.abs(x) * 1.35);
+  const POLE = 0x6b4a2e, POLE_D = 0x4a3320, ROPE = 0xc8b48a;
+  const HALF = 13;        // half-width of the footprint (voxels)
+  const DEPTH = 10;       // half-depth
+  const TOP = 20;         // ridge height
+  // ridge pole (runs along z, the long axis)
+  for (let z = -DEPTH; z <= DEPTH; z++) v.add(0, TOP, z, z % 5 === 0 ? POLE : POLE_D);
+  // roof: for each z slice the cross-section is a triangle (|x| up to the slope)
+  for (let z = -DEPTH; z <= DEPTH; z++) {
+    const door = z >= DEPTH - 3;   // the +z end is the open doorway
+    for (let x = -HALF; x <= HALF; x++) {
+      const h = Math.round((1 - Math.abs(x) / (HALF + 1)) * TOP);
       for (let y = 0; y <= h; y++) {
+        if (door && y < 10 && Math.abs(x) <= 4) continue;   // door opening
         const c = (x + z + y) % 7 === 0 ? CANVAS_HI : ((x + z) & 1 ? CANVAS : CANVAS_D);
-        v.add(x, y, z - 1, c);
+        v.add(x, y, z, c);
       }
     }
   }
-  // open flap on the +z side
-  for (let x = -3; x <= 3; x++) for (let y = 0; y <= 9; y++) v.add(x, y, 2, CANVAS_D);
+  // roof apex highlight along the ridge
+  for (let z = -DEPTH; z <= DEPTH; z += 2) v.add(0, TOP + 1, z, CANVAS_HI);
+  // door flap (rolled to the side)
+  for (let x = -4; x <= 4; x++) for (let y = 0; y <= 9; y++) v.add(x, y, DEPTH + 1, CANVAS_D);
+  // corner guy-ropes
+  for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    for (let k = 1; k <= 5; k++) v.add(sx * (HALF + k), Math.max(1, 4 - k), sz * (DEPTH + k), ROPE);
+  }
   return { name: 'tent', voxels: v.list(), cube, blocks: true };
 }
 
@@ -520,19 +527,35 @@ export function propCampfire(seed = 0.5) {
   };
 }
 
-// BEDROLL — rolled blanket with a pillow (the Hermit's bed)
+// BEDROLL — a proper bed: thick blanket layers, rolled foot, pillow
+// (the Hermit's bed). ~2.2 world units long.
 export function propBedroll(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 47);
   const v = new Vox();
-  const cube = 0.055;
+  const cube = 0.09;
   const BLANKET = 0x8a5a3a, BLANKET_D = 0x6e4630, BLANKET_HI = 0xa87a52;
-  const PILLOW = 0xc8b89a;
-  for (let x = -3; x <= 3; x++) for (let z = -2; z <= 2; z++) {
-    const c = (x + z) & 1 ? BLANKET : BLANKET_D;
+  const PILLOW = 0xc8b89a, PILLOW_D = 0xb0a080;
+  // mattress base (footprint ~19×11)
+  for (let x = -9; x <= 9; x++) for (let z = -5; z <= 5; z++) {
+    const c = (x + z) & 1 ? BLANKET_D : BLANKET;
     v.add(x, 0, z, c);
-    if (Math.abs(x) <= 2 && Math.abs(z) <= 1) v.add(x, 1, z, (x + z) & 1 ? BLANKET_HI : BLANKET);
   }
-  v.box(-4, 0, -1, -3, 1, 1, PILLOW);
+  // folded blanket layers (thicker in the middle)
+  for (let y = 1; y <= 3; y++) {
+    for (let x = -7; x <= 7; x++) for (let z = -4; z <= 4; z++) {
+      if (Math.abs(x) + y > 8) continue;
+      const c = y === 3 ? BLANKET_HI : ((x + z) & 1 ? BLANKET : BLANKET_D);
+      v.add(x, y, z, c);
+    }
+  }
+  // rolled foot end (a fat roll at -x)
+  for (let x = -11; x <= -8; x++) for (let z = -4; z <= 4; z++) {
+    v.add(x, 1, z, BLANKET_D);
+    if (Math.abs(z) <= 2) v.add(x, 2, z, BLANKET);
+  }
+  // pillow at the +x end
+  v.box(7, 1, -3, 10, 3, 3, PILLOW);
+  v.add(8, 4, 0, PILLOW_D); v.add(9, 4, 0, PILLOW);
   return { name: 'bedroll', voxels: v.list(), cube };
 }
 

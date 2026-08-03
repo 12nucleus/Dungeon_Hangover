@@ -7,6 +7,11 @@ export function bindInput(engine: any) {
   const el = engine.renderer.domElement;
   el.addEventListener('pointermove', engine.onPointerMove);
   el.addEventListener('pointerdown', engine.onPointerDown);
+  el.addEventListener('pointerup', () => { engine.fpDrag = false; });
+  el.addEventListener('pointerleave', () => { engine.fpDrag = false; });
+  document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement !== el) engine.fpDrag = false;
+  });
   el.addEventListener('wheel', engine.onWheel, { passive: false });
   el.addEventListener('contextmenu', (e: Event) => e.preventDefault());
   window.addEventListener('keydown', engine.onKeyDown);
@@ -15,6 +20,17 @@ export function bindInput(engine: any) {
 }
 
 export function onPointerMove(engine: any, e: PointerEvent) {
+  // first-person mouse look: pointer-locked (or dragging) deltas rotate the view
+  if (engine.firstPerson) {
+    const locked = document.pointerLockElement === engine.renderer.domElement;
+    const dragging = engine.fpDrag;
+    if (locked || dragging) {
+      const sens = 0.0032;
+      engine.fpYaw -= e.movementX * sens;
+      engine.fpPitch = Math.max(-1.35, Math.min(1.35, engine.fpPitch - e.movementY * sens));
+      return;
+    }
+  }
   const r = engine.renderer.domElement.getBoundingClientRect();
   engine.pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   engine.updateHover();
@@ -23,6 +39,20 @@ export function onPointerMove(engine: any, e: PointerEvent) {
 export function onPointerDown(engine: any, e: PointerEvent) {
   if (engine.paused) return;
   if (e.button === 2) { cancelTargeting(engine); return; }
+  // first-person: clicking the canvas grabs the mouse (pointer lock), and
+  // drag-look as a fallback when the browser refuses the lock. Clicks never
+  // move the hero in FP — W/S do that.
+  if (engine.firstPerson && e.button === 0) {
+    engine.fpDrag = true;
+    try {
+      const el = engine.renderer.domElement as HTMLCanvasElement;
+      if (document.pointerLockElement !== el) {
+        const p = el.requestPointerLock?.();
+        if (p?.catch) p.catch(() => {});
+      }
+    } catch { /* pointer lock unavailable — drag-look still works */ }
+    return;
+  }
   if (engine.busy) return;
   engine.ray.setFromCamera(engine.pointer, engine.iso.cam);
   const unitHit = engine.ray.intersectObjects(engine.unitProxies, false)[0];

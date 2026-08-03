@@ -40,7 +40,7 @@ import { offerLoot, flushLootQueue, takeAllLoot, takeLootItem, leaveLootItem, di
 import { showTargeting as showTargetingModule, showMoveTiles as showMoveTilesModule } from './engine/targeting';
 import { bindInput as bindInputModule, onPointerMove as onPointerMoveModule, onPointerDown as onPointerDownModule, onKeyDown as onKeyDownModule, onResize as onResizeModule } from './engine/input';
 interface Floater { el: HTMLDivElement; wp: THREE.Vector3; t: number; }
-interface Walker { path: THREE.Vector3[]; idx: number; }
+interface Walker { path: THREE.Vector3[]; tiles: GridPos[]; idx: number; }
 
 // a weapon that has detached from a dying rig and is tumbling to the floor
 interface DroppedWeapon {
@@ -152,6 +152,13 @@ export class GameEngine {
   /** first-person camera mode (P key) — camera rides on the hero's head */
   public firstPerson = false;
   private heroHiddenByFP = false;
+  /** first-person look direction (yaw/pitch) — mouse + Q/E + A/D drive these */
+  public fpYaw = Math.PI * 0.25;
+  public fpPitch = -0.12;
+  /** WASD step cooldown (seconds) so holding W walks continuously */
+  private fpStepAt = 0;
+  /** drag-look active (pointer-lock fallback) */
+  public fpDrag = false;
   public crouchLerp = 0;
   /** when true the player has queued a throw (uses inventory item as projectile) */
   public throwing = false;
@@ -1866,8 +1873,12 @@ export class GameEngine {
   /** toggle the first-person camera (P) — rides on the hero's head */
   toggleFirstPerson() {
     this.firstPerson = !this.firstPerson;
+    if (this.firstPerson) {
+      this.fpYaw = this.iso.yaw;
+      this.fpPitch = -0.12;
+    }
     this.audio.play('ui_click', 0.5);
-    this.pushLog(this.firstPerson ? '🎥 First-person view. Q/E rotates your head.' : '🎥 Back to the isometric view.', 'system');
+    this.pushLog(this.firstPerson ? '🎥 First person. Mouse looks around · W/S walk · A/D turn · Q/E rotate.' : '🎥 Back to the isometric view.', 'system');
     this.emitSnapshot();
   }
 
@@ -2508,13 +2519,19 @@ export class GameEngine {
     // cursed gold: loot quality downgraded while the leader is cursed
     const leader = this.combat?.living('party')[0];
     setCursedLoot(!!leader?.conditions.some((c) => c.id === 'cursed'));
-    // keyboard pan ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ suspended while a cutscene is driving the camera
-    if (!(this.busy && (this.introActive || this.bossCineActive))) {
+    // keyboard pan — suspended while a cutscene is driving the camera, and
+    // replaced by look-turn + WASD stepping in first-person mode
+    if (!this.firstPerson && !(this.busy && (this.introActive || this.bossCineActive))) {
       const pan = dt * 9;
       if (this.keys.has('w') || this.keys.has('arrowup')) this.iso.pan(0, -pan);
       if (this.keys.has('s') || this.keys.has('arrowdown')) this.iso.pan(0, pan);
       if (this.keys.has('a') || this.keys.has('arrowleft')) this.iso.pan(-pan, 0);
       if (this.keys.has('d') || this.keys.has('arrowright')) this.iso.pan(pan, 0);
+    } else if (this.firstPerson) {
+      // A/D turn the view (hold to keep turning)
+      const turn = dt * 2.4;
+      if (this.keys.has('a') || this.keys.has('arrowleft')) this.fpYaw -= turn;
+      if (this.keys.has('d') || this.keys.has('arrowright')) this.fpYaw += turn;
     }
 
     // follow camera: the camera stays where the player left it (WASD pan
@@ -2527,11 +2544,14 @@ export class GameEngine {
     // update paths so the rebuild doesn't wedge the render loop
     if (!this.world) return;
     // ── first-person view: camera rides on the hero's head, looking along
-    //    the iso yaw (Q/E still rotates the view). ──
+    //    the fpYaw/fpPitch look direction (mouse, Q/E and A/D rotate it).
+    //    W/S step forward/back along the view; movement is tile-stepped so
+    //    pathfinding, traps and fog all behave normally. ──
     const fpHero = this.combat?.living('party')[0];
     if (this.firstPerson && fpHero && fpHero.alive) {
       const eye = this.unitWorld(fpHero.pos).add(new THREE.Vector3(0, 1.7, 0));
-      const dir = new THREE.Vector3(Math.sin(this.iso.yaw), 0, Math.cos(this.iso.yaw));
+      const cp = Math.cos(this.fpPitch);
+      const dir = new THREE.Vector3(cp * Math.sin(this.fpYaw), Math.sin(this.fpPitch), cp * Math.cos(this.fpYaw));
       this.iso.cam.position.copy(eye);
       this.iso.cam.lookAt(eye.clone().addScaledVector(dir, 4));
       this.iso.cam.up.set(0, 1, 0);
@@ -2539,6 +2559,34 @@ export class GameEngine {
       if (fv) { fv.rig.group.visible = false; fv.proxy.visible = false; }
       this.ring.visible = false;
       this.heroHiddenByFP = true;
+      // W/S continuous movement (one tile per step)
+      const now = performance.now() / 1000;
+      if (now - this.fpStepAt > 0.26 && !this.busy && !this.combat.inCombat) {
+        const fwd = this.keys.has('w') || this.keys.has('arrowup');
+        const back = this.keys.has('s') || this.keys.has('arrowdown');
+        if (fwd || back) {
+          const sgn = fwd ? 1 : -1;
+          const fx = Math.round(Math.sin(this.fpYaw) * sgn);
+          const fz = Math.round(Math.cos(this.fpYaw) * sgn);
+          // pick the best walkable step (forward, or a diagonal nudge)
+          let step: GridPos | null = null;
+          for (const [dx, dz] of [[fx, fz], [fx, 0], [0, fz], [fx + (fx ? 0 : (sgn)), fz], [fx, fz + (fz ? 0 : sgn)]]) {
+            const tx = fpHero.pos.x + dx, tz = fpHero.pos.z + dz;
+            if (this.world.isWalkable(tx, tz) && !this.world.blocked[tx]?.[tz] && !this.trapManager?.at(tx, tz)?.revealed) {
+              step = { x: tx, z: tz }; break;
+            }
+          }
+          if (step) {
+            const path = this.combat.pathTo(fpHero, step.x, step.z);
+            if (path && path.length) {
+              this.moveUnitAlong(fpHero, path);
+              this.fpStepAt = now;
+              // step audio + dust for feel
+              this.audio.play('ui_click', 0.25, 1.6);
+            }
+          }
+        }
+      }
     } else if (this.heroHiddenByFP) {
       const fv = this.visuals.get(fpHero?.id ?? '');
       if (fv) { fv.rig.group.visible = true; fv.proxy.visible = true; }
@@ -2646,6 +2694,16 @@ export class GameEngine {
           // update baseY to the new tile's height so stairs/mezzanines
           // don't snap the rig back to the old floor on the next frame
           v.rig.group.userData.baseY = target.y;
+          // the unit's LOGICAL position follows the rig — mid-walk clicks,
+          // bonfire/NPC proximity and aggro all read u.pos
+          const arrived = wk.tiles?.[wk.idx];
+          if (arrived) u.pos = { ...arrived };
+          // traps trigger when a unit ACTUALLY steps on the tile — and
+          // never for the dungeon's own rats/mobs
+          if (arrived && u.team !== 'enemy') {
+            const trap = this.trapManager.at(arrived.x, arrived.z);
+            if (trap && !trap.triggered) void this.triggerTrap(u, trap);
+          }
           wk.idx++;
           if (wk.idx >= wk.path.length) { v.walker = null; v.rig.anim.mode = 'idle';
         if (this.pendingSmash && this.pendingSmash.unitId === id) {

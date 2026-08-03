@@ -266,13 +266,14 @@ export function clickExplore(engine: any, unitId: string | undefined, tile: Grid
   if (!leader || !tile) return;
 
   if (engine.bonfireGroup && engine.bonfireLit && engine.bonfirePos && tile && Combat.dist(leader.pos, engine.bonfirePos!) <= 1.5) {
-    if (tile.x === engine.bonfirePos.x && tile.z === engine.bonfirePos.z) {
+    // clicking the fire or any tile right around it rests at the bonfire
+    if (Combat.dist(tile, engine.bonfirePos) <= 1) {
       engine.restAtBonfire();
       return;
     }
   }
   const cp = engine.structures?.checkpoint;
-  if (engine.bonfireGroup && !engine.bonfireLit && cp && tile && tile.x === cp.x && tile.z === cp.z) {
+  if (engine.bonfireGroup && !engine.bonfireLit && cp && tile && Combat.dist(tile, cp) <= 1) {
     if (Combat.dist(leader.pos, tile) <= 1.5) {
       engine.lightBonfire();
       return;
@@ -306,12 +307,11 @@ export function clickExplore(engine: any, unitId: string | undefined, tile: Grid
 export function moveUnitAlong(engine: any, u: Unit, path: GridPos[]) {
   const v = engine.visuals.get(u.id)!;
   const pts = path.map((t: GridPos) => unitWorld(engine, t));
-  v.walker = { path: pts, idx: 0 };
+  // the walker advances BOTH the rig and u.pos tile by tile (see the walker
+  // loop in engine.update) — mid-walk clicks, proximity checks (bonfire,
+  // NPCs, aggro) and traps all read u.pos, so it must never jump ahead.
+  v.walker = { path: pts, tiles: path.map((t) => ({ x: t.x, z: t.z })), idx: 0 };
   v.rig.anim.mode = 'walk';
-  const dest = path[path.length - 1];
-  u.pos = { ...dest };
-  const trap = engine.trapManager.at(dest.x, dest.z);
-  if (trap && !trap.triggered) engine.triggerTrap(u, trap);
   if (engine.followCam && u.team === 'party') {
     const wp = unitWorld(engine, u.pos);
     engine.iso.desiredTarget.set(wp.x, wp.y, wp.z);
