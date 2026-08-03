@@ -513,6 +513,15 @@ export class GameEngine {
     }));
     this.playerCone.rotation.x = Math.PI / 2;
     this.playerCone.visible = false;
+
+    // the title scene (tavern exterior) must NOT show the dungeon beside the
+    // inn — the intro cutscene reveals the world group when Greg wakes up
+    // (cutscenes/intro.ts), and loadGame/returnToTitle manage it on their paths
+    if (this.phase === 'menu') {
+      this.world.group.visible = false;
+      this.props.group.visible = false;
+      if (this.fogGroup) this.fogGroup.visible = false;
+    }
     this.playerCone.renderOrder = 0;
     this.scene.add(this.playerCone);
 
@@ -1594,15 +1603,10 @@ export class GameEngine {
     this.combat.inCombat = false;
     this.queue = [];
     this.eventQueue = [];
-    // a run started from the title (after returnToTitle) needs the dungeon
-    // un-hidden again — the world group persists, just hidden
-    if (this.world) this.world.group.visible = true;
-    if (this.props) this.props.group.visible = true;
-    if (this.fogGroup) this.fogGroup.visible = true;
-    for (const [, v] of this.visuals) {
-      if (v.rig?.group) v.rig.group.visible = true;
-      if (v.proxy) v.proxy.visible = true;
-    }
+    // NOTE: the dungeon world stays HIDDEN here (it was hidden by
+    // returnToTitle) — the intro cutscene reveals it when Greg wakes up
+    // (cutscenes/intro.ts). Showing it now would put the gray walls next
+    // to the tavern during the title narration.
     if (this.cutsceneHost) {
       const title = setupTitleScene(this.cutsceneHost);
       this.titleExt = title.ext;

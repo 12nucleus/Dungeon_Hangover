@@ -126,7 +126,7 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   if (k === 'p' && engine.phase === 'explore' && !engine.combat.inCombat) { engine.toggleFirstPerson(); return; }
   if (k === 'b') { engine.debugWarpToBoss(); return; }
   if (k === 'escape') {
-    if (engine.busy && (engine.introActive || engine.bossCineActive)) {
+    if (engine.busy && (engine.introActive || engine.bossCineActive || (engine.phase === 'menu' && engine.titleExt))) {
       engine.introSkipped = true;
       engine.cutsceneSkip = true;
       engine.cutsceneDirector?.requestSkip();

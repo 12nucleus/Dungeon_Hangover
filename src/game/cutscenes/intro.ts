@@ -526,7 +526,10 @@ export async function playIntroCutscene(h: CutsceneHost) {
   finishIntro(h);
 }
 
-/** finish the intro: hand control to the player, in the dungeon, torch lit. */
+/** finish the intro: hand control to the player, in the dungeon, torch lit.
+ *  Also the ESC-SKIP path — it must replicate the wake's setup (tavern torn
+ *  down, hero rig snapped to the spawn, camera back on Greg) or the player
+ *  spawns wherever the tavern left the rig. */
 export function finishIntro(h: CutsceneHost) {
   h.introPlayed = true;
   h.introActive = false;
@@ -535,6 +538,11 @@ export function finishIntro(h: CutsceneHost) {
   h.worldGroup.visible = true;
   h.propsGroup.visible = true;
   if (h.dressingGroup) h.dressingGroup.visible = true;
+  // tear down the tavern set like the wake path does
+  if (h.tavern) { h.scene.remove(h.tavern); h.tavern = null; }
+  h.tavernRigs = [];
+  h.tavernActors = {};
+  h.iso.box = null;
   h.audio.stopTavernMusic(); h.audio.playMusic('music_ambient');
   const hero = h.combat.living('party')[0];
   for (const [id, v] of h.visuals) { if (!hero || id !== hero.id) v.rig.group.visible = true; }
@@ -561,7 +569,15 @@ export function finishIntro(h: CutsceneHost) {
       if (hv.rig.parts.padR) hv.rig.parts.padR.visible = true;
       hv.yaw = hv.targetYaw = Math.PI;
       h.setWeapon(hv.rig, hero.weapon ?? 'unarmed', hero.scheme.accent);
-      // suspend hero torch attachment — now a no-op
+      // snap the rig to the hero's ACTUAL spawn tile — the tavern left it
+      // somewhere else entirely
+      const wp = h.unitWorld(hero.pos);
+      hv.rig.group.position.copy(wp);
+      hv.rig.group.userData.baseY = wp.y;
+      // camera: back on Greg, same framing as the wake
+      h.iso.desiredYaw = Math.PI * 0.25; h.iso.desiredPitch = 0.55; h.iso.desiredDist = 7;
+      h.iso.focus(wp.clone().add(new THREE.Vector3(0, 0.7, 0)));
+      h.iso.lerp = 10;
     }
   }
   // reveal the bonfire checkpoint behind Greg as the respawn point + grace window
