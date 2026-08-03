@@ -10,6 +10,8 @@ import { CharacterCreationPanel } from './CharacterCreationPanel';
 import { CharacterStatsPanel } from './CharacterStatsPanel';
 import { Hotbar } from './Hotbar';
 import { BonfireLoadout } from './BonfireLoadout';
+import { VoxelItemIcon } from './VoxelItemIcon';
+import { isQuestLoot } from '@/game/engine/loot';
 
 interface Props { snap: UISnapshot | null; engine: GameEngine | null; }
 
@@ -25,6 +27,53 @@ function Portrait({ u, size = 44, active = false }: { u: Unit; size?: number; ac
         </span>
       </div>
       <div className="portrait-hp"><i style={{ width: `${pct * 100}%`, background: pct > 0.5 ? '#4ade80' : pct > 0.25 ? '#facc15' : '#ef4444' }} /></div>
+    </div>
+  );
+}
+
+/** Loot preview — see what dropped, choose what to take (Take All / per-item). */
+function LootPreviewOverlay({ snap, engine }: { snap: UISnapshot; engine: GameEngine | null }) {
+  const offer = snap.pendingLoot;
+  if (!offer) return null;
+  const hasItems = offer.items.length > 0;
+  const allQuest = offer.items.every(isQuestLoot);
+  return (
+    <div className="loot-overlay">
+      <div className="loot-box">
+        <div className="loot-title">📦 {offer.source}</div>
+        <div className="loot-hint">Choose what to take. Quest items must be taken.</div>
+        {hasItems && (
+          <div className="loot-list">
+            {offer.items.map((it) => {
+              const quest = isQuestLoot(it);
+              return (
+                <div key={it.id} className={`loot-row ${quest ? 'quest' : ''}`}>
+                  <VoxelItemIcon item={it} size={44} />
+                  <div className="loot-row-info">
+                    <div className="loot-row-name" style={{ color: it.rarity === 'rare' ? '#ffd75e' : it.rarity === 'epic' ? '#ff7ad9' : it.rarity === 'uncommon' ? '#7dd3fc' : '#e8e6e1' }}>
+                      {it.icon} {it.name} {quest && <span className="loot-quest-tag">quest</span>}
+                    </div>
+                    <div className="loot-row-desc">{it.desc}</div>
+                  </div>
+                  <button className="loot-btn take" onClick={() => engine?.takeLootItem(it.id)}>Take</button>
+                  {!quest && <button className="loot-btn leave" onClick={() => engine?.leaveLootItem(it.id)}>Leave</button>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {offer.gold > 0 && (
+          <div className="loot-gold">🪙 {offer.gold} gold</div>
+        )}
+        <div className="loot-actions">
+          <button className="btn-primary" onClick={() => engine?.takeAllLoot()} style={{ fontSize: 14, padding: '8px 24px' }}>
+            Take All{offer.gold > 0 ? ` + ${offer.gold}🪙` : ''}
+          </button>
+          <button className="btn-secondary" onClick={() => engine?.dismissLoot()} style={{ fontSize: 14, padding: '8px 24px' }}>
+            {allQuest && hasItems ? 'Keep Required' : hasItems ? 'Leave the rest' : 'Close'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -264,6 +313,9 @@ export function HUD({ snap, engine }: Props) {
           </div>
         </div>
       )}
+
+      {/* ══ LOOT PREVIEW ══ */}
+      {snap.pendingLoot && <LootPreviewOverlay snap={snap} engine={engine} />}
 
       {/* ══ BONFIRE REST UI ══ */}
       {snap.showBonfireUI && (

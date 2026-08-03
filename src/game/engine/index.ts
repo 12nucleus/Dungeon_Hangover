@@ -15,6 +15,7 @@ export { hotkeySkill, cancelTargeting, clearHighlights, paint, showMoveTiles, sh
 export { bindInput, onPointerMove, onPointerDown, onWheel, onKeyDown, onKeyUp, onResize } from './input';
 export { updateFog, pickTile, updateHover, setHoverInfoOnce, clickExplore, moveUnitAlong, closestWalkableAdjacent, clickCombat, trySmashInCombat, talkToNpc, dialogueChoice, executeDialogueAction, hasItemInInventory } from './interaction';
 export { setupDungeon, attachHeroTorch, updateDungeon, pullLever, openSecretChest, openGoldenChest, winGame, grantKey, checkDungeonAggro, openIronDoor } from './dungeonSetup';
-export { animate, animMove, animMelee, smashProp, destroyProp, triggerTrap, disarmTrap, animProjectile, animSkillFx, flashLight, spawnFloater, refreshBar, spawnChest, checkCombatTrigger, enqueue, pump, grantLoot } from './combatAnimation';
+export { animate, animMove, animMelee, smashProp, destroyProp, triggerTrap, disarmTrap, animProjectile, animSkillFx, flashLight, spawnFloater, refreshBar, spawnChest, checkCombatTrigger, enqueue, pump } from './combatAnimation';
+export { offerLoot, flushLootQueue, takeAllLoot, takeLootItem, leaveLootItem, dismissLoot, clearLoot } from './loot';
 export { startGame, enterDungeon, enterEditorMode, getEditorHandles, selectSkill, endTurn, continueAfterVictory, toggleMute, setSettings, setPaused, togglePause, deleteSlot, startNewGame, saveGame, loadGame, spawnBonfireFlame } from './gameFlow';
 export { toggleSneak, toggleTorch, closeDialogue, lightBonfire, restAtBonfire, closeBonfireUI, levelUpAtBonfire, respawn, toggleInventory, equipItem, unequipItem, toggleSkillTree, unlockNode, equipSkill, unequipSkill, useConsumable } from './camping';

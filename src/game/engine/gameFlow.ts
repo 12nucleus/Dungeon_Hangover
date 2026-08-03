@@ -174,6 +174,7 @@ export function deleteSlot(engine: any, slotId: string) {
 
 export function startNewGame(engine: any, slotId: string) {
   engine.currentSlotId = slotId;
+  engine.clearLoot?.();   // a fresh run starts with no loot offers
   enterDungeon(engine);
 }
 
@@ -221,6 +222,7 @@ export function loadGame(engine: any, slotId: string): boolean {
   const data = SaveManager.load(slotId);
   if (!data) return false;
   engine.currentSlotId = slotId;
+  engine.clearLoot?.();   // loot offers aren't persisted — drop stale ones
 
   if (engine.titleExt) { engine.scene.remove(engine.titleExt); engine.titleExt = null; }
   if (engine.titlePrevBg) { engine.scene.background = engine.titlePrevBg; engine.titlePrevBg = null; }

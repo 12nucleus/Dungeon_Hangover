@@ -257,6 +257,8 @@ export interface UISnapshot {
   /** run recap counters (victory screen) */
   runStats?: { kills: number; deaths: number; questsDone: number; secretsFound: number; startedAt: number };
   showDialogue?: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null;
+  /** loot-preview overlay — what just dropped, what to take */
+  pendingLoot?: { source: string; items: import('./items').Item[]; gold: number } | null;
   /** cheat console overlay (backtick key) */
   showConsole?: boolean;
   consoleInput?: string;

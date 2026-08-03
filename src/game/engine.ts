@@ -35,6 +35,8 @@ import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone, 
 import { smashProp, checkCombatTrigger, enqueue, triggerTrap as triggerTrapModule } from './engine/combatAnimation';
 import { updateFog, updateExploredVisibility, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
+import { respawn as respawnModule } from './engine/camping';
+import { offerLoot, flushLootQueue, takeAllLoot, takeLootItem, leaveLootItem, dismissLoot, clearLoot } from './engine/loot';
 import { showTargeting as showTargetingModule, showMoveTiles as showMoveTilesModule } from './engine/targeting';
 import { bindInput as bindInputModule, onPointerMove as onPointerMoveModule, onPointerDown as onPointerDownModule, onKeyDown as onKeyDownModule, onResize as onResizeModule } from './engine/input';
 interface Floater { el: HTMLDivElement; wp: THREE.Vector3; t: number; }
@@ -632,6 +634,7 @@ export class GameEngine {
       // -- narration + timing --
       cineDelay: (ms) => self.cineDelay(ms),
       narrate: (id, text, minMs) => self.narrate(id, text, minMs),
+      speakDialogue: (npcId, nodeId) => self.speakDialogue(npcId, nodeId),
       showCine: (text) => self.showCine(text),
       clearCine: () => self.clearCine(),
       markSkipped: () => { self.cutsceneSkip = true; self.introSkipped = true; },
@@ -820,6 +823,20 @@ export class GameEngine {
   public grantKey(kind: 'iron' | 'golden') { grantKeyModule(this, kind); }
   public grantLoot(items: unknown[], gold: number) { grantLootModule(this, items, gold); }
 
+  // ── loot preview (see-what-dropped-then-choose) ──────────
+  /** active loot offer (loot overlay) */
+  public pendingLoot: { source: string; items: any[]; gold: number } | null = null;
+  /** drops accumulated during combat, surfaced when the fight ends */
+  public lootQueue: { source: string; items: any[]; gold: number }[] = [];
+
+  public offerLoot(source: string, items: unknown[], gold: number) { offerLoot(this, source, items, gold); }
+  public flushLootQueue() { flushLootQueue(this); }
+  public takeAllLoot() { takeAllLoot(this); }
+  public takeLootItem(itemId: string) { takeLootItem(this, itemId); }
+  public leaveLootItem(itemId: string) { leaveLootItem(this, itemId); }
+  public dismissLoot() { dismissLoot(this); }
+  public clearLoot() { clearLoot(this); }
+
   /** the mid-fight parley: first time Gribnab drops to ≤10% HP */
   public maybeParley(unitId: string) {
     const u = this.combat?.byId(unitId);
@@ -935,11 +952,12 @@ export class GameEngine {
       if (f.scheme?.orc === true && this.flags.has('goblin_respect') && !this.flags.has('goblins_provoked')) continue;
       const range = (f.flying ? 5 : 4) - (this.sneaking ? 2 : 0);
       for (const p of party) {
-        // the sewer tunnel rats camp the room next to spawn — they only
-        // aggro on proximity, never through their vision cone, so looting
-        // and lighting the bonfire is always safe
+        const d = Combat.dist(p.pos, f.pos);
+        if (d > Math.max(range, 9)) continue;   // skip far-away groups
+        // line of sight: never aggro through walls
+        if (!this.hasLineOfSight(p.pos, f.pos)) continue;
         const coneAggro = f.groupId === 'r3_rats' ? false : !this.sneaking && this.inEnemyCone(p.pos, f);
-        if (Combat.dist(p.pos, f.pos) <= range || coneAggro) {
+        if (d <= range || coneAggro) {
           this.aggroGroup(f.groupId);
           return;
         }
@@ -1849,7 +1867,38 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
-  closeDialogue() { this.showDialogue = null; this.emitSnapshot(); }
+  closeDialogue() { this.showDialogue = null; this.stopDialogueVo(); this.emitSnapshot(); }
+
+  private dialogueVoToken = 0;
+
+  /** Speak an NPC node's voice-over — `audio/npc/<npcId>_<nodeId>.mp3`, with
+   *  an optional `<nodeId>_cap.mp3` intro-flavor line first (missing assets
+   *  degrade to text-only dialogue). A newer call supersedes an older one,
+   *  so clicking through a conversation never stacks voices. */
+  public speakDialogue(npcId: string, nodeId: string) {
+    const token = ++this.dialogueVoToken;
+    const base = `${import.meta.env.BASE_URL}audio/npc/${npcId}_${nodeId}`;
+    void (async () => {
+      for (const url of [`${base}_cap.mp3`, `${base}.mp3`]) {
+        if (token !== this.dialogueVoToken) return;
+        let a: HTMLAudioElement;
+        try { a = new Audio(url); } catch { return; }
+        const dur = await new Promise<number>((resolve) => {
+          a.onloadedmetadata = () => resolve((a.duration ?? 0) * 1000);
+          a.onerror = () => resolve(0);
+          setTimeout(() => resolve((a.duration ?? 0) * 1000), 1500);
+        });
+        if (dur <= 0) continue;
+        try { await a.play().catch(() => {}); } catch { continue; }
+        await new Promise<void>((r) => setTimeout(r, Math.min(dur + 150, 30000)));
+      }
+    })();
+  }
+
+  /** Cancel any in-flight dialogue voice-over (conversation closed/skipped). */
+  public stopDialogueVo() {
+    this.dialogueVoToken++;
+  }
 
   // -- hotbar loadout (bonfire-only) --------------------------
   /** toggle the bonfire loadout editor (only usable while resting). */
@@ -1963,41 +2012,9 @@ export class GameEngine {
   }
 
   respawn() {
-    if (!this.bonfireLit || !this.bonfirePos) return;
-    this.phase = 'explore';
-    for (const u of this.combat.living('party')) {
-      u.hp = effMaxHp(u);
-      u.pos = { ...this.bonfirePos };
-      const v = this.visuals.get(u.id);
-      if (v) {
-        const wp = this.world.tileToWorld(this.bonfirePos.x, this.bonfirePos.z);
-        v.rig.group.position.copy(wp);
-        v.rig.anim.mode = 'idle';
-      }
-    }
-    for (const u of this.combat.units) {
-      if (!u.alive && u.team === 'enemy' && !u.bossGroup && u.name !== 'Baron Gnaw') {
-        if (this.defeatedSpecialMobs.has(u.id)) continue;
-        u.alive = true;
-        u.hp = u.maxHp;
-        (u as any).dormant = true;
-        u.conditions = [];
-        const v = this.visuals.get(u.id);
-        if (v) {
-          v.rig.anim.mode = 'idle';
-          v.rig.anim.t = 0;
-          v.bar.style.display = '';
-          (v as any).dustDone = false;
-          const wp = this.unitWorld(u.pos);
-          v.rig.group.position.copy(wp);
-        }
-      }
-    }
-    this.props.resetAll();
-    this.combat.inCombat = false;
-    this.selectedId = this.combat.living('party')[0]?.id ?? null;
-    this.pushLog('?? Death is not the end. The bonfire restores you. The dungeon stirs...', 'system');
-    this.emitSnapshot();
+    respawnModule(this);
+    // camping.respawn handles the full logic (including reviving dead party).
+    // This engine method delegates so both the inline and module paths agree.
   }
 
   // -- inventory / equipment (called from React HUD) ---------
@@ -2363,6 +2380,24 @@ export class GameEngine {
   public updateDungeon(dt: number) { updateDungeon(this, dt); }
   public inEnemyCone(p: GridPos, enemy: Unit): boolean { return inEnemyCone(this, p, enemy); }
   public aggroGroup(groupId: string | undefined) { aggroGroup(this, groupId); }
+
+  /** Bresenham line check: true if no wall blocks a straight line from
+   *  `a` to `b` on the walk grid. Used by aggro so dormant enemies can't
+   *  attack through unexplored walls. */
+  public hasLineOfSight(a: GridPos, b: GridPos): boolean {
+    let x0 = a.x, z0 = a.z, x1 = b.x, z1 = b.z;
+    const dx = Math.abs(x1 - x0), dz = Math.abs(z1 - z0);
+    const sx = x0 < x1 ? 1 : -1, sz = z0 < z1 ? 1 : -1;
+    let err = dx - dz;
+    for (let guard = 0; guard < 200; guard++) {
+      if (x0 === x1 && z0 === z1) return true;
+      if (!(x0 === a.x && z0 === a.z) && !(x0 === b.x && z0 === b.z) && !this.world.isWalkable(x0, z0)) return false;
+      const e2 = 2 * err;
+      if (e2 > -dz) { err -= dz; x0 += sx; }
+      if (e2 < dx) { err += dx; z0 += sz; }
+    }
+    return true;
+  }
 
   // visuals
   public addUnit(u: Unit) { addUnit(this, u); }
@@ -2765,6 +2800,7 @@ export class GameEngine {
       })),
       runStats: { ...this.runStats },
       showDialogue: this.showDialogue,
+      pendingLoot: this.pendingLoot ? { source: this.pendingLoot.source, items: [...this.pendingLoot.items], gold: this.pendingLoot.gold } : null,
       showConsole: this.consoleOpen,
       consoleInput: this.consoleInput,
     });

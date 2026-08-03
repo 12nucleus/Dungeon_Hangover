@@ -77,6 +77,7 @@ export async function playGribnabCutscene(h: CutsceneHost) {
   if (v) v.rig.anim.flinch = 1;
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.34);
   h.showCine(introLine);
+  h.speakDialogue('gribnab', forced ? 'pre_fight_door' : 'pre_fight_soap');
   await h.cineDelay(3600);
   h.clearCine();
 
@@ -123,7 +124,8 @@ export async function playGribnabCutscene(h: CutsceneHost) {
   h.audio.bossSting();
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.45);
   if (boss) boss.pos = { ...st.bossBath };
-  h.showCine("You fight well for someone in underwear! I am almost proud! Almost! But the bath demands a sacrifice! And you are IT!");
+  h.showCine(NPCS.gribnab.dialogue.final_taunt.text);
+  h.speakDialogue('gribnab', 'final_taunt');
   await h.cineDelay(2600);
   h.clearCine();
 

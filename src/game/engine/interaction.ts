@@ -410,6 +410,7 @@ function presentNode(engine: any, npc: NPCDef, nodeId: string) {
       ?.filter((c) => visibleChoice(engine, c))
       .map((c: any, i: number) => ({ label: c.label, index: i })),
   };
+  engine.speakDialogue?.(npc.id, nodeId);
   engine.emitSnapshot();
 }
 
@@ -417,6 +418,7 @@ export function talkToNpc(engine: any, npcId: string) {
   const npc = NPCS[npcId];
   if (!npc) return;
   if (npcId === 'scrag' && !engine.flags?.has('met_scrag')) engine.setFlag('met_scrag');
+  engine.stopDialogueVo?.();
   engine.dialogueNodeId = null;   // fresh conversation — resolve the quest-aware entry
   presentNode(engine, npc, nodeIdFor(engine, npc));
 }
@@ -438,6 +440,7 @@ export function dialogueChoice(engine: any, npcId: string, choiceIndex: number) 
     presentNode(engine, npc, choice.next);
     return;
   }
+  engine.stopDialogueVo?.();
   engine.showDialogue = null;
   engine.dialogueNodeId = null;
   engine.emitSnapshot();

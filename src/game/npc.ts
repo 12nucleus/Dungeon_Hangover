@@ -273,6 +273,9 @@ export const GRIBNAB: NPCDef = {
     pre_fight_door: {
       text: "You BROKE my door! That was a good door! That was an IRON door! Do you know how hard it is to get iron down here?! I am going to BATH you! I am going to bath you to DEATH!",
     },
+    final_taunt: {
+      text: "You fight well for someone in underwear! I am almost proud! Almost! But the bath demands a sacrifice! And you are IT!",
+    },
   },
 };
 

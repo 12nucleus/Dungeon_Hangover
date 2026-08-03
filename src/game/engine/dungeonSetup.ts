@@ -16,6 +16,7 @@ import { NPCS } from '../npc';
 import { SUMMON_TEMPLATES } from '../skills';
 import { unitWorld } from './visuals';
 import { animateTo } from './cheats';
+import { offerLoot } from './loot';
 
 /** place a THREE.Group at a tile on the walkable floor */
 function place(engine: any, g: THREE.Group, tile: GridPos, yOff = 0) {
@@ -315,7 +316,7 @@ export function updateDungeon(engine: any, dt: number) {
       engine.runStats.secretsFound += 1;
       FX.levelup(engine.particles, unitWorld(engine, leader.pos).clone().add(new THREE.Vector3(0, 0.6, 0)));
       const gold = 2 + Math.floor(Math.random() * 6);
-      grantLoot(engine, [], gold);
+      offerLoot(engine, 'Hidden treasure', [], gold);
       engine.pushLog(`✨ You kick something under the muck — ${gold} gold!`, 'system');
     }
   }
@@ -406,7 +407,7 @@ export function openSecretChest(engine: any) {
   engine.audio.chestOpen();
   const { items, gold } = rollLootTable('secret');
   FX.levelup(engine.particles, engine.secretChestMesh.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
-  grantLoot(engine, items, gold);
+  offerLoot(engine, 'The hidden stash', items, gold);
   engine.pushLog(`🗝️ The hidden stash holds: ${[...items.map((i: any) => `${i.icon} ${i.name}`), `🪙 ${gold} gold`].join(', ')}.`, 'system');
   engine.emitSnapshot();
 }
@@ -419,7 +420,7 @@ export function openGoldenChest(engine: any) {
   engine.audio.chestOpen(); engine.audio.bossSting();
   const { items, gold } = rollLootTable('goldenkey');
   FX.levelup(engine.particles, engine.goldenChest.position.clone().add(new THREE.Vector3(0, 0.6, 0)));
-  grantLoot(engine, items, gold);
+  offerLoot(engine, 'The golden chest', items, gold);
   engine.pushLog(`👑 The golden chest bursts open: ${[...items.map((i: any) => `${i.icon} ${i.name}`), `🪙 ${gold} gold`].join(', ')}!`, 'system');
   // no winGame here on floor 50 — the staircase behind Gribnab's bath is the exit
 }

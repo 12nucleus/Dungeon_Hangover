@@ -14,6 +14,7 @@ import type { GridPos, CombatEvent, SkillDef, Unit } from '../types';
 import { unitWorld } from './visuals';
 import { clearHighlights, showMoveTiles } from './targeting';
 import { grantKey } from './dungeonSetup';
+import { offerLoot } from './loot';
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -61,15 +62,11 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (slain?.team === 'enemy' && slain?.name !== 'Gribnab') engine.runStats.kills += 1;
       // guaranteed item/gold drops (Baron Gnaw → finger + rusty key, Gribnab → loot)
       if (slain?.deathDrops) {
-        for (const itemId of slain.deathDrops.itemIds) {
-          const it = makeItem(itemId);
-          engine.inventory.push(it);
-          engine.pushLog(`${slain.name} drops ${it.icon} ${it.name}!`, 'system');
-        }
-        if (slain.deathDrops.gold) {
-          grantLoot(engine, [], slain.deathDrops.gold);
-          engine.pushLog(`🪙 ${slain.deathDrops.gold} gold clatters from the body.`, 'system');
-        }
+        const items = slain.deathDrops.itemIds.map((itemId: string) => makeItem(itemId));
+        const gold = slain.deathDrops.gold ?? 0;
+        if (items.length || gold) offerLoot(engine, `${slain.name}'s body`, items, gold);
+        for (const it of items) engine.pushLog(`${slain.name} drops ${it.icon} ${it.name}!`, 'system');
+        if (gold) engine.pushLog(`🪙 ${gold} gold clatters from the body.`, 'system');
       }
       // mold blobs: 25% spore burst — Nauseated to adjacent party members
       if (slain?.name === 'Mold Blob' && Math.random() < 0.25) {
@@ -162,13 +159,15 @@ export async function animate(engine: any, ev: CombatEvent) {
         engine.audio.setDrums(false);
         engine.audio.setMusicDucked(false);
         if (engine.phase === 'explore') engine.audio.playMusic('music_ambient');  // back to the cellar
+        // drops that piled up during the fight surface now
+        engine.flushLootQueue?.();
       }
       if (ev.phase === 'victory') { engine.audio.setDrums(false); engine.audio.playMusic('music_victory'); engine.audio.play('victory', 0.9); engine.audio.setMusicDucked(false); spawnChest(engine); }
       if (ev.phase === 'defeat') { engine.audio.setDrums(false); engine.audio.setMusicDucked(false); }
       await delay(200);
       break;
     }
-    case 'loot': grantLoot(engine, ev.items, ev.gold); break;
+    case 'loot': offerLoot(engine, 'spoils of battle', ev.items, ev.gold); break;
     case 'levelup': {
       const u = engine.byId(ev.unitId);
       if (u) {
@@ -278,7 +277,8 @@ export async function smashProp(engine: any, u: Unit, prop: any, skill?: SkillDe
     if (skill.cost === 'action') u.hasAction = false;
     else if (skill.cost === 'bonus') u.hasBonus = false;
   }
-  engine.busy = false;
+  // a loot overlay owns busy while it's up — don't clobber it
+  if (!engine.pendingLoot) engine.busy = false;
   engine.emitSnapshot();
 }
 
@@ -295,7 +295,7 @@ export function destroyProp(engine: any, prop: any) {
   engine.pushLog(`${prop.def.icon} The ${prop.def.name} shatters!`, 'system');
   for (const it of items) engine.pushLog(`The ${prop.def.name} drops ${it.icon} ${it.name}.`, 'system');
   if (gold) engine.pushLog(`The ${prop.def.name} drops 🪙 ${gold} gold.`, 'system');
-  grantLoot(engine, items, gold);
+  offerLoot(engine, `The ${prop.def.name}`, items, gold);
   engine.emitSnapshot();
 }
 
@@ -331,20 +331,13 @@ export async function disarmTrap(engine: any, u: Unit, trap: any) {
     engine.pushLog(`${u.name} disarms the ${trap.def.name}!`, 'system');
     engine.audio.play('ui_click', 0.7);
     const goldReward = 3 + Math.floor(Math.random() * 8);
-    grantLoot(engine, [], goldReward);
+    offerLoot(engine, 'Disarmed trap', [], goldReward);
     spawnFloater(engine, u.id, '✔ Disarmed!', 'buff');
   } else {
     engine.pushLog(`${u.name} fumbles the disarm!`, 'system');
     await triggerTrap(engine, u, trap);
   }
   engine.emitSnapshot();
-}
-
-export function grantLoot(engine: any, items: any[], gold: number) {
-  engine.inventory.push(...items);
-  engine.gold += gold;
-  for (const it of items) engine.loot.push(`${it.icon} ${it.name}`);
-  if (gold) engine.loot.push(`🪙 ${gold} gold`);
 }
 
 export async function animProjectile(engine: any, ev: any) {
@@ -497,7 +490,7 @@ export function checkCombatTrigger(engine: any) {
         engine.audio.play('victory', 0.6, 1.4);
         FX.levelup(engine.particles, cp);
         engine.pushLog(`You pry open the chest: ${[...items.map((i: any) => `${i.icon} ${i.name}`), `🪙 ${gold} gold`].join(', ')}.`, 'system');
-        grantLoot(engine, items, gold);
+        offerLoot(engine, 'Chest', items, gold);
         engine.emitSnapshot();
         break;
       }

@@ -171,16 +171,40 @@ export function levelUpAtBonfire(engine: any, unitId: string) {
 export function respawn(engine: any) {
   if (!engine.bonfireLit || !engine.bonfirePos) return;
   engine.phase = 'explore';
-  for (const u of engine.combat.living('party')) {
+  engine.gameWon = false;
+  engine.busy = false;
+  engine.clearLoot?.();   // drops from the losing fight don't survive death
+  engine.showDialogue = null;
+  engine.dialogueNodeId = null;
+  engine.combat.inCombat = false;
+  engine.combat.phase = 'explore';
+  engine.combat.turnOrder = [];
+  engine.combat.activeIdx = 0;
+  engine.combat.round = 1;
+
+  // `living('party')` excludes dead Greg — iterate all party units so defeat
+  // can actually recover the party.
+  for (const u of engine.combat.units) {
+    if (u.team !== 'party') continue;
+    u.alive = true;
     u.hp = effMaxHp(u);
+    u.conditions = [];
+    u.hasAction = true;
+    u.hasBonus = true;
+    u.movementLeft = u.moveRange;
     u.pos = { ...engine.bonfirePos };
     const v = engine.visuals.get(u.id);
     if (v) {
-      const wp = engine.world.tileToWorld(engine.bonfirePos.x, engine.bonfirePos.z);
+      const wp = unitWorld(engine, engine.bonfirePos);
       v.rig.group.position.copy(wp);
+      v.rig.group.userData.baseY = wp.y;
       v.rig.anim.mode = 'idle';
+      v.rig.anim.t = 0;
+      v.bar.style.display = '';
+      v.dustDone = false;
     }
   }
+
   for (const u of engine.combat.units) {
     if (!u.alive && u.team === 'enemy' && !u.bossGroup && u.name !== 'Baron Gnaw') {
       if (engine.defeatedSpecialMobs.has(u.id)) continue;
@@ -200,8 +224,7 @@ export function respawn(engine: any) {
     }
   }
   engine.props.resetAll();
-  engine.combat.inCombat = false;
-  engine.selectedId = engine.combat.living('party')[0]?.id ?? null;
+  engine.selectedId = engine.combat.units.find((u: any) => u.team === 'party')?.id ?? null;
   engine.pushLog('💀 Death is not the end. The bonfire restores you. The dungeon stirs...', 'system');
   engine.emitSnapshot();
 }
