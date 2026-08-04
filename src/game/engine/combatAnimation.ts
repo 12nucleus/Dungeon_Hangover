@@ -16,7 +16,12 @@ import { clearHighlights, showMoveTiles } from './targeting';
 import { grantKey } from './dungeonSetup';
 import { offerLoot } from './loot';
 
-const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** global animation speed multiplier — 1 = normal, 0.05 = 20× fast.
+ *  Dev/spectator aid; wired to the engine as `setAnimScale`. */
+let animScale = 1;
+export function setAnimScale(s: number) { animScale = Math.max(0, s); }
+
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms * animScale));
 
 // ══ main animation loop ════════════════════════════════════
 export async function animate(engine: any, ev: CombatEvent) {
@@ -64,6 +69,9 @@ export async function animate(engine: any, ev: CombatEvent) {
         engine.runStats.kills += 1;
         engine.pushLog('🛁 The Goblin King is dead. The bath is silent. The rubber ducks float, abandoned.', 'system');
       }
+      if (slain?.name === 'Baron Gnaw') {
+        engine.setFlag?.('boss_rat_dead');
+      }
       if (slain?.team === 'enemy' && slain?.name !== 'Gribnab') engine.runStats.kills += 1;
       // guaranteed item/gold drops (Baron Gnaw → finger + rusty key, Gribnab → loot)
       if (slain?.deathDrops) {
@@ -83,21 +91,8 @@ export async function animate(engine: any, ev: CombatEvent) {
           }
         }
       }
-      // bone rat: reassembles once unless burned
-      if (slain?.name === 'Bone Rat' && slain.lastDamageKind !== 'fire' && !engine.hasFlag?.('bones_burned') && !engine.hasFlag?.('bonerat_reassembled')) {
-        engine.setFlag?.('bonerat_reassembled');
-        engine.pushLog('🦴 The bones RATTLE. The Bone Rat reassembles!', 'system');
-        await delay(600);
-        slain.alive = true;
-        slain.hp = slain.maxHp;
-        slain.conditions = [];
-        const rv = engine.visuals.get(slain.id);
-        if (rv) {
-          rv.rig.anim.mode = 'idle'; rv.rig.anim.t = 0; rv.bar.style.display = '';
-          rv.rig.group.position.copy(unitWorld(engine, slain.pos));
-          (rv as any).dustDone = false;
-        }
-      }
+      // bone rat reassembly is handled model-side in combat.ts onDeath so
+      // the fight correctly continues instead of ending mid-revival.
       await delay(500);
       break;
     }
@@ -129,16 +124,21 @@ export async function animate(engine: any, ev: CombatEvent) {
         if (u.team === 'party' && engine.phase === 'combat') showMoveTiles(engine);
         // M8: enemy turns are driven by the AI — resolve the full turn
         // (skills + movement, then advance initiative) right here so the
-        // turn actually resolves instead of stalling forever.
-        if (u.team === 'enemy' && engine.phase === 'combat' && engine.combat.inCombat && u.alive) {
-          const aiEvents: CombatEvent[] = [];
-          for (let i = 0; i < 8; i++) {
-            const step = engine.combat.aiStep();
-            if (!step) break;
-            aiEvents.push(...step);
-            if (!engine.combat.inCombat) break;   // combat may end mid-turn
+        // turn actually resolves instead of stalling forever. Guarded on
+        // combat.inCombat (not engine.phase): a stray phase event must never
+        // wedge a live fight. Dead units (DOT-killed at turn start) still
+        // advance the rotation.
+        if (u.team === 'enemy' && engine.combat.inCombat) {
+          if (u.alive) {
+            const aiEvents: CombatEvent[] = [];
+            for (let i = 0; i < 8; i++) {
+              const step = engine.combat.aiStep();
+              if (!step) break;
+              aiEvents.push(...step);
+              if (!engine.combat.inCombat) break;   // combat may end mid-turn
+            }
+            if (aiEvents.length) engine.enqueue(aiEvents);
           }
-          if (aiEvents.length) engine.enqueue(aiEvents);
           engine.enqueue(engine.combat.endTurn());
         }
       }
@@ -146,6 +146,14 @@ export async function animate(engine: any, ev: CombatEvent) {
       break;
     }
     case 'phase': {
+      // a stray phase event (late intro narration, endEarly, anything) must
+      // never desync a live fight: while combat is active the only valid
+      // phase is 'combat'. checkEnd/endEarly clear inCombat before emitting
+      // explore/victory/defeat, so legitimate transitions still pass.
+      if (engine.combat.inCombat && ev.phase !== 'combat') {
+        engine.pushLog?.(`(phase ${ev.phase} ignored — fight in progress)`, 'system');
+        break;
+      }
       engine.phase = ev.phase;
       if (ev.phase === 'combat') {
         engine.audio.setDrums(true);
@@ -195,7 +203,7 @@ export async function animMove(engine: any, unitId: string, path: GridPos[]) {
   for (const p of pts) {
     const from = v.rig.group.position.clone();
     v.targetYaw = Math.atan2(p.x - from.x, p.z - from.z);
-    const dur = 130;
+    const dur = 130 * animScale;
     const t0 = performance.now();
     while (performance.now() - t0 < dur && !engine.disposed) {
       const k = (performance.now() - t0) / dur;
@@ -552,7 +560,13 @@ export async function pump(engine: any) {
   engine.pumping = true;
   while (engine.eventQueue.length && !engine.disposed) {
     const ev = engine.eventQueue.shift()!;
-    await animate(engine, ev);
+    try {
+      await animate(engine, ev);
+    } catch (err) {
+      // one bad event must never wedge the queue: log it and move on
+      console.error('[combatAnimation] event failed:', ev?.type, err);
+      engine.pushLog?.(`(a ${ev?.type ?? 'combat'} event hiccuped — the fight continues)`, 'system');
+    }
   }
   engine.pumping = false;
 }

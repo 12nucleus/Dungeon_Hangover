@@ -204,6 +204,10 @@ export interface Unit {
   bathPos?: GridPos;
   /** last damage type received (death hooks: bone rat vs fire) */
   lastDamageKind?: DamageType;
+  /** bone rat: already reassembled once this run */
+  reassembledOnce?: boolean;
+  /** bone rat: bones burned — never reassembles */
+  burnPrevented?: boolean;
   // ── idle patrolling (M8) ──
   /** home tile the mob patrols around (anchor point) */
   home?: GridPos;

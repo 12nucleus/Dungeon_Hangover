@@ -238,6 +238,16 @@ export function respawn(engine: any) {
       }
     }
   }
+  // a boss who survived the TPK mid-fight (e.g. Baron at 11/25) must be
+  // re-fightable: re-dormant him and re-arm his cutscene, otherwise he is
+  // un-aggroable forever (proximity skips bossGroups and the cutscene flag
+  // is still set). Deferred bosses are already dormant — no-op for them.
+  for (const u of engine.combat.units) {
+    if (u.team !== 'enemy' || !u.alive || !u.bossGroup) continue;
+    u.dormant = true;
+  }
+  engine.bossRatCutscenePlayed = false;
+  engine.gribnabCutscenePlayed = false;
   engine.props.resetAll();
   engine.selectedId = engine.combat.units.find((u: any) => u.team === 'party')?.id ?? null;
   engine.pushLog('💀 Death is not the end. The bonfire restores you. The dungeon stirs...', 'system');

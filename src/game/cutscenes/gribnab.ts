@@ -136,7 +136,8 @@ export async function playGribnabCutscene(h: CutsceneHost) {
   h.iso.lerp = 7;
 
   // ── begin the battle (Gribnab fights alone — his guards are already gone) ──
-  for (const u of h.combat.units) if ((u as any).bossGroup) (u as any).dormant = false;
+  // wake ONLY Gribnab — the Baron (also bossGroup) must stay in his own arena
+  for (const u of h.combat.units) if ((u as any).bossGroup && u.name === 'Gribnab') (u as any).dormant = false;
   h.pushLog('🫧 Gribnab the Soapy raises his soap-crusted club — the fight begins!', 'system');
   h.bossCineActive = false;
   h.busy = false;

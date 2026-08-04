@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Dungeon Hangover — Live Spectator</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 18px 40px; min-height: 100vh;
+    background: radial-gradient(1200px 600px at 50% -10%, #1a2035, #0a0c14 70%);
+    color: #c9d2e8; font: 13px/1.5 ui-monospace, Consolas, monospace;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 14px; padding: 14px 0 10px;
+    border-bottom: 1px solid #2a3148; position: sticky; top: 0;
+    background: linear-gradient(#0a0c14e6, #0a0c14f2); z-index: 5;
+  }
+  h1 { font-size: 16px; margin: 0; color: #ffd75e; letter-spacing: 1px; }
+  #status { font-size: 12px; }
+  #status.live { color: #6fcf6f; }
+  #status.waiting { color: #d9a04a; }
+  #status.dead { color: #d95a5a; }
+  .hint { margin-left: auto; font-size: 11px; color: #6a7690; }
+  #feed { margin-top: 14px; display: flex; flex-direction: column; gap: 2px; }
+  .line { padding: 2px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-word; animation: in 0.18s ease; }
+  @keyframes in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+  .system   { color: #8aa0c8; }
+  .hit      { color: #e8a86a; }
+  .crit     { color: #ffd75e; }
+  .death    { color: #ff7a6a; }
+  .heal     { color: #7ad97a; }
+  .info     { color: #9ab8e8; }
+  .roll     { color: #c9a2ff; }
+  .loot     { color: #d9c06a; }
+  .dialogue { color: #e8c8a8; font-style: italic; }
+  .buff     { color: #8ae0c0; }
+  .debuff   { color: #e0809a; }
+  .sep      { color: #4a5470; text-align: center; margin: 8px 0; }
+  .paused-note { color: #6a7690; font-style: italic; padding: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🐀 DUNGEON HANGOVER — LIVE</h1>
+  <span id="status" class="waiting">● waiting for a game session…</span>
+  <span class="hint">opens <code>localhost:5173</code> → your own browser shares the save — load the same slot to take over</span>
+</header>
+<div id="feed"><div class="paused-note">No signal yet. Start a run on the main game tab (or load a save) and every action will stream here.</div></div>
+<script>
+  const feed = document.getElementById('feed');
+  const status = document.getElementById('status');
+  const kinds = new Set(['system','hit','crit','death','heal','info','roll','loot','dialogue','buff','debuff']);
+  let lines = 0;
+  const add = (text, kind) => {
+    const div = document.createElement('div');
+    div.className = 'line ' + (kinds.has(kind) ? kind : 'system');
+    div.textContent = text;
+    feed.appendChild(div);
+    if (++lines > 400) feed.removeChild(feed.firstElementChild);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  };
+  const bc = new BroadcastChannel('dh-live-feed');
+  bc.onmessage = (ev) => {
+    status.className = 'live'; status.textContent = '● LIVE — watching the run';
+    const first = feed.querySelector('.paused-note');
+    if (first) first.remove();
+    add(ev.data.text || '(no text)', ev.data.kind || 'system');
+  };
+  // heartbeat: if nothing arrives for 15s, remind
+  let last = Date.now();
+  setInterval(() => {
+    if (Date.now() - last > 15000) {
+      status.className = 'waiting'; status.textContent = '● waiting for the next action…';
+    } else { last = Date.now(); }
+  }, 5000);
+  // piggyback a heartbeat off any message
+  const orig = bc.onmessage; bc.onmessage = (ev) => { last = Date.now(); orig(ev); };
+</script>
+</body>
+</html>

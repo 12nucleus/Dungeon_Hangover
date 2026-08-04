@@ -32,7 +32,7 @@ import { buildTavernExterior } from './engine/tavernExterior';
 import { buildTavern } from './engine/tavern';
 import { buildSheep } from './engine/sheep';
 import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone, grantKey as grantKeyModule, winGame as winGameModule, grantLoot as grantLootModule } from './engine/dungeonSetup';
-import { smashProp, checkCombatTrigger, enqueue, triggerTrap as triggerTrapModule } from './engine/combatAnimation';
+import { smashProp, checkCombatTrigger, enqueue, setAnimScale, triggerTrap as triggerTrapModule } from './engine/combatAnimation';
 import { updateFog, updateExploredVisibility, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
 import { respawn as respawnModule } from './engine/camping';
@@ -1449,7 +1449,7 @@ export class GameEngine {
     const active = this.combat.active;
     if (!active || active.team !== 'party' || this.busy) return;
     if (!skillId) { this.cancelTargeting(); return; }
-    if (this.phase !== 'combat') {
+    if (!this.combat?.inCombat) {
       this.setHoverInfoOnce('Skills can only be used in combat.');
       return;
     }
@@ -1470,7 +1470,9 @@ export class GameEngine {
   }
 
   endTurn() {
-    if (this.phase !== 'combat' || this.busy) return;
+    // trust combat.inCombat (authoritative) over engine.phase — a stray
+    // phase mirror can desync while a fight is live (intro tail, endEarly)
+    if (!this.combat?.inCombat || this.busy) return;
     const a = this.combat.active;
     if (!a || a.team !== 'party') return;
     this.audio.play('ui_click', 0.7);
@@ -2459,6 +2461,8 @@ export class GameEngine {
   public setupDungeon(L: LevelDef) { setupDungeon(this, L); }
   public attachHeroTorch(rig: Rig) { attachHeroTorch(this, rig); }
   public updateDungeon(dt: number) { updateDungeon(this, dt); }
+  public setAnimScale(s: number) { setAnimScale(s); }
+
   public inEnemyCone(p: GridPos, enemy: Unit): boolean { return inEnemyCone(this, p, enemy); }
   public aggroGroup(groupId: string | undefined) { aggroGroup(this, groupId); }
 
@@ -2885,7 +2889,14 @@ export class GameEngine {
   public pushLog(text: string, kind: LogEntry['kind']) {
     this.log.push({ id: this.logSeq++, text, kind });
     if (this.log.length > 90) this.log = this.log.slice(-90);
+    // live spectator feed: any open /spectate.html tab receives every line
+    try {
+      (this.bc ?? (this.bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('dh-live-feed') : null))?.postMessage({ text, kind });
+    } catch { /* spectator is best-effort */ }
   }
+
+  /** broadcast channel for the /spectate.html live feed (lazy) */
+  private bc: BroadcastChannel | null = null;
 
   public emitSnapshot() {
     if (!this.combat) return;

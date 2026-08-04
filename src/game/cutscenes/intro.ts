@@ -589,7 +589,9 @@ export function finishIntro(h: CutsceneHost) {
 
   h.iso.lerp = 7;
   h.busy = false;
-  h.phase = 'explore';
+  // never yank a live fight back to explore — the intro's async tail can
+  // finish while the player is already in combat (speedruns, auto-pilots).
+  if (!h.combat?.inCombat) h.phase = 'explore';
   h.onIntroComplete();
   h.pushLog('Floor 50 — The Sewer Cellar. The bottom of everything. Light the bonfire to set your respawn.', 'system');
   h.emitSnapshot();

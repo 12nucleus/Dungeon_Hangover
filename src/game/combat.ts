@@ -163,6 +163,7 @@ export class Combat {
 
   // ── combat lifecycle ───────────────────────────────────────
   start(): CombatEvent[] {
+    if (this.inCombat) return []; // never merge a second fight into a live one
     this.surpriseRound = false;
     this.surpriseHits.clear();
     this.corpses = [];
@@ -184,6 +185,11 @@ export class Combat {
     this.activeIdx = 0;
     ev.push({ type: 'log', text: '— ⚔ COMBAT BEGINS —', kind: 'system' });
     ev.push({ type: 'phase', phase: 'combat' });
+    // Nothing to fight (e.g. a boss cutscene/aggro re-fires after the boss is
+    // already dead, or the party is already down): end the fight immediately
+    // instead of spinning the rotation on an empty board forever.
+    ev.push(...this.checkEnd());
+    if (!this.inCombat) return ev;
     ev.push(...this.beginTurn());
     return ev;
   }
@@ -223,7 +229,12 @@ export class Combat {
       ev.push({ type: 'float', unitId: u.id, text: `☠ -${dmg.total}`, cls: 'dmg' });
       ev.push({ type: 'log', text: `${u.name} suffers ${dmg.total} ${dot.type} damage (${c.name})`, kind: 'hit' });
       if (u.hp <= 0 && u.alive) ev.push(...this.onDeath(u));
-      if (!u.alive) return ev;
+      if (!u.alive) {
+        // died to DOT at turn start: still emit the turn event so the pump
+        // auto-advances the rotation (the 'turn' handler skips dead units).
+        ev.push({ type: 'turn', unitId: u.id, round: this.round });
+        return ev;
+      }
     }
 
     for (const c of u.conditions) c.roundsLeft--;
@@ -291,6 +302,9 @@ export class Combat {
   }
 
   private checkEnd(): CombatEvent[] {
+    // idempotent: the death chain calls checkEnd twice (onDeath + the
+    // trailing call in useSkill) — only the first call may emit results.
+    if (!this.inCombat) return [];
     const ev: CombatEvent[] = [];
     const party = this.living('party').length, foes = this.activeEnemies().length;
     if (party === 0 || foes === 0) {
@@ -299,10 +313,29 @@ export class Combat {
         // Encounter cleared. The dungeon is a series of encounters, so we hand
         // control back to exploration; final victory is driven by the engine
         // (looting the golden chest). Per-kill loot has already dropped.
+        // Alive stragglers (a reassembled bone rat, a surviving summon) must
+        // re-dormant/fade here or they get swept into the NEXT fight by
+        // combat.start(), silently merging two rooms' worth of enemies.
+        // bossGroup units are deferred bosses — never touch them.
+        for (const u of this.units) {
+          if (u.team !== 'enemy' || !u.alive || u.bossGroup) continue;
+          if (u.groupId) u.dormant = true;
+          else u.alive = false; // summoned minions fade on victory
+        }
         this.phase = 'explore';
         ev.push({ type: 'log', text: '— ✓ Area secured. —', kind: 'system' });
         ev.push({ type: 'phase', phase: 'explore' });
       } else {
+        // TPK: surviving enemies retreat to their rooms (re-dormant) so the
+        // player can retry the encounter — and so they can never leak into a
+        // LATER fight via the next combat.start() (which sweeps up every
+        // alive non-dormant enemy). Summoned minions fade with the defeat.
+        // bossGroup units are deferred bosses — never touched.
+        for (const u of this.units) {
+          if (u.team !== 'enemy' || u.bossGroup) continue;
+          if (u.groupId) u.dormant = true;
+          else u.alive = false; // summoned minions fade on defeat
+        }
         this.phase = 'defeat';
         ev.push({ type: 'log', text: '— 💀 DEFEAT. The realm falls silent... —', kind: 'system' });
         ev.push({ type: 'phase', phase: 'defeat' });
@@ -746,6 +779,18 @@ export class Combat {
   private onDeath(t: Unit): CombatEvent[] {
     const out: CombatEvent[] = [];
     if (!t.alive) return out;
+    // Bone Rat: reassembles once unless burned. Decided here in the MODEL so
+    // the fight never sees a premature area-secured (the old animation-layer
+    // version revived the rat AFTER checkEnd had already ended the fight,
+    // leaking an awake rat into the next room's combat).
+    if (t.name === 'Bone Rat' && t.lastDamageKind !== 'fire' && !t.burnPrevented && !t.reassembledOnce) {
+      t.reassembledOnce = true;
+      t.hp = t.maxHp;
+      t.conditions = [];
+      out.push({ type: 'log', text: '🦴 The bones RATTLE. The Bone Rat reassembles!', kind: 'system' });
+      out.push({ type: 'float', unitId: t.id, text: 'REASSEMBLED', cls: 'dmg' });
+      return out;
+    }
     t.alive = false;
     if (t.team === 'enemy' && this.inCombat) this.corpses.push(t.id);
     out.push({ type: 'death', unitId: t.id });

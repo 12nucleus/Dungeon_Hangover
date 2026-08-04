@@ -637,6 +637,8 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       run: (e) => {
         e.setFlag('bones_burned');
         e.torchFuel = Math.max(0, e.torchFuel - 10);
+        const boneRat = e.combat!.units.find((u: any) => u.name === 'Bone Rat') as any;
+        if (boneRat) boneRat.burnPrevented = true;
         e.pushLog('You torch the bone pile. The Bone Rat will NOT be coming back. Fire solves everything.', 'system');
       },
     });
