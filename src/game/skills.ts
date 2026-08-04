@@ -307,6 +307,13 @@ export const SKILLS: Record<string, SkillDef> = {
     appliesCondition: 'enraged', appliesRounds: 2, hpBelowPct: 0.1, oncePerFight: true,
     fxColor: 0xffd23a, fx: 'buff',
   },
+  totem_burst: {
+    id: 'totem_burst', name: 'Totem Pulse', icon: '🪵', kind: 'aoe',
+    desc: 'Each turn the totem pulses, dealing 2d6 force to nearby enemies.',
+    range: 0, aoeRadius: 2, cost: 'action', cooldown: 0,
+    attackAbility: 'wis', damageDice: '2d6', damageType: 'force',
+    selfCentered: true, fxColor: 0x8a5a2a, fx: 'buff',
+  },
 };
 
 export const CONDITIONS: Record<string, { name: string; desc: string }> = {
@@ -340,6 +347,7 @@ export const CONDITIONS: Record<string, { name: string; desc: string }> = {
 
   // ── class-form buffs (buffs branch of useSkill) ──
   stoneskin: { name: 'Stone Skin', desc: '+4 AC' },
+  armored: { name: 'Armored', desc: '+5 AC' },
   wraith: { name: 'Wraith Form', desc: 'Phases through harm: +2 AC, +2 attack' },
   lich_form: { name: 'Lich Form', desc: 'Immune to physical damage, +2 damage dealt' },
   spirit_form: { name: 'Spirit Form', desc: '+1 attack' },
@@ -348,6 +356,13 @@ export const CONDITIONS: Record<string, { name: string; desc: string }> = {
   eldritch_form: { name: 'Eldritch Form', desc: '+2 attack' },
   shadow_form: { name: 'Shadow Form', desc: '+2 attack' },
   kings_lounge: { name: "King's Lounge", desc: '+2 damage dealt' },
+
+  // ── skills-audit conditions (tier-1 utility skills) ──
+  charmed: { name: 'Charmed', desc: 'Entranced — skips their turn' },
+  fortified: { name: 'Fortified', desc: '+3 AC' },
+  inspired: { name: 'Inspired', desc: '+2 attack rolls, +2 damage dealt' },
+  write_off: { name: 'Written Off', desc: 'Takes 50% less damage this turn' },
+  evading: { name: 'Evading', desc: 'Cannot be targeted by single-target attacks' },
 };
 
 // ── unit factory ─────────────────────────────────────────────
@@ -610,6 +625,23 @@ export const SUMMON_TEMPLATES: Record<string, () => Unit> = {
     knownSkills: ['bone_strike', 'shove'], moveRange: 5, xpValue: 0,
     scheme: { skin: 0xd8d2be, cloth: 0x3a2f28, accent: 0x9a9a9a, hair: 0x8fe3ff, hood: false, bulk: 1.3, monster: 'skeleton' },
     weapon: 'sword',
+  }),
+  // ── skills-audit: party-side terrain summons (lifetime = turnsLeft) ──
+  totem: () => mkSummon({
+    name: 'Spirit Totem', title: 'Channeling Totem', team: 'party', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 5, hp: 5, ac: 18, level: 1,
+    abilities: { str: 8, dex: 8, con: 10, int: 8, wis: 12, cha: 6 },
+    knownSkills: ['totem_burst'], moveRange: 0, xpValue: 0, turnsLeft: 3, dormant: false,
+    scheme: { skin: 0x8a5a2a, cloth: 0x5a3a1a, accent: 0xe8b46a, hair: 0x3a2a1a, hood: false, bulk: 0.8, monster: 'rat' },
+    weapon: 'dagger',
+  }),
+  door_wall: () => mkSummon({
+    name: 'The Door', title: 'Conjured Wall', team: 'party', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 30, hp: 30, ac: 16, level: 1,
+    abilities: { str: 10, dex: 6, con: 16, int: 6, wis: 6, cha: 6 },
+    knownSkills: [], moveRange: 0, xpValue: 0, turnsLeft: 2, dormant: false,
+    scheme: { skin: 0x8a5a2a, cloth: 0x5a3a1a, accent: 0xe8b46a, hair: 0x3a2a1a, hood: false, bulk: 1, monster: 'skeleton' },
+    weapon: 'dagger',
   }),
 };
 

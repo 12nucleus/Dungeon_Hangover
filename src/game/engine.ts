@@ -1458,8 +1458,10 @@ export class GameEngine {
     const deny = this.combat.canUse(active, s);
     if (deny) { this.setHoverInfoOnce(deny); return; }
     this.audio.play('ui_click', 0.6);
-    // instant-cast kinds: buffs, self-centered novas, self-casts & party-wide heals
-    if (s.kind === 'buff' || s.selfCentered || s.selfOnly || s.allAllies) {
+    // instant-cast kinds: self-centered novas, self-casts, party-wide buffs/heals.
+    // Ally-targeted buffs (encore, rehearsal, vow, refill) need aiming mode
+    // so they refuse to cast on the caster's own tile.
+    if ((s.kind === 'buff' && !s.targetsAllies) || s.selfCentered || s.selfOnly || s.allAllies) {
       this.audio.play('dice', 0.7);
       this.enqueue(this.combat.useSkill(active, s.id, active.pos));
       return;
@@ -2259,9 +2261,21 @@ export class GameEngine {
       this.setHoverInfoOnce('No bonus action left.');
       return;
     }
+    const wasCursed = u.conditions.some((c) => c.id === 'cursed');
     this.inventory.splice(idx, 1);
     this.audio.play('heal', 0.5, 1.6);
     this.enqueue(this.combat.useConsumable(u, item, u.id));
+    // holy water breaks the vault curse — the cursed-gold quest resolves.
+    // (was only in the module-level camping version, which nothing calls)
+    if (item._baseId === 'holy_water' && wasCursed) {
+      this.flags?.add('curse_broken');
+      if (!this.questLog?.get('cursed_gold')) this.questLog?.start('cursed_gold');
+      if (this.questLog?.get('cursed_gold')?.stage !== 'completed') {
+        this.grantLoot?.([makeItem('blessed_penny')], 0);
+        this.completeQuest?.('cursed_gold');
+        this.pushLog("🪙 The curse lifts. The vault's saint pays you back with a Blessed Penny.", 'system');
+      }
+    }
   }
 
   public hotkeySkill(i: number) {

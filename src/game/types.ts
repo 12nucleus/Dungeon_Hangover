@@ -208,6 +208,12 @@ export interface Unit {
   reassembledOnce?: boolean;
   /** bone rat: bones burned — never reassembles */
   burnPrevented?: boolean;
+  /** next attack is a guaranteed crit (shadow_step / xray) */
+  sneak?: boolean;
+  /** vow bond: this unit's partner shares its damage (The Vow) */
+  vowPartner?: string;
+  /** summoned wall/totem lifetime: fades when this hits 0 at its turn start */
+  turnsLeft?: number;
   // ── idle patrolling (M8) ──
   /** home tile the mob patrols around (anchor point) */
   home?: GridPos;

@@ -11,9 +11,8 @@ import { effMaxHp, MAX_LEVEL, XP_THRESHOLDS } from '../stats';
 import { classPoolSkillIdsForLevel } from '../classSkills';
 import type { GridPos } from '../types';
 import { canUnlock, treeFor } from '../skilltree';
-import { makeItem, type Item } from '../items';
+import { type Item } from '../items';
 import { unitWorld } from './visuals';
-import { enqueue } from './combatAnimation';
 import { spawnBonfireFlame } from './gameFlow';
 
 // ══ sneak / torch (called from React HUD) ═══════════════════
@@ -382,31 +381,9 @@ export function unequipSkill(engine: any, unitId: string, skillId: string) {
 
 /** drink a potion — self-target; in combat only on the drinker's turn (bonus action) */
 export function useConsumable(engine: any, itemId: string, unitId: string) {
-  const idx = engine.inventory.findIndex((i: Item) => i.id === itemId);
-  const u = engine.byId(unitId);
-  if (idx < 0 || !u || !u.alive) return;
-  const item = engine.inventory[idx];
-  if (item.kind !== 'consumable') return;
-  if (engine.combat.inCombat && engine.combat.active?.id !== u.id) {
-    engine.setHoverInfoOnce(`${u.name} must wait for their turn.`);
-    return;
-  }
-  if (engine.combat.inCombat && !u.hasBonus) {
-    engine.setHoverInfoOnce('No bonus action left.');
-    return;
-  }
-  const wasCursed = u.conditions.some((c: any) => c.id === 'cursed');
-  engine.inventory.splice(idx, 1);
-  engine.audio.play('heal', 0.5, 1.6);
-  enqueue(engine, engine.combat.useConsumable(u, item, u.id));
-  // holy water breaks the vault curse — the cursed-gold quest resolves
-  if (item._baseId === 'holy_water' && wasCursed) {
-    engine.flags?.add('curse_broken');
-    if (!engine.questLog?.get('cursed_gold')) engine.questLog?.start('cursed_gold');
-    if (engine.questLog?.get('cursed_gold')?.stage !== 'completed') {
-      engine.grantLoot?.([makeItem('blessed_penny')], 0);
-      engine.completeQuest?.('cursed_gold');
-      engine.pushLog('🪙 The curse lifts. The vault\'s saint pays you back with a Blessed Penny.', 'system');
-    }
-  }
+  // NOTE: the canonical implementation lives on GameEngine (engine.ts).
+  // This module-level twin is kept as the barrel export; the holy-water
+  // cure logic now lives in the engine method so the Inventory panel path
+  // (engine.useConsumable) completes the cursed-gold quest.
+  engine.useConsumable(itemId, unitId);
 }

@@ -255,10 +255,29 @@ export class Combat {
       ev.push({ type: 'turn', unitId: u.id, round: this.round });
       return ev;
     }
+    // charmed: entranced — the unit skips its turn this round
+    if (u.conditions.some((c) => c.id === 'charmed')) {
+      u.hasAction = false; u.hasBonus = false; u.movementLeft = 0;
+      ev.push({ type: 'log', text: `${u.name} is charmed — they gaze in wonder and do nothing.`, kind: 'system' });
+      ev.push({ type: 'turn', unitId: u.id, round: this.round });
+      return ev;
+    }
     // prone: the unit stands back up at the start of its turn
     if (u.conditions.some((c) => c.id === 'prone')) {
       u.conditions = u.conditions.filter((c) => c.id !== 'prone');
-      ev.push({ type: 'log', text: `${u.name} clambers back to their feet.`, kind: 'system' });
+    }
+    // turnsLeft: terrain summons (totem / door_wall) fade when their
+    // lifetime expires at their turn start. The unit dies (non-looting)
+    // and the rotation advances past it.
+    if (u.turnsLeft !== undefined) {
+      u.turnsLeft -= 1;
+      if (u.turnsLeft <= 0) {
+        u.alive = false;
+        ev.push({ type: 'log', text: `${u.name} fades away.`, kind: 'system' });
+        ev.push({ type: 'death', unitId: u.id });
+        ev.push({ type: 'turn', unitId: u.id, round: this.round });
+        return ev;
+      }
     }
     u.hasAction = true;
     u.hasBonus = true;
@@ -428,7 +447,7 @@ export class Combat {
       center = { ...t.pos };
       targets = [t];
       if (s.targetsAllies && t.team !== u.team) return [{ type: 'log', text: 'Must target an ally.', kind: 'info' }];
-      if (!s.targetsAllies && t.team === u.team && s.kind !== 'buff') return [{ type: 'log', text: 'Must target an enemy.', kind: 'info' }];
+      if (!s.targetsAllies && t.team !== u.team && t.conditions.some((c) => c.id === 'evading')) return [{ type: 'log', text: `${t.name} is Evading — they cannot be targeted!`, kind: 'info' }];
     } else {
       return [{ type: 'log', text: 'No target selected.', kind: 'info' }];
     }
@@ -587,7 +606,9 @@ export class Combat {
     }
 
     // condition buffs (bless / arcane shield / bubble shield / sovereign sudds)
-    if (s.appliesCondition) {
+    // — buff-kind only. Ranged skills with a rider condition (charm,
+    // bleed, poison) flow to the attack-roll block so the hit/saves play.
+    if (s.appliesCondition && s.kind === 'buff') {
       for (const ally of (s.selfOnly ? [u] : this.living(u.team))) {
         if (!ally.conditions.some((c) => c.id === s.appliesCondition)) {
           ally.conditions.push({ id: s.appliesCondition!, name: CONDITIONS[s.appliesCondition!].name, roundsLeft: s.appliesRounds ?? 3 });
@@ -600,9 +621,92 @@ export class Combat {
       ev.push(...this.checkEnd());
       return ev;
     }
-
-    // anything else — never crash, never silently fake: say so honestly
-    ev.push({ type: 'log', text: `${s.name} fizzles — its effect is still on the drawing board.`, kind: 'info' });
+    // ── utility skills (buff-kind, no raiseCorpses/summonId/appliesCondition):
+    //    teleportation, movement, extra-action, intel, cleansing, toast,
+    //    vow-bonding — none of them do HP damage so they never roll attack.
+    const HARMFUL = new Set(['rooted', 'stunned', 'surprised', 'prone', 'bleeding', 'burning', 'poisoned', 'slowed', 'blind', 'hexed', 'cursed', 'corroding', 'wraith_form', 'dire_form', 'eldritch_form', 'lich_form', 'shadow_form', 'paralytic', 'frozen', 'distracted', 'debuff', 'panicked', 'frightened', 'asleep', 'marked', 'bleeding', 'infected', 'taunted', 'charmed']);
+    const clean = (unit: Unit) => { unit.conditions = unit.conditions.filter((c) => !HARMFUL.has(c.id)); };
+    const addCond = (unit: Unit, id: string, rounds: number) => {
+      const cond = CONDITIONS[id];
+      if (!cond) return;
+      const existing = unit.conditions.find((c) => c.id === id);
+      if (existing) existing.roundsLeft = Math.max(existing.roundsLeft ?? 0, rounds);
+      else unit.conditions.push({ id, name: cond.name, roundsLeft: rounds });
+      ev.push({ type: 'float', unitId: unit.id, text: `✨ ${cond.name}`, cls: 'buff' });
+    };
+    const giveExtra = (unit: Unit, n: number) => { unit.cooldowns['extra_action'] = (unit.cooldowns['extra_action'] ?? 0) + n; };
+    switch (s.id) {
+      // teleport + guaranteed-crit on next attack
+      case 'shadow_step': {
+        const tx = targets[0]?.pos ?? u.pos; u.pos = { ...tx }; u.sneak = true;
+        ev.push({ type: 'log', text: `${u.name} vanishes into shadow — next attack is a guaranteed crit!`, kind: 'crit' });
+        ev.push({ type: 'float', unitId: u.id, text: '🌑 Sneak', cls: 'buff' });
+        break;
+      }
+      // self/ally movement refund (disengage, seating_shuffle)
+      case 'disengage': u.movementLeft = (u.movementLeft ?? 0) + 3; ev.push({ type: 'log', text: `${u.name} slips away — 3 bonus movement.`, kind: 'system' }); ev.push({ type: 'float', unitId: u.id, text: '💨 +3 move', cls: 'buff' }); break;
+      case 'seating_shuffle': for (const a of this.living(u.team)) { a.movementLeft = (a.movementLeft ?? 0) + 3; } ev.push({ type: 'log', text: 'The seating shifts — everyone gains 3 movement!', kind: 'system' }); break;
+      // self/ally extra-action (scat, mise, jitter, encore, the_taste, toast)
+      case 'scat': case 'mise': giveExtra(u, 1); ev.push({ type: 'log', text: `${u.name} ad-libs — +1 bonus action!`, kind: 'system' }); ev.push({ type: 'float', unitId: u.id, text: '⚡ +1 act', cls: 'buff' }); break;
+      case 'jitter': giveExtra(u, 2); ev.push({ type: 'log', text: `${u.name} jitters — +2 bonus actions from the caffeine!`, kind: 'system' }); ev.push({ type: 'float', unitId: u.id, text: '⚡ +2 act', cls: 'buff' }); break;
+      case 'encore': { const a = targets[0]; giveExtra(a, 1); ev.push({ type: 'log', text: `Encore! ${a.name} gains +1 action next turn.`, kind: 'system' }); ev.push({ type: 'float', unitId: a.id, text: '⚡ +1 act', cls: 'buff' }); break; }
+      case 'the_taste': giveExtra(u, 1); addCond(u, 'inspired', 2); ev.push({ type: 'log', text: `${u.name} has the taste — +1 action and Inspired!`, kind: 'system' }); break;
+      case 'toast': case 'the_toast': {
+        for (const a of this.living(u.team)) { const h = Math.floor(effMaxHp(a) * 0.1); a.hp = Math.min(effMaxHp(a), a.hp + h); giveExtra(a, 1); }
+        ev.push({ type: 'log', text: 'A toast! The party heals and gains +1 action.', kind: 'heal' }); break;
+      }
+      // cleanse + defensive riders (whitening, form_36b, palate_cleanser)
+      case 'whitening': case 'form_36b': clean(u); ev.push({ type: 'log', text: `${u.name} is cleansed of ailments.`, kind: 'heal' }); ev.push({ type: 'float', unitId: u.id, text: '✨ Cleanse', cls: 'buff' }); break;
+      case 'palate_cleanser': clean(u); addCond(u, 'fortified', 2); ev.push({ type: 'log', text: `${u.name} rinses the palate — cleansed and Fortified!`, kind: 'heal' }); break;
+      // intel (xray grants sneak on the chosen enemy; spirit_sight/scout are passive-flavored侦察)
+      case 'xray': { const t = targets[0]; if (t) ev.push({ type: 'log', text: `${t.name}: ${t.hp}/${effMaxHp(t)} HP, AC ${effAC(t)}, ${t.conditions.map((c) => c.name).join(', ') || 'no conditions'}.`, kind: 'info' }); u.sneak = true; ev.push({ type: 'float', unitId: u.id, text: '🎯 Identified + Sneak', cls: 'buff' }); break; }
+      case 'spirit_sight': case 'scout': { const foes = this.living(u.team === 'party' ? 'enemy' : 'party'); ev.push({ type: 'log', text: `Spirits whisper — ${foes.length} foes: ${foes.map((f) => `${f.name} ${f.hp}/${effMaxHp(f)}hp`).join('; ')}.`, kind: 'info' }); ev.push({ type: 'float', unitId: u.id, text: '👁 Sighted', cls: 'buff' }); break; }
+      // self-heal snack (appraisal little bite)
+      case 'appraisal': { const h = Math.min(rollDice('2d4').total, effMaxHp(u) - u.hp); u.hp += h; ev.push({ type: 'log', text: `${u.name} appraises the snacks — a quick bite heals ${h}.`, kind: 'heal' }); ev.push({ type: 'float', unitId: u.id, text: `+${h}`, cls: 'heal' }); break; }
+      // ally shielding + inspiration (rehearsal, vow)
+      case 'rehearsal': { const a = targets[0]; addCond(a, 'shielded', 2); addCond(a, 'inspired', 2); ev.push({ type: 'log', text: `Rehearsal pays off — ${a.name} is Shielded and Inspired!`, kind: 'system' }); break; }
+      case 'vow': { const a = targets[0]; addCond(u, 'shielded', 1); addCond(a, 'shielded', 1); u.vowPartner = a.id; a.vowPartner = u.id; ev.push({ type: 'log', text: `${u.name} and ${a.name} swear a vow — their wounds are shared.`, kind: 'system' }); break; }
+      case 'venom_blade': addCond(u, 'inspired', 3); ev.push({type:'log', text:`${u.name}'s blade gleams with venom.`, kind:'system'}); break;
+      case 'shadow_cloak': u.sneak = true; addCond(u, 'evading', 2); ev.push({type:'log', text:`${u.name} vanishes — Evading + sneaking.`, kind:'crit'}); break;
+      case 'infusion': u.cooldowns['infusion_next'] = 1; ev.push({type:'log', text:'Next consumable is guaranteed success.', kind:'system'}); break;
+      case 'power_ballad_2': for (const a of this.living(u.team)) { addCond(a, 'shielded', 3); addCond(a, 'inspired', 3); } ev.push({type:'log', text:'Ballad of Fury — Shielded + Inspired all!', kind:'system'}); break;
+      case 'power_crescendo': addCond(u, 'inspired', 3); ev.push({type:'log', text:`${u.name}'s song crescendoes — Inspired.`, kind:'system'}); break;
+      case 'encore_all': for (const a of this.living(u.team)) giveExtra(a, 1); ev.push({type:'log', text:'Encore for everyone — +1 bonus action!', kind:'system'}); break;
+      case 'spontaneous': { const pool = ['inspired','shielded','fortified','enraged']; const id = pool[Math.floor(Math.random()*pool.length)]; for (const a of this.living(u.team)) addCond(a, id, 3); ev.push({type:'log', text:`A spontaneous ${CONDITIONS[id].name} sweeps the party!`, kind:'system'}); break; }
+      case 'full_coordination': for (const a of this.living(u.team)) giveExtra(a, 1); ev.push({type:'log', text:'Full coordination — +1 action all.', kind:'system'}); break;
+      case 'perfect_rehearsal': for (const a of this.living(u.team)) giveExtra(a, 2); ev.push({type:'log', text:'Perfect rehearsal — +2 actions all!', kind:'system'}); break;
+      case 'reception': for (const a of this.living(u.team)) giveExtra(a, 3); ev.push({type:'log', text:'The reception — +3 AP all!', kind:'system'}); break;
+      case 'triple_espresso': giveExtra(u, 3); ev.push({type:'log', text:`${u.name} downs 3 espressos — +3 actions!`, kind:'system'}); ev.push({type:'float', unitId: u.id, text:'⚡+3', cls:'buff'}); break;
+      case 'refill': { const a = targets[0]; if (a) { a.cooldowns = {}; ev.push({type:'log', text:`${a.name}'s cooldowns refreshed.`, kind:'system'}); ev.push({type:'float', unitId: a.id, text:'↻', cls:'buff'}); } break; }
+      case 'encore_ultimate': for (const a of this.living(u.team)) { const onc = Object.keys(a.cooldowns).filter(k => k.startsWith('once_')); a.cooldowns = {}; onc.forEach(k => a.cooldowns[k] = 999); } ev.push({type:'log', text:'Encore Ult — all ally cooldowns reset!', kind:'system'}); break;
+      case 'time_warp': giveExtra(u, 2); u.movementLeft = (u.movementLeft ?? 0) + effMove(u); ev.push({type:'log', text:`${u.name} warps time — +2 act + move refund!`, kind:'crit'}); break;
+      case 'capstone_no_closing_time': giveExtra(u, 99); u.cooldowns['once_capstone'] = 999; ev.push({type:'log', text:'🏆 NO CLOSING TIME — unlimited turns!', kind:'crit'}); break;
+      case 'crowd_surf': u.movementLeft = (u.movementLeft ?? 0) + effMove(u); for (const a of this.living(u.team)) addCond(a, 'inspired', 2); for (const t of this.living(u.team==='party'?'enemy':'party')) if (Combat.dist(t.pos, u.pos) <= 2) this.applyDamage(ev, t, rollDice('3d6').total, 'force', false); ev.push({type:'log', text:`${u.name} crowd-surfs!`, kind:'system'}); break;
+      case 'final_song': for (const a of this.living(u.team)) { const h = Math.min(rollDice('6d8').total, effMaxHp(a) - a.hp); a.hp += h; addCond(a, 'inspired', 3); ev.push({type:'float', unitId: a.id, text:`+${h}`, cls:'heal'}); } ev.push({type:'log', text:'The Final Song — heal + Inspired all!', kind:'heal'}); break;
+      case 'the_ultimate_plan': for (const a of this.living(u.team)) { const h = Math.min(rollDice('8d8').total, effMaxHp(a) - a.hp); a.hp += h; giveExtra(a, 1); ev.push({type:'float', unitId: a.id, text:`+${h}`, cls:'heal'}); } ev.push({type:'log', text:'Ultimate Plan — heal + action all!', kind:'heal'}); break;
+      case 'banquet': for (const a of this.living(u.team)) { const h = Math.min(rollDice('6d8').total, effMaxHp(a) - a.hp); a.hp += h; giveExtra(a, 2); ev.push({type:'float', unitId: a.id, text:`+${h}`, cls:'heal'}); } ev.push({type:'log', text:'A banquet — heal + +2 actions all!', kind:'heal'}); break;
+      case 'mega_banquet': for (const a of this.living(u.team)) { const h = Math.min(rollDice('8d8').total, effMaxHp(a) - a.hp); a.hp += h; addCond(a, 'fortified', 3); ev.push({type:'float', unitId: a.id, text:`+${h}`, cls:'heal'}); } ev.push({type:'log', text:'Mega banquet — heal + Fortified all!', kind:'heal'}); break;
+      case 'the_herd': for (const t of this.living(u.team==='party'?'enemy':'party')) this.applyDamage(ev, t, rollDice('4d6').total, 'bludgeoning', false); ev.push({type:'log', text:'🐂 Stampede!', kind:'crit'}); break;
+      case 'security': for (const t of this.living(u.team==='party'?'enemy':'party')) this.applyDamage(ev, t, rollDice('2d6').total, 'bludgeoning', false); ev.push({type:'log', text:'A bouncer tosses the room!', kind:'system'}); break;
+      case 'capital_gains': addCond(u, 'enraged', 3); ev.push({type:'log', text:'Capital gains — Enraged!', kind:'system'}); break;
+      case 'amortize': { const t = targets[0]; if (t) addCond(t, 'bleeding', 3); ev.push({type:'log', text:`${t?.name ?? 'Target'} amortizes — Bleeding!`, kind:'system'}); break; }
+      case 'avatar': addCond(u, 'enraged', 3); addCond(u, 'lich_form', 3); ev.push({type:'log', text:`${u.name} ascends to Avatar form!`, kind:'crit'}); break;
+      case 'plumbers_rage': addCond(u, 'enraged', 3); addCond(u, 'armored', 3); ev.push({type:'log', text:`${u.name} plummets into rage — Enraged + Armored!`, kind:'crit'}); break;
+      case 'the_toast_2': for (const a of this.living(u.team)) { addCond(a, 'fortified', 3); addCond(a, 'enraged', 3); } ev.push({type:'log', text:'The Grand Toast — Fortified + Enraged all!', kind:'system'}); break;
+      case 'the_vows': for (const a of this.living(u.team)) addCond(a, 'shielded', 99); ev.push({type:'log', text:'The Eternal Vows — party Shielded indefinitely!', kind:'system'}); break;
+      case 'editorial_2': for (const a of this.living(u.team)) addCond(a, 'enraged', 3); ev.push({type:'log', text:'A scathing editorial — Enraged all!', kind:'system'}); break;
+      case 'royal_wine': { const h = Math.min(rollDice('8d8').total, effMaxHp(u) - u.hp); u.hp += h; addCond(u, 'enraged', 3); ev.push({type:'float', unitId: u.id, text:`+${h}`, cls:'heal'}); ev.push({type:'log', text:`${u.name} downs royal wine — heal + Enraged!`, kind:'heal'}); break; }
+      case 'revaluation': { const h = Math.min(rollDice('6d8').total, effMaxHp(u) - u.hp); u.hp += h; addCond(u, 'enraged', 3); ev.push({type:'float', unitId: u.id, text:`+${h}`, cls:'heal'}); ev.push({type:'log', text:`${u.name} revalues — heal + Enraged!`, kind:'heal'}); break; }
+      case 'solder': { const h = Math.min(rollDice('3d8').total, effMaxHp(u) - u.hp); u.hp += h; ev.push({type:'float', unitId: u.id, text:`+${h}`, cls:'heal'}); ev.push({type:'log', text:`${u.name} solders wounds — +${h} HP.`, kind:'heal'}); break; }
+      case 'souffle': { const a = targets[0]; if (a) { const h = Math.min(rollDice('4d8').total, effMaxHp(a) - a.hp); a.hp += h; addCond(a, 'shielded', 3); ev.push({type:'float', unitId: a.id, text:`+${h}`, cls:'heal'}); ev.push({type:'log', text:`${a.name} enjoys a soufflé — heal + Shielded!`, kind:'heal'}); } break; }
+      case 'midnight_snack': { const h = Math.min(rollDice('2d8').total, effMaxHp(u) - u.hp); u.hp += h; giveExtra(u, 2); ev.push({type:'float', unitId: u.id, text:`+${h} heal +2 act`, cls:'heal'}); ev.push({type:'log', text:`${u.name} sneak-eats — heal + 2 actions!`, kind:'heal'}); break; }
+      case 'beast_fury': addCond(u, 'enraged', 3); addCond(u, 'stoneskin', 3); ev.push({type:'log', text:`${u.name} feels beast fury — Enraged + Stone Skin!`, kind:'crit'}); break;
+      case 'write_off': clean(u); ev.push({type:'log', text:`${u.name} writes everything off — cleansed!`, kind:'heal'}); ev.push({type:'float', unitId: u.id, text:'✨ Cleanse', cls:'buff'}); break;
+      case 'steam_armor': addCond(u, 'shielded', 3); ev.push({type:'log', text:`${u.name} steams up — Shielded (dodge 3 turns).`, kind:'system'}); break;
+      case 'rummage': giveExtra(u, 1); ev.push({type:'log', text:`${u.name} rummages around — finds a bonus action!`, kind:'system'}); ev.push({type:'float', unitId: u.id, text:'💨 +1 act', cls:'buff'}); break;
+      default:
+        ev.push({ type: 'log', text: `${s.name} fizzles — its effect is still on the drawing board.`, kind: 'info' });
+    }
     ev.push({ type: 'skillfx', skill: s, at: center, targets: this.living(u.team).map((t) => t.id) });
     ev.push(...this.checkEnd());
     return ev;
@@ -667,7 +771,7 @@ export class Combat {
           case 'hungover_mild': atkMod -= 1; break;
           case 'well_fed': atkMod += 1; break;
           case 'wraith': case 'shadow_form': case 'dire_form': case 'eldritch_form': atkMod += 2; break;
-          case 'spirit_form': case 'beast_form': atkMod += 1; break;
+          case 'inspired': atkMod += 2; break;
         }
       }
       const atk = rollD20(atkMod, blessed ? '1d4' : '');
@@ -676,8 +780,11 @@ export class Combat {
       const tgtAC = effAC(t) - (t.conditions.some((x) => x.id === 'prone') ? 2 : 0);
       const surpriseCrit = this.surpriseRound && u.team === 'party' && this.surpriseHits.has(u.id) && !!diceExpr;
       if (surpriseCrit) this.surpriseHits.delete(u.id);
-      const hit = auto || atk.crit || surpriseCrit || (!atk.fumble && atk.total >= tgtAC);
-      const crit = !auto && (atk.crit || surpriseCrit);
+      // sneak (shadow_step / xray): promote to a guaranteed crit hit
+      let sneakCrit = false;
+      if (u.sneak) { sneakCrit = true; u.sneak = false; }
+      const hit = auto || atk.crit || surpriseCrit || sneakCrit || (!atk.fumble && atk.total >= tgtAC);
+      let crit = !auto && (atk.crit || surpriseCrit || sneakCrit);
       // dice overlay — every real attack roll (magic missile is unerring)
       if (!auto) {
         ev.push({ type: 'dice', die: 'd20', total: atk.total, reason: `${s.name} vs AC ${tgtAC}` });
@@ -700,7 +807,8 @@ export class Combat {
       if (u.conditions.some((x) => x.id === 'intimidated')) amount = Math.max(1, amount - 4);
       if (u.conditions.some((x) => x.id === 'enraged')) amount += 4;
       if (u.conditions.some((x) => x.id === 'lich_form')) amount += 2;
-      if (u.conditions.some((x) => x.id === 'kings_lounge')) amount += 2;
+      if (u.conditions.some((x) => x.id === 'inspired')) amount += 2;
+      if (sneakCrit) ev.push({ type: 'log', text: '🎯 Sneak attack — guaranteed crit!', kind: 'crit' });
       this.applyDamage(ev, t, amount, s.damageType, crit);
       // skill rider condition on a landed hit (soap splash → slippery, …)
       if (t.alive && s.appliesCondition && !t.conditions.some((x) => x.id === s.appliesCondition)) {
@@ -766,6 +874,20 @@ export class Combat {
     if (kind === 'slashing' || kind === 'piercing' || kind === 'bludgeoning') {
       const resist = effPhysResist(t);
       if (resist > 0) amount = Math.max(1, amount - resist);
+    }
+    // write_off: 50% damage reduction this turn
+    if (t.conditions.some((c) => c.id === 'write_off')) amount = Math.floor(amount / 2);
+    // vow: damage is shared with the partner ally (reciprocal — each takes half)
+    if (t.vowPartner && amount > 0) {
+      const partner = this.byId(t.vowPartner);
+      if (partner && partner.alive && partner.id !== t.id) {
+        const share = Math.max(1, Math.floor(amount / 2));
+        amount = amount - share;
+        partner.hp = Math.max(0, partner.hp - share);
+        ev.push({ type: 'damage', unitId: partner.id, amount: share, kind, crit: false });
+        ev.push({ type: 'float', unitId: partner.id, text: `🔗-${share}`, cls: 'dmg' });
+        if (partner.hp <= 0 && partner.alive) ev.push(...this.onDeath(partner));
+      }
     }
     t.hp = Math.max(0, t.hp - amount);
     t.lastDamageKind = kind;

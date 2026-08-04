@@ -340,9 +340,9 @@ export function HUD({ snap, engine }: Props) {
             <div className="dialogue-text">{snap.showDialogue.text}</div>
             {snap.showDialogue.choices && snap.showDialogue.choices.length > 0 && (
               <div className="dialogue-choices">
-                {snap.showDialogue.choices.map((c) => (
+                {snap.showDialogue.choices.map((c, i) => (
                   <button key={c.index} className="dialogue-choice" onClick={() => engine?.dialogueChoice(snap.showDialogue!.npcId, c.index)}>
-                    {c.index + 1}. {c.label}
+                    {i + 1}. {c.label}
                   </button>
                 ))}
               </div>

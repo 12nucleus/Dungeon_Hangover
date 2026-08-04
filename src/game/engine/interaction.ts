@@ -495,9 +495,12 @@ function presentNode(engine: any, npc: NPCDef, nodeId: string) {
     npcName: npc.name,
     text: node.text,
     caption: node.caption,
+    // keep RAW choice indices: dialogueChoice indexes node.choices directly,
+    // so hidden (visibleIf) choices must not shift the numbering
     choices: node.choices
-      ?.filter((c) => visibleChoice(engine, c))
-      .map((c: any, i: number) => ({ label: c.label, index: i })),
+      ?.map((c: any, rawIdx: number) => ({ c, rawIdx }))
+      .filter(({ c }) => visibleChoice(engine, c))
+      .map(({ c, rawIdx }) => ({ label: c.label, index: rawIdx })),
   };
   engine.speakDialogue?.(npc.id, nodeId);
   engine.emitSnapshot();

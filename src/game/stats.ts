@@ -25,8 +25,10 @@ export function effAC(u: Unit): number {
   let cond = 0;
   if (u.conditions.some((c) => c.id === 'shielded')) cond += 2;
   if (u.conditions.some((c) => c.id === 'well_fed')) cond += 1;
+  if (u.conditions.some((c) => c.id === 'fortified')) cond += 3;
+  if (u.conditions.some((c) => c.id === 'inspired')) cond += 2;
   if (u.conditions.some((c) => c.id === 'stoneskin')) cond += 4;
-  if (u.conditions.some((c) => c.id === 'wraith')) cond += 2;
+  if (u.conditions.some((c) => c.id === 'armored')) cond += 5;
   return u.ac + bonus + u.bonusAC + cond;
 }
 
