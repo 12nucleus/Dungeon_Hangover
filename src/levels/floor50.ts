@@ -129,18 +129,19 @@ const SHORTCUT_SPECS: CorridorSpec[] = [
   { pts: [{ x: 7, z: 69 }, { x: 69, z: 69 }], width: 1 },    // south edge
   { pts: [{ x: 70, z: 14 }, { x: 70, z: 69 }], width: 1 },   // east run
 ];
-// hand-tuned shortcut: r1 south edge → debris (54,83-84) → straight SOUTH at
-// x=54 to z=99 (clear of r3/r4 and the 3→4 corridor at x 38..40, z 80..90) →
-// WEST at z 99..100 to x=32 (clear of r5 which starts at z 102) → vertical
-// x=32 down to z=127 → south run z=128 → east run x=128 up to r19's east
-// edge. NO crossing with any room corridor: the only entrance is the debris.
+// hand-tuned shortcut (MAP-LOCAL — buildAuthoredMap adds OFFSET): r1 south
+// edge → debris (30,59-60) → straight SOUTH at x=30 to z=75 (clear of r3/r4
+// and the 3→4 corridor at x 14..16, z 56..66) → WEST at z 75..76 to x=8
+// (clear of r5 which starts at z 78) → vertical x=8 down to z=103 → south
+// run z=104 → east run x=104 up to r19's east edge. NO crossing with any
+// room corridor: the only entrance is the debris.
 const SHORTCUT: CorridorSpec[] = [
-  { pts: [{ x: 54, z: 83 }, { x: 54, z: 84 }], width: 1 },    // debris lane
-  { pts: [{ x: 54, z: 85 }, { x: 54, z: 99 }], width: 1 },    // south leg
-  { pts: [{ x: 32, z: 100 }, { x: 54, z: 100 }], width: 2 },  // west leg
-  { pts: [{ x: 32, z: 100 }, { x: 32, z: 127 }], width: 2 },  // vertical
-  { pts: [{ x: 32, z: 128 }, { x: 128, z: 128 }], width: 1 }, // south run
-  { pts: [{ x: 128, z: 45 }, { x: 128, z: 128 }], width: 3 }, // east run
+  { pts: [{ x: 30, z: 59 }, { x: 30, z: 60 }], width: 1 },    // debris lane
+  { pts: [{ x: 30, z: 61 }, { x: 30, z: 75 }], width: 1 },    // south leg
+  { pts: [{ x: 8, z: 75 }, { x: 30, z: 75 }], width: 2 },     // west leg
+  { pts: [{ x: 8, z: 76 }, { x: 8, z: 103 }], width: 2 },     // vertical
+  { pts: [{ x: 8, z: 104 }, { x: 104, z: 104 }], width: 1 },  // south run
+  { pts: [{ x: 104, z: 21 }, { x: 104, z: 104 }], width: 3 }, // east run
 ];
 // the shortcut entries live at the END of CORRIDOR_SPECS (after the 1→19
 // comment block) — strip them before mapping, then push the tuned spans
@@ -231,12 +232,14 @@ const structures: LevelStructures = {
     { id: 'soap_gate', pos: O({ x: 74, z: 38 }), axis: 'z', openedByFlag: 'soap_gate_open' },
     { id: 'trapdoor67', pos: O({ x: 35, z: 80 }), axis: 'x', openedByFlag: 'trapdoor_open' },
   ],
-  // gate lanes seal only if the blocker covers the WHOLE single-lane span
+  // gate lanes seal only if the blocker covers the WHOLE single-lane span.
+  // NOTE: the 1↔19 shortcut has NO gate — it's an open back route from room
+  // 1 to the north cluster (player request: the rubble wall at spawn was
+  // 'in the way').
   blockers: [
     { id: 'door16', tiles: lane(17, 34, 17, 42), kind: 'secretDoor', openedByFlag: 'mushroom_door' },
     { id: 'door17', tiles: lane(86, 9, 90, 9), kind: 'secretDoor', openedByFlag: 'vault_tunnel' },
     { id: 'debris56', tiles: lane(20, 81, 24, 81), kind: 'rubble', openedByFlag: 'debris_56' },
-    { id: 'debris19', tiles: lane(54, 83, 54, 84), kind: 'rubble', openedByFlag: 'shortcut_open' },
     { id: 'pipeclimb', tiles: lane(38, 35, 38, 42), kind: 'rubble', openedByFlag: 'pipe_climbed' },
   ],
   bossDoorOpenFlag: 'gribnab_door_open',
@@ -370,13 +373,14 @@ put('brazier', sc(18), sc(35), 0.5);
 put('brazier', sc(21), sc(38), 0.5);
 // ── room 2 (Hermit's Cell) — his camp: a tent, a crackling campfire,
 //    braziers, a bedroll and a crate. The hermit sits by the fire (his NPC
-//    pos is set next to the campfire in `structures.npcs`).
-put('tent', sc(24), sc(36), 0.3);
-put('campfire', sc(26), sc(37), 0.5);
-put('brazier', sc(24), sc(38), 0.5);
-put('brazier', sc(28), sc(36), 0.5);
-put('bedroll', sc(25), sc(36), 0.4);
-put('crate', sc(27), sc(38), 0.5);
+//    pos is set next to the campfire in `structures.npcs`). Furniture stays
+//    clear of the corridor mouth (world 56..60,78) so the room reads OPEN.
+put('tent', sc(26), sc(36), 0.3);     // (63,78) against the back wall
+put('campfire', sc(26), sc(37), 0.5); // (63,80) — the hermit's hearth
+put('brazier', sc(24), sc(37), 0.5);  // (60,80)
+put('brazier', sc(27), sc(35), 0.5);  // (64,77)
+put('bedroll', sc(25), sc(35), 0.4);  // (62,77)
+put('crate', sc(25), sc(38), 0.5);    // (63,81) corner
 // braziers flanking Gribnab's door
 put('brazier', sc(59), sc(57), 0.5);
 put('brazier', sc(59), sc(59), 0.5);

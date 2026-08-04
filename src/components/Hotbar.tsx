@@ -77,11 +77,31 @@ export function Hotbar({ snap, engine }: Props) {
         })}
       </div>
 
-      {/* combat extras */}
+      {/* combat extras — BG3-style phase ring + end turn */}
       {phase === 'combat' && (
-        <button className="end-turn" onClick={() => engine.endTurn()} title="End turn [Space]">
-          END<br />TURN
-        </button>
+        <div className="turn-ring">
+          <button
+            className={`turn-mode ${snap.turnMode === 'walk' ? 'on' : ''}`}
+            onClick={() => engine.setTurnMode('walk')}
+            title="Movement phase — click a tile to walk">
+            🚶
+          </button>
+          <button
+            className={`turn-mode ${snap.turnMode === 'action' ? 'on' : ''}`}
+            onClick={() => engine.setTurnMode('action')}
+            title="Action phase — click an enemy to attack, pick a skill">
+            ⚔️
+          </button>
+          <button
+            className={`turn-mode ${snap.turnMode === 'bonus' ? 'on' : ''}`}
+            onClick={() => engine.setTurnMode('bonus')}
+            title="Bonus phase — bonus-cost skills">
+            🔸
+          </button>
+          <button className="end-turn" onClick={() => engine.endTurn()} title="End turn [Space]">
+            END<br />TURN
+          </button>
+        </div>
       )}
     </div>
   );

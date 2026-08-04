@@ -21,6 +21,7 @@ interface Spec {
   selfOnly?: boolean; allAllies?: boolean; projectile?: boolean; fxColor?: number; fx?: ParticleFX;
   tier?: 1 | 2 | 3 | 4 | 5; levelReq?: number; passive?: boolean; apCost?: number;
   procsOncePerTurn?: boolean; stacking?: string; combo?: string[]; capstone?: boolean;
+  appliesRounds?: number; summonId?: string; summonCount?: number; raiseCorpses?: 'one' | 'all';
 }
 
 function s(classId: ClassId, spec: Spec): SkillDef {
@@ -42,6 +43,7 @@ function s(classId: ClassId, spec: Spec): SkillDef {
     fxColor: spec.fxColor ?? 0xffe08a,
     fx: spec.fx ?? 'slash',
     appliesCondition: spec.cond,
+    appliesRounds: spec.appliesRounds,
     selfCentered: spec.selfCentered,
     targetsAllies: spec.allies,
     selfOnly: spec.selfOnly,
@@ -55,6 +57,9 @@ function s(classId: ClassId, spec: Spec): SkillDef {
     stacking: spec.stacking,
     combo: spec.combo,
     capstone: spec.capstone,
+    summonId: spec.summonId,
+    summonCount: spec.summonCount,
+    raiseCorpses: spec.raiseCorpses,
   };
 }
 
@@ -112,9 +117,9 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'unmovable', name: 'Unmovable', icon: '⛰️', kind: 'buff', desc: 'Passive: +15% physical resistance while adjacent to 2+ enemies.', passive: true, selfOnly: true, fxColor: 0x6a6a75, fx: 'buff' },
       { id: 'grapple_master', name: 'Grapple Master', icon: '🤼', kind: 'buff', desc: 'Passive: grapples cost 0 AP and last +2 turns.', passive: true, selfOnly: true, fxColor: 0xc9a227, fx: 'buff' },
       { id: 'eject_everyone', name: 'Eject Everyone', icon: '🧨', kind: 'aoe', desc: 'Throw all adjacent enemies 2 tiles and deal 4 dmg each.', selfCentered: true, aoeRadius: 1, cooldown: 4, apCost: 3, fxColor: 0xff7a1f, fx: 'bash' },
-      { id: 'stone_skin', name: 'Stone Skin', icon: '🪨', kind: 'buff', desc: 'Gain +4 AC for 3 turns. You move slowly.', cooldown: 4, apCost: 1, selfOnly: true, fxColor: 0x8a8a95, fx: 'buff' },
+      { id: 'stone_skin', name: 'Stone Skin', icon: '🪨', kind: 'buff', desc: 'Gain +4 AC for 3 turns. You move slowly.', cost: 'action', cooldown: 4, apCost: 1, selfOnly: true, cond: 'stoneskin', appliesRounds: 3, fxColor: 0x8a8a95, fx: 'buff' },
       { id: 'door_policy', name: 'Door Policy', icon: '🚪', kind: 'buff', desc: 'Passive: enemies entering the room trigger a free shove from you.', passive: true, procsOncePerTurn: true, selfOnly: true, fxColor: 0xc9a227, fx: 'bash' },
-      { id: 'kings_lounge', name: "King's Lounge", icon: '👑', kind: 'buff', desc: 'Claim the room: +30% dmg while you stay still.', cooldown: 4, apCost: 1, selfOnly: true, fxColor: 0xc9a227, fx: 'buff' },
+      { id: 'kings_lounge', name: "King's Lounge", icon: '👑', kind: 'buff', desc: 'Claim the room: +30% dmg while you stay still.', cost: 'action', cooldown: 4, apCost: 1, selfOnly: true, cond: 'kings_lounge', appliesRounds: 3, fxColor: 0xc9a227, fx: 'buff' },
       { id: 'the_bell', name: 'The Bell', icon: '🔔', kind: 'aoe', desc: 'Ring the bell: all enemies in range take 2d8 dmg and are Frightened.', aoeRadius: 2, range: 4, cooldown: 4, apCost: 3, fxColor: 0xffe08a, fx: 'bash' },
       { id: 'slam_all', name: 'Slam All', icon: '💢', kind: 'aoe', desc: 'Slam all adjacent enemies: 3d6 dmg each, Stunned 1 turn.', selfCentered: true, aoeRadius: 1, cooldown: 4, apCost: 3, cond: 'rooted', fxColor: 0xff7a1f, fx: 'bash' },
       { id: 'bouncer_finale', name: "Bouncer's Finale", icon: '🎆', kind: 'aoe', desc: 'The full ejection: shove every enemy 3 tiles and deal 6 dmg each.', selfCentered: true, aoeRadius: 2, cooldown: 5, apCost: 4, fxColor: 0xffe08a, fx: 'bash' },
@@ -172,7 +177,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'phantom', name: 'Phantom', icon: '👻', kind: 'buff', desc: 'Passive: attacks from stealth deal +50% dmg.', passive: true, selfOnly: true, fxColor: 0x7dd3fc, fx: 'buff' },
       { id: 'lethal_venom', name: 'Lethal Venom', icon: '🧫', kind: 'buff', desc: 'Passive: your poison can kill (deals lethal damage).', passive: true, selfOnly: true, fxColor: 0x6f9c3f, fx: 'buff' },
       { id: 'flash_step', name: 'Flash Step', icon: '⚡', kind: 'melee', desc: 'Teleport behind target and strike: 4d6 dmg, auto-crit.', ability: 'dex', dice: '4d6', dtype: 'piercing', range: 5, cooldown: 3, fxColor: 0xc084fc, fx: 'slash' },
-      { id: 'shadow_form', name: 'Shadow Form', icon: '🌑', kind: 'buff', desc: 'Become intangible 3 turns: immune to physical damage.', cooldown: 5, ability: 'dex', selfOnly: true, apCost: 2, fxColor: 0x1a1a22, fx: 'buff' },
+      { id: 'shadow_form', name: 'Shadow Form', icon: '🌑', kind: 'buff', desc: 'Become intangible 3 turns: immune to physical damage.', cost: 'action', cooldown: 5, ability: 'dex', selfOnly: true, apCost: 2, cond: 'shadow_form', appliesRounds: 3, fxColor: 0x1a1a22, fx: 'buff' },
       { id: 'crimson_blade', name: 'Crimson Blade', icon: '🔴', kind: 'buff', desc: 'Passive: bleed effects stack and never expire.', passive: true, selfOnly: true, fxColor: 0xd24a1f, fx: 'slash' },
       { id: 'walk_shadows', name: 'Walk The Shadows', icon: '🚶', kind: 'buff', desc: 'Passive: you can move through enemies.', passive: true, selfOnly: true, fxColor: 0x7dd3fc, fx: 'buff' },
       { id: 'dismantle', name: 'Dismantle', icon: '🔧', kind: 'melee', desc: 'Dismantle the enemy: deal 3d8 and destroy their armor (reduce AC).', ability: 'dex', dice: '3d8', dtype: 'piercing', cooldown: 4, fxColor: 0xc9a227, fx: 'slash' },
@@ -734,7 +739,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
     ...tierT('shaman', 1, [
       { id: 'spirit_rattle', name: 'Spirit Rattle', icon: '🥁', kind: 'ranged', desc: 'Shake the rattle: 2d6 psychic dmg and target is Cursed.', range: 5, ability: 'wis', dice: '2d6', dtype: 'force', cooldown: 1, fxColor: 0xc084fc, fx: 'arcane' },
       { id: 'hex', name: 'The Hex', icon: '🪄', kind: 'ranged', desc: 'Hex a target: they take +2d6 dmg from all sources 3 turns.', range: 5, ability: 'wis', cooldown: 2, fxColor: 0xc084fc, fx: 'buff' },
-      { id: 'summon_spirit', name: 'Summon Spirit', icon: '👻', kind: 'buff', desc: 'Summon a spirit ally that attacks each turn.', ability: 'wis', selfOnly: true, cooldown: 4, apCost: 2, fxColor: 0xc084fc, fx: 'buff' },
+      { id: 'summon_spirit', name: 'Summon Spirit', icon: '👻', kind: 'buff', desc: 'Summon a spirit ally that attacks each turn.', ability: 'wis', selfOnly: true, cost: 'action', cooldown: 4, apCost: 2, summonId: 'spirit_ally', fxColor: 0xc084fc, fx: 'buff' },
       { id: 'totem', name: 'The Totem', icon: '🪵', kind: 'buff', desc: 'Place a totem: deals 2d6 psychic to nearby enemies each turn.', ability: 'wis', selfCentered: true, cooldown: 4, apCost: 1, fxColor: 0x8a5a2a, fx: 'buff' },
       { id: 'spirit_sight', name: 'Spirit Sight', icon: '👁️', kind: 'buff', desc: 'See the spirits: reveal hidden enemies and traps.', ability: 'wis', selfOnly: true, cooldown: 2, apCost: 1, fxColor: 0x7dd3fc, fx: 'buff' },
       { id: 'curse', name: 'Curse', icon: '☠️', kind: 'ranged', desc: 'Curse a target: they take 1d8 dmg each turn 3 turns.', range: 5, ability: 'wis', dice: '1d8', dtype: 'force', cond: 'cursed', cooldown: 2, fxColor: 0xd24a1f, fx: 'arcane' },
@@ -750,7 +755,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'haunt', name: 'The Haunt', icon: '👻', kind: 'ranged', desc: 'Haunt the target: they take 2d6 dmg each turn and are Frightened.', range: 5, ability: 'wis', dice: '2d6', dtype: 'force', cooldown: 3, fxColor: 0xc084fc, fx: 'arcane' },
       { id: 'spirit_totem', name: 'Spirit Totem', icon: '🪵', kind: 'buff', desc: 'Passive: your totems heal allies nearby.', passive: true, ability: 'wis', selfOnly: true, fxColor: 0x6f9c3f, fx: 'buff' },
       { id: 'blood_rite', name: 'Blood Rite', icon: '🩸', kind: 'heal', desc: 'A bloody ritual: heal 4d8 but lose 1d4 HP.', ability: 'wis', healDice: '4d8', selfOnly: true, cooldown: 3, fxColor: 0xd24a1f, fx: 'heal' },
-      { id: 'spirit_form', name: 'Spirit Form', icon: '👤', kind: 'buff', desc: 'Become spectral: pass through enemies and take half damage 3 turns.', ability: 'wis', selfOnly: true, cooldown: 4, apCost: 2, fxColor: 0xc084fc, fx: 'buff' },
+      { id: 'spirit_form', name: 'Spirit Form', icon: '👤', kind: 'buff', desc: 'Become spectral: pass through enemies and take half damage 3 turns.', ability: 'wis', selfOnly: true, cost: 'action', cooldown: 4, apCost: 2, cond: 'spirit_form', appliesRounds: 3, fxColor: 0xc084fc, fx: 'buff' },
       { id: 'curse_burst', name: 'Curse Burst', icon: '💥', kind: 'aoe', desc: 'Burst all curses: 3d8 psychic to all cursed enemies.', ability: 'wis', dice: '3d8', dtype: 'force', aoeRadius: 3, range: 4, cooldown: 4, fxColor: 0xd24a1f, fx: 'arcane' },
       { id: 'spirit_companion', name: 'Spirit Companion', icon: '🐺', kind: 'buff', desc: 'Passive: your spirit attacks every turn.', passive: true, ability: 'wis', procsOncePerTurn: true, selfOnly: true, fxColor: 0xc084fc, fx: 'buff' },
       { id: 'ward', name: 'The Ward', icon: '🔮', kind: 'ranged', desc: 'Ward an area: enemies entering take 2d6 psychic.', aoeRadius: 2, range: 4, ability: 'wis', cooldown: 3, fxColor: 0xc084fc, fx: 'buff' },
@@ -759,7 +764,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'spirit_nuke', name: 'Spirit Nuke', icon: '☢️', kind: 'aoe', desc: 'Unleash the spirits: 5d6 psychic to a 3-tile area.', ability: 'wis', dice: '5d6', dtype: 'force', aoeRadius: 3, range: 4, cooldown: 4, fxColor: 0xc084fc, fx: 'arcane' },
       { id: 'shaman_god', name: 'Shaman God', icon: '👑', kind: 'buff', desc: 'Passive: +30% dmg, +5 AC.', passive: true, ability: 'wis', selfOnly: true, fxColor: 0xc084fc, fx: 'buff' },
       { id: 'possess', name: 'Possession', icon: '👻', kind: 'ranged', desc: 'Possess a target: they fight for you 2 turns.', range: 4, ability: 'wis', cooldown: 5, cond: 'charmed', fxColor: 0xc084fc, fx: 'buff' },
-      { id: 'spirit_army', name: 'Spirit Army', icon: '⚔️', kind: 'buff', desc: 'Summon many spirits that attack each turn.', ability: 'wis', selfOnly: true, cooldown: 5, apCost: 3, fxColor: 0xc084fc, fx: 'buff' },
+      { id: 'spirit_army', name: 'Spirit Army', icon: '⚔️', kind: 'buff', desc: 'Summon many spirits that attack each turn.', ability: 'wis', selfOnly: true, cost: 'action', cooldown: 5, apCost: 3, summonId: 'spirit_ally', summonCount: 2, fxColor: 0xc084fc, fx: 'buff' },
       { id: 'hex_master', name: 'Hex Master', icon: '🪄', kind: 'buff', desc: 'Passive: your hexes are permanent.', passive: true, ability: 'wis', selfOnly: true, fxColor: 0xc084fc, fx: 'buff' },
       { id: 'soul_drain', name: 'Soul Drain', icon: '🫀', kind: 'ranged', desc: 'Drain a soul: 4d8 psychic, heal yourself for half.', range: 5, ability: 'wis', dice: '4d8', dtype: 'force', healDice: '4d8', cooldown: 4, fxColor: 0xc084fc, fx: 'heal' },
       { id: 'spirit_barrier', name: 'Spirit Barrier', icon: '🌐', kind: 'buff', desc: 'Passive: +15% dmg reduction from spirits.', passive: true, ability: 'wis', selfOnly: true, fxColor: 0xc084fc, fx: 'buff' },
@@ -792,7 +797,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
   // ═══════════ ZOOLOGIST ═══════════
   zoologist: [
     ...tierT('zoologist', 1, [
-      { id: 'call_beast', name: 'Call The Beast', icon: '🐺', kind: 'buff', desc: 'Summon a beast ally that attacks each turn.', ability: 'int', selfOnly: true, cooldown: 4, apCost: 2, fxColor: 0x8a6a2a, fx: 'buff' },
+      { id: 'call_beast', name: 'Call The Beast', icon: '🐺', kind: 'buff', desc: 'Summon a beast ally that attacks each turn.', ability: 'int', selfOnly: true, cost: 'action', cooldown: 4, apCost: 2, summonId: 'beast_ally', fxColor: 0x8a6a2a, fx: 'buff' },
       { id: 'observe', name: 'Observe', icon: '🔍', kind: 'ranged', desc: 'Study a target: reveal HP, and gain +2d6 bonus dmg vs them.', range: 5, ability: 'int', cooldown: 2, apCost: 1, fxColor: 0x7dd3fc, fx: 'buff' },
       { id: 'tame', name: 'Tame', icon: '🐾', kind: 'ranged', desc: 'Tame a beast-type enemy: they fight for you 2 turns.', range: 4, ability: 'int', cooldown: 4, cond: 'charmed', fxColor: 0x8a6a2a, fx: 'buff' },
       { id: 'pounce', name: 'Pounce', icon: '🐆', kind: 'melee', desc: 'A swift pounce: 2d6 dmg and Stun.', ability: 'dex', dice: '2d6', dtype: 'piercing', cooldown: 2, cond: 'rooted', fxColor: 0x8a6a2a, fx: 'slash' },
@@ -804,7 +809,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'animal_empathy', name: 'Animal Empathy', icon: '💗', kind: 'buff', desc: 'Passive: +2 to all rolls (animals like you).', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
     ]),
     ...tierT('zoologist', 2, [
-      { id: 'beast_form', name: 'Beast Form', icon: '🐺', kind: 'buff', desc: 'Shift into a beast: +30% dmg, +4 AC 3 turns.', ability: 'int', selfOnly: true, cooldown: 4, apCost: 2, fxColor: 0x8a6a2a, fx: 'buff' },
+      { id: 'beast_form', name: 'Beast Form', icon: '🐺', kind: 'buff', desc: 'Shift into a beast: +30% dmg, +4 AC 3 turns.', ability: 'int', selfOnly: true, cost: 'action', cooldown: 4, apCost: 2, cond: 'beast_form', appliesRounds: 3, fxColor: 0x8a6a2a, fx: 'buff' },
       { id: 'alpha_howl', name: 'Alpha Howl', icon: '🐺', kind: 'aoe', desc: 'A commanding howl: all beasts and allies gain +2 actions.', ability: 'int', allAllies: true, cooldown: 4, apCost: 2, fxColor: 0x8a6a2a, fx: 'buff' },
       { id: 'pack_tactics', name: 'Pack Tactics', icon: '🐺', kind: 'buff', desc: 'Passive: +20% dmg for each adjacent ally.', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
       { id: 'venom_fang', name: 'Venom Fang', icon: '🐍', kind: 'melee', desc: 'A venomous bite: 3d6 dmg and Poison.', ability: 'dex', dice: '3d6', dtype: 'poison', cond: 'poisoned', cooldown: 3, fxColor: 0x6f9c3f, fx: 'slash' },
@@ -813,10 +818,10 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'terrify', name: 'Terrify', icon: '😱', kind: 'ranged', desc: 'A terrifying roar: target is Frightened 2 turns.', range: 4, ability: 'cha', cooldown: 3, cond: 'rooted', fxColor: 0xd24a1f, fx: 'buff' },
       { id: 'hunt', name: 'The Hunt', icon: '🏹', kind: 'ranged', desc: 'Track and strike: 3d6 dmg to target, guaranteed hit.', range: 5, ability: 'dex', dice: '3d6', dtype: 'piercing', cooldown: 2, projectile: true, fxColor: 0x8a6a2a, fx: 'arrow' },
       { id: 'beast_barrier', name: 'Beast Barrier', icon: '🛡️', kind: 'buff', desc: 'Summon beasts to protect you: +4 AC 3 turns.', ability: 'int', selfOnly: true, cooldown: 3, apCost: 1, fxColor: 0x8a6a2a, fx: 'buff' },
-      { id: 'call_horde', name: 'Call The Horde', icon: '🐺', kind: 'buff', desc: 'Summon a horde of beasts that swarm enemies.', ability: 'int', selfOnly: true, cooldown: 5, apCost: 3, fxColor: 0x8a6a2a, fx: 'buff' },
+      { id: 'call_horde', name: 'Call The Horde', icon: '🐺', kind: 'buff', desc: 'Summon a horde of beasts that swarm enemies.', ability: 'int', selfOnly: true, cost: 'action', cooldown: 5, apCost: 3, summonId: 'beast_ally', summonCount: 2, fxColor: 0x8a6a2a, fx: 'buff' },
     ]),
     ...tierT('zoologist', 3, [
-      { id: 'dire_form', name: 'Dire Form', icon: '🐺', kind: 'buff', desc: 'A dire transformation: +50% dmg, +6 AC 3 turns.', ability: 'int', selfOnly: true, cooldown: 5, apCost: 3, fxColor: 0xd24a1f, fx: 'buff' },
+      { id: 'dire_form', name: 'Dire Form', icon: '🐺', kind: 'buff', desc: 'A dire transformation: +50% dmg, +6 AC 3 turns.', ability: 'int', selfOnly: true, cost: 'action', cooldown: 5, apCost: 3, cond: 'dire_form', appliesRounds: 3, fxColor: 0xd24a1f, fx: 'buff' },
       { id: 'master_of_beasts', name: 'Master Of Beasts', icon: '👑', kind: 'buff', desc: 'Passive: your beasts deal +50% dmg.', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
       { id: 'primal_fury', name: 'Primal Fury', icon: '⚡', kind: 'aoe', desc: 'All your beasts attack at once: 5d6 dmg to all enemies.', ability: 'int', dice: '5d6', dtype: 'piercing', aoeRadius: 3, range: 4, cooldown: 4, fxColor: 0xd24a1f, fx: 'slash' },
       { id: 'wereform', name: 'Wereform', icon: '🐺', kind: 'buff', desc: 'Passive: at full moon you are stronger (always active in dungeon).', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
@@ -828,7 +833,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'wild_king', name: 'The Wild King', icon: '👑', kind: 'buff', desc: 'Passive: +30% dmg and +5 AC.', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
     ]),
     ...tierT('zoologist', 4, [
-      { id: 'eldritch_form', name: 'Eldritch Form', icon: '🌑', kind: 'buff', desc: 'A nightmarish form: +60% dmg, +8 AC 3 turns.', ability: 'int', selfOnly: true, cooldown: 5, apCost: 3, fxColor: 0xc084fc, fx: 'buff' },
+      { id: 'eldritch_form', name: 'Eldritch Form', icon: '🌑', kind: 'buff', desc: 'A nightmarish form: +60% dmg, +8 AC 3 turns.', ability: 'int', selfOnly: true, cost: 'action', cooldown: 5, apCost: 3, cond: 'eldritch_form', appliesRounds: 3, fxColor: 0xc084fc, fx: 'buff' },
       { id: 'beast_god', name: 'Beast God', icon: '👑', kind: 'buff', desc: 'Passive: +50% dmg, +10 AC.', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
       { id: 'apocalypse', name: 'Beast Apocalypse', icon: '🌋', kind: 'aoe', desc: 'Unleash every beast: 7d8 dmg to all enemies.', ability: 'int', dice: '7d8', dtype: 'piercing', aoeRadius: 4, range: 4, cooldown: 5, fxColor: 0xd24a1f, fx: 'slash' },
       { id: 'immortal_beast', name: 'Immortal Beast', icon: '🦏', kind: 'buff', desc: 'Passive: your beasts cannot die.', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
@@ -914,7 +919,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
     ...tierT('mortician', 1, [
       { id: 'grave_marker', name: 'Grave Marker', icon: '🪦', kind: 'ranged', desc: 'Mark the target for death: +2d6 bonus dmg vs them.', range: 5, ability: 'wis', cooldown: 2, fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'embalm', name: 'Embalm', icon: '🧪', kind: 'ranged', desc: 'Embalm a target: 2d6 poison dmg and Slow.', range: 5, ability: 'wis', dice: '2d6', dtype: 'poison', cond: 'slowed', cooldown: 2, fxColor: 0x6f9c3f, fx: 'slash' },
-      { id: 'reanimate', name: 'Reanimate', icon: '💀', kind: 'buff', desc: 'Raise a fallen enemy as a skeleton that fights for you.', ability: 'wis', selfOnly: true, cooldown: 4, apCost: 2, fxColor: 0x6a8a6a, fx: 'buff' },
+      { id: 'reanimate', name: 'Reanimate', icon: '💀', kind: 'buff', desc: 'Raise a fallen enemy as a skeleton that fights for you.', ability: 'wis', selfOnly: true, cost: 'action', cooldown: 4, apCost: 2, raiseCorpses: 'one', fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'last_rites', name: 'Last Rites', icon: '📿', kind: 'ranged', desc: 'Say the last rites: 2d8 dmg, execute low-HP enemies.', range: 5, ability: 'wis', dice: '2d8', dtype: 'force', cooldown: 2, fxColor: 0x6a8a6a, fx: 'arcane' },
       { id: 'death_scent', name: 'Death Scent', icon: '👃', kind: 'buff', desc: 'Passive: you sense dying enemies (bonus vs low HP).', passive: true, ability: 'wis', selfOnly: true, fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'cold_hand', name: 'Cold Hand', icon: '🫱', kind: 'melee', desc: 'A chilling touch: 2d6 cold dmg and the target is Slowed.', ability: 'wis', dice: '2d6', dtype: 'cold', cond: 'slowed', cooldown: 1, fxColor: 0x7dd3fc, fx: 'ice' },
@@ -925,13 +930,13 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
     ]),
     ...tierT('mortician', 2, [
       { id: 'harvest', name: 'The Harvest', icon: '🌾', kind: 'ranged', desc: 'Harvest the dying: 4d6 dmg, heal for the amount dealt.', range: 5, ability: 'wis', dice: '4d6', dtype: 'force', healDice: '4d6', cooldown: 3, fxColor: 0x6a8a6a, fx: 'heal' },
-      { id: 'undead_army', name: 'Undead Army', icon: '💀', kind: 'buff', desc: 'Raise all fallen enemies as skeletons.', ability: 'wis', selfOnly: true, cooldown: 5, apCost: 3, fxColor: 0x6a8a6a, fx: 'buff' },
+      { id: 'undead_army', name: 'Undead Army', icon: '💀', kind: 'buff', desc: 'Raise all fallen enemies as skeletons.', ability: 'wis', selfOnly: true, cost: 'action', cooldown: 5, apCost: 3, raiseCorpses: 'all', fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'death_toll', name: 'Death Toll', icon: '🔔', kind: 'aoe', desc: 'Ring the death knell: 3d8 cold to all enemies.', ability: 'wis', dice: '3d8', dtype: 'cold', aoeRadius: 2, range: 4, cooldown: 3, fxColor: 0x6a8a6a, fx: 'ice' },
       { id: 'corpse_explosion', name: 'Corpse Explosion', icon: '💥', kind: 'ranged', desc: 'Explode a corpse: 4d6 fire to a 2-tile area.', ability: 'wis', dice: '4d6', dtype: 'fire', aoeRadius: 2, range: 4, cooldown: 3, fxColor: 0xff7a1f, fx: 'fire' },
       { id: 'grave_god', name: 'Grave God', icon: '👑', kind: 'buff', desc: 'Passive: +30% dmg to low-HP enemies.', passive: true, ability: 'wis', selfOnly: true, fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'soul_snatch', name: 'Soul Snatch', icon: '🫀', kind: 'ranged', desc: 'Snatch the soul: 5d6 dmg, execute below 20% HP.', range: 5, ability: 'wis', dice: '5d6', dtype: 'force', cooldown: 4, fxColor: 0x6a8a6a, fx: 'arcane' },
       { id: 'entomb', name: 'Entomb', icon: '⚰️', kind: 'ranged', desc: 'Entomb a target: they are Rooted and take cold damage each turn.', range: 5, ability: 'wis', cond: 'rooted', dice: '3d8', dtype: 'cold', cooldown: 3, fxColor: 0x6a8a6a, fx: 'ice' },
-      { id: 'grave_wraith', name: 'Grave Wraith', icon: '👻', kind: 'buff', desc: 'Become a wraith: pass through enemies, +20% dodge 3 turns.', ability: 'wis', selfOnly: true, cooldown: 4, apCost: 2, fxColor: 0x6a8a6a, fx: 'buff' },
+      { id: 'grave_wraith', name: 'Grave Wraith', icon: '👻', kind: 'buff', desc: 'Become a wraith: pass through enemies, +20% dodge 3 turns.', ability: 'wis', selfOnly: true, cost: 'action', cooldown: 4, apCost: 2, cond: 'wraith', appliesRounds: 3, fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'casket', name: 'The Casket', icon: '⚰️', kind: 'melee', desc: 'Slam with a casket: 4d6 dmg and Stun.', ability: 'wis', dice: '4d6', dtype: 'bludgeoning', cooldown: 3, cond: 'rooted', fxColor: 0x6a8a6a, fx: 'bash' },
       { id: 'death_embrace', name: 'Death\'s Embrace', icon: '🫂', kind: 'heal', desc: 'Embrace death: heal 5d8 when you are low HP.', ability: 'wis', healDice: '5d8', selfOnly: true, cooldown: 4, fxColor: 0x6f9c3f, fx: 'heal' },
     ]),
@@ -944,16 +949,16 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'grave_king', name: 'Grave King', icon: '👑', kind: 'buff', desc: 'Passive: +50% dmg, +5 AC.', passive: true, ability: 'wis', selfOnly: true, fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'corpse_cannon', name: 'Corpse Cannon', icon: '🛢️', kind: 'ranged', desc: 'Launch a corpse: 5d6 dmg to target and splash.', range: 5, ability: 'wis', dice: '5d6', dtype: 'fire', aoeRadius: 1, cooldown: 4, fxColor: 0xff7a1f, fx: 'fire' },
       { id: 'death_nova', name: 'Death Nova', icon: '💥', kind: 'aoe', desc: 'An explosion of death: 5d6 cold to all adjacent.', selfCentered: true, ability: 'wis', dice: '5d6', dtype: 'cold', aoeRadius: 1, cooldown: 4, fxColor: 0x6a8a6a, fx: 'ice' },
-      { id: 'ghoul', name: 'Summon Ghoul', icon: '👹', kind: 'buff', desc: 'Summon a powerful ghoul minion.', ability: 'wis', selfOnly: true, cooldown: 5, apCost: 3, fxColor: 0x6a8a6a, fx: 'buff' },
+      { id: 'ghoul', name: 'Summon Ghoul', icon: '👹', kind: 'buff', desc: 'Summon a powerful ghoul minion.', ability: 'wis', selfOnly: true, cost: 'action', cooldown: 5, apCost: 3, summonId: 'ghoul_minion', fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'death_wish', name: 'Death Wish', icon: '🕯️', kind: 'buff', desc: 'Passive: when you would die, you survive at 1 HP and heal.', passive: true, ability: 'wis', procsOncePerTurn: true, selfOnly: true, fxColor: 0x6a8a6a, fx: 'buff' },
     ]),
     ...tierT('mortician', 4, [
-      { id: 'lich', name: 'Lich Form', icon: '🧙', kind: 'buff', desc: 'Transform into a lich: +60% dmg, immune to physical 3 turns.', ability: 'wis', selfOnly: true, cooldown: 5, apCost: 3, fxColor: 0x6a8a6a, fx: 'buff' },
+      { id: 'lich', name: 'Lich Form', icon: '🧙', kind: 'buff', desc: 'Transform into a lich: +60% dmg, immune to physical 3 turns.', ability: 'wis', selfOnly: true, cost: 'action', cooldown: 5, apCost: 3, cond: 'lich_form', appliesRounds: 3, fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'death_god', name: 'Death God', icon: '👑', kind: 'buff', desc: 'Passive: +50% dmg, +10 AC.', passive: true, ability: 'wis', selfOnly: true, fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'apocalypse', name: 'Death Apocalypse', icon: '🌋', kind: 'aoe', desc: 'All the dead rise: 8d8 cold to all enemies.', ability: 'wis', dice: '8d8', dtype: 'cold', aoeRadius: 4, range: 4, cooldown: 5, fxColor: 0x6a8a6a, fx: 'ice' },
       { id: 'eternal_harvest', name: 'Eternal Harvest', icon: '🌾', kind: 'buff', desc: 'Passive: every kill fully heals you.', passive: true, ability: 'wis', procsOncePerTurn: true, selfOnly: true, fxColor: 0x6f9c3f, fx: 'heal' },
       { id: 'soul_collector', name: 'Soul Collector', icon: '🫀', kind: 'buff', desc: 'Passive: +1 max HP for every soul you collect.', passive: true, ability: 'wis', selfOnly: true, fxColor: 0x6a8a6a, fx: 'buff' },
-      { id: 'mega_reanimate', name: 'Mega Reanimate', icon: '💀', kind: 'buff', desc: 'Raise a massive undead champion.', ability: 'wis', selfOnly: true, cooldown: 6, apCost: 4, fxColor: 0x6a8a6a, fx: 'buff' },
+      { id: 'mega_reanimate', name: 'Mega Reanimate', icon: '💀', kind: 'buff', desc: 'Raise a massive undead champion.', ability: 'wis', selfOnly: true, cost: 'action', cooldown: 6, apCost: 4, summonId: 'undead_champion', fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'death_barrier', name: 'Death Barrier', icon: '🪦', kind: 'buff', desc: 'Passive: +15% dmg reduction (protected by the dead).', passive: true, ability: 'wis', selfOnly: true, fxColor: 0x6a8a6a, fx: 'buff' },
       { id: 'wail', name: 'The Wail', icon: '😱', kind: 'aoe', desc: 'A soul-splitting wail: 6d6 cold and Fear to all.', ability: 'wis', dice: '6d6', dtype: 'cold', aoeRadius: 4, range: 4, cond: 'rooted', cooldown: 5, fxColor: 0x6a8a6a, fx: 'ice' },
       { id: 'grave_finale', name: 'Grave Finale', icon: '⚰️', kind: 'aoe', desc: 'Bury the room: 8d6 cold to all, raise minions.', ability: 'wis', dice: '8d6', dtype: 'cold', aoeRadius: 4, range: 4, cooldown: 6, apCost: 4, fxColor: 0x6a8a6a, fx: 'ice' },

@@ -45,7 +45,10 @@ export function showMoveTiles(engine: any) {
   const tiles = [...engine.moveTiles.keys()].filter((k) => k !== `${a.pos.x},${a.pos.z}`).map((k: string) => {
     const [x, z] = k.split(',').map(Number);
     return { x, z };
-  });
+  })
+    // BG3: only tiles the unit can actually SEE are clickable — a wall of
+    // fog or rock between you and the tile means you can't walk there blind
+    .filter((t) => engine.hasLineOfSight?.(a.pos, t));
   paint(engine, tiles, 'move');
 }
 

@@ -337,6 +337,17 @@ export const CONDITIONS: Record<string, { name: string; desc: string }> = {
   hungover_mild: { name: 'Hungover (Mild)', desc: '−1 to attack rolls' },
   cursed: { name: 'Cursed', desc: 'Loot quality downgraded one step' },
   enraged: { name: 'Enraged', desc: '+4 damage dealt' },
+
+  // ── class-form buffs (buffs branch of useSkill) ──
+  stoneskin: { name: 'Stone Skin', desc: '+4 AC' },
+  wraith: { name: 'Wraith Form', desc: 'Phases through harm: +2 AC, +2 attack' },
+  lich_form: { name: 'Lich Form', desc: 'Immune to physical damage, +2 damage dealt' },
+  spirit_form: { name: 'Spirit Form', desc: '+1 attack' },
+  beast_form: { name: 'Beast Form', desc: '+1 attack' },
+  dire_form: { name: 'Dire Form', desc: '+2 attack' },
+  eldritch_form: { name: 'Eldritch Form', desc: '+2 attack' },
+  shadow_form: { name: 'Shadow Form', desc: '+2 attack' },
+  kings_lounge: { name: "King's Lounge", desc: '+2 damage dealt' },
 };
 
 // ── unit factory ─────────────────────────────────────────────
@@ -565,6 +576,40 @@ export const SUMMON_TEMPLATES: Record<string, () => Unit> = {
     knownSkills: ['scimitar', 'shield_bash', 'shove'], moveRange: 6, xpValue: 30,
     scheme: { skin: 0x6f9c3f, cloth: 0x4a3a28, accent: 0x2e2418, hair: 0x1c1c1c, hood: false, orc: true, bulk: 0.9 },
     weapon: 'sword', equipment: { weapon: makeItem('goblin_spear') },
+  }),
+
+  // ── party-side minions (spirit / beast / ghoul / champion summons) ──
+  spirit_ally: () => mkSummon({
+    name: 'Spirit Ally', title: 'Wandering Spirit', team: 'party', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 10, hp: 10, ac: 13, level: 2,
+    abilities: { str: 8, dex: 14, con: 10, int: 10, wis: 12, cha: 10 },
+    knownSkills: ['bone_strike', 'shove'], moveRange: 6, xpValue: 0,
+    scheme: { skin: 0xc084fc, cloth: 0x6a4a9a, accent: 0xe0c0ff, hair: 0x3a2a5a, hood: false, bulk: 0.9, style: 'chibi' },
+    weapon: 'dagger',
+  }),
+  beast_ally: () => mkSummon({
+    name: 'Beast Ally', title: 'Called Beast', team: 'party', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 14, hp: 14, ac: 12, level: 2,
+    abilities: { str: 14, dex: 14, con: 12, int: 4, wis: 10, cha: 6 },
+    knownSkills: ['bite', 'shove'], moveRange: 7, xpValue: 0,
+    scheme: { ...ratScheme, bulk: 1.2, monster: 'rat' },
+    weapon: 'dagger',
+  }),
+  ghoul_minion: () => mkSummon({
+    name: 'Ghoul Minion', title: 'Ravenous Ghoul', team: 'party', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 18, hp: 18, ac: 13, level: 3,
+    abilities: { str: 14, dex: 12, con: 13, int: 5, wis: 8, cha: 5 },
+    knownSkills: ['bone_strike', 'shove'], moveRange: 5, xpValue: 0,
+    scheme: { skin: 0x8a9c6a, cloth: 0x4a5a3a, accent: 0xc0d0a0, hair: 0x2a3a1a, hood: false, bulk: 1.1, monster: 'skeleton' },
+    weapon: 'sword',
+  }),
+  undead_champion: () => mkSummon({
+    name: 'Undead Champion', title: 'Mega Reanimate', team: 'party', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 30, hp: 30, ac: 14, level: 3,
+    abilities: { str: 16, dex: 10, con: 14, int: 4, wis: 8, cha: 5 },
+    knownSkills: ['bone_strike', 'shove'], moveRange: 5, xpValue: 0,
+    scheme: { skin: 0xd8d2be, cloth: 0x3a2f28, accent: 0x9a9a9a, hair: 0x8fe3ff, hood: false, bulk: 1.3, monster: 'skeleton' },
+    weapon: 'sword',
   }),
 };
 

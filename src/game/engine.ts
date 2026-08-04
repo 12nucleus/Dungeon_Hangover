@@ -1874,9 +1874,20 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
+  /** jump-mode: the next tile click is a hop (budget-2 move, costs movement) */
+  public jumpMode = false;
+
+  /** BG3-style turn phase ring (walk → action → bonus → end turn) */
+  setTurnMode(m: 'walk' | 'action' | 'bonus') {
+    if (this.combat.turnMode !== m) {
+      this.combat.turnMode = m;
+      this.audio.play('ui_click', 0.5);
+    }
+    this.emitSnapshot();
+  }
+
   /** toggle the first-person camera (P) — rides on the hero's head */
-  toggleFirstPerson() {
-    this.firstPerson = !this.firstPerson;
+  toggleFirstPerson() {    this.firstPerson = !this.firstPerson;
     if (this.firstPerson) {
       this.fpYaw = this.iso.yaw;
       this.fpPitch = -0.12;
@@ -1908,12 +1919,11 @@ export class GameEngine {
         this.pushLog(this.running ? 'Running!' : 'Walking.', 'system');
         break;
       case 'jump': {
-        const leader = this.combat.living('party')[0];
-        if (leader) {
-          // hop one tile if the target is walkable; otherwise a small flourish.
-          this.audio.play('sword_hit', 0.4, 1.4);
-          this.pushLog('Greg hops in place, full of misplaced confidence.', 'system');
-        }
+        // jump-mode: the next tile click is a hop (2 tiles max, costs movement
+        // in combat). In explore it's a free little hop.
+        this.jumpMode = !this.jumpMode;
+        this.pushLog(this.jumpMode ? 'Select a tile to jump to (2 tiles max).' : 'Jump cancelled.', 'system');
+        this.emitSnapshot();
         break;
       }
       case 'throw':
@@ -2942,6 +2952,8 @@ export class GameEngine {
       showDialogue: this.showDialogue,
       diceShow: this.diceShow ? { ...this.diceShow } : null,
       pendingLoot: this.pendingLoot ? { source: this.pendingLoot.source, items: [...this.pendingLoot.items], gold: this.pendingLoot.gold } : null,
+      turnMode: this.combat.turnMode,
+      jumpMode: this.jumpMode,
       showConsole: this.consoleOpen,
       consoleInput: this.consoleInput,
     });

@@ -8,6 +8,7 @@ import { Combat } from '../combat';
 import { skillById } from '../skillLookup';
 import type { GridPos, SkillDef, Unit } from '../types';
 import { NPCS, type NPCDef, type DialogueAction, type ChoiceCondition } from '../npc';
+import { FX } from '../particles';
 import { makeItem } from '../items';
 import { QUESTS } from '../quest';
 import { unitWorld } from './visuals';
@@ -211,6 +212,22 @@ const PROP_HOVER: Record<string, string> = {
 
 // ══ click logic ════════════════════════════════════════════
 export function clickExplore(engine: any, unitId: string | undefined, tile: GridPos | null, propId?: string) {
+  // jump-mode: the click is a hop target (budget-2 move)
+  if (engine.jumpMode && tile) {
+    engine.jumpMode = false;
+    const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat.living('party')[0];
+    if (leader) {
+      const path = engine.combat.reachable(leader, 2).get(`${tile.x},${tile.z}`);
+      if (path && path.length) {
+        engine.audio.play('sword_hit', 0.4, 1.5);
+        moveUnitAlong(engine, leader, path);
+      } else {
+        engine.setHoverInfoOnce('Can\'t jump there — too far or blocked.');
+      }
+    }
+    engine.emitSnapshot();
+    return;
+  }
   if (propId) {
     const prop = engine.props.byId(propId);
     if (prop) {
@@ -284,7 +301,27 @@ export function clickExplore(engine: any, unitId: string | undefined, tile: Grid
   }
 
   const path = engine.combat.pathTo(leader, tile.x, tile.z);
-  if (!path || !path.length) return;
+  if (!path || !path.length) {
+    // clicking a wall/void tile (the tall walls cover a lot of screen):
+    // snap to the nearest walkable tile within 2 so the click never feels dead
+    let snap: GridPos | null = null;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [2, 0], [-2, 0], [0, 2], [0, -2]]) {
+      if (engine.world.isWalkable(tile.x + dx, tile.z + dz)) { snap = { x: tile.x + dx, z: tile.z + dz }; break; }
+    }
+    if (snap) {
+      const p2 = engine.combat.pathTo(leader, snap.x, snap.z);
+      if (p2 && p2.length) {
+        engine.audio.play('ui_click', 0.5);
+        pingAt(engine, snap);
+        moveUnitAlong(engine, leader, p2);
+        engine.selectedId = leader.id;
+        engine.emitSnapshot();
+        return;
+      }
+    }
+    setHoverInfoOnce(engine, 'Can\'t walk there — that\'s a wall.');
+    return;
+  }
   engine.audio.play('ui_click', 0.5);
   pingAt(engine, tile);
   moveUnitAlong(engine, leader, path);
@@ -335,6 +372,20 @@ export function closestWalkableAdjacent(engine: any, pos: GridPos, leader: Unit)
 export function clickCombat(engine: any, unitId: string | undefined, tile: GridPos | null, propId?: string) {
   const active = engine.combat.active;
   if (!active || active.team !== 'party') return;
+  // jump-mode: the click is a hop target (budget-2 move, costs movement)
+  if (engine.jumpMode && tile) {
+    engine.jumpMode = false;
+    const path = engine.combat.reachable(active, 2).get(`${tile.x},${tile.z}`);
+    if (path && path.length) {
+      engine.audio.play('sword_hit', 0.4, 1.5);
+      FX.dust(engine.particles, unitWorld(engine, active.pos).clone());
+      engine.enqueue(engine.combat.moveActiveTo(tile));
+    } else {
+      engine.setHoverInfoOnce('Can\'t jump there — too far or blocked.');
+    }
+    engine.emitSnapshot();
+    return;
+  }
   if (engine.targeting) {
     const s = skillById(engine.targeting);
     if (s && s.aoeRadius > 0 && !s.selfCentered) {
@@ -349,6 +400,11 @@ export function clickCombat(engine: any, unitId: string | undefined, tile: GridP
     if (unitId && s) {
       const t = engine.byId(unitId);
       if (t && t.alive && Combat.dist(active.pos, t.pos) <= s.range) {
+        // BG3: no attacking through walls — line of sight required
+        if (!engine.hasLineOfSight?.(active.pos, t.pos)) {
+          engine.setHoverInfoOnce(`No line of sight to ${t.name}.`);
+          return;
+        }
         engine.audio.play('dice', 0.7);
         engine.enqueue(engine.combat.useSkill(active, s.id, t.id));
         engine.targeting = null;
@@ -362,6 +418,10 @@ export function clickCombat(engine: any, unitId: string | undefined, tile: GridP
   if (unitId) {
     const t = engine.byId(unitId);
     if (t && t.alive && t.team === 'enemy') {
+      if (!engine.hasLineOfSight?.(active.pos, t.pos)) {
+        engine.setHoverInfoOnce(`No line of sight to ${t.name}.`);
+        return;
+      }
       // the universal 'attack' is always in the pool — utility-only builds
       // (velvet rope + id check, say) can still swing their weapon
       const pool = [...active.equippedSkills, 'attack'];

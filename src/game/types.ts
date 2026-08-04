@@ -118,6 +118,10 @@ export interface SkillDef {
   oncePerFight?: boolean;
   /** summon template id from SUMMON_TEMPLATES on use */
   summonId?: string;
+  /** how many minions this summon spawns (default 1) */
+  summonCount?: number;
+  /** raise-dead: resurrect this fight's fallen enemies as party skeletons */
+  raiseCorpses?: 'one' | 'all';
 }
 
 /** A playable class from the design bible (15 total). */
@@ -263,6 +267,10 @@ export interface UISnapshot {
   diceShow?: { die: string; total: number; reason: string; at: number } | null;
   /** loot-preview overlay — what just dropped, what to take */
   pendingLoot?: { source: string; items: import('./items').Item[]; gold: number } | null;
+  /** BG3-style turn phase: walk → action → bonus → end turn */
+  turnMode?: 'walk' | 'action' | 'bonus';
+  /** next tile click is a jump (budget-2 hop) */
+  jumpMode?: boolean;
   /** cheat console overlay (backtick key) */
   showConsole?: boolean;
   consoleInput?: string;

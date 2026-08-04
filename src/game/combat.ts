@@ -46,6 +46,15 @@ export class Combat {
 
   private summonSeq = 0;
 
+  /** BG3-style turn phase for the party's current turn:
+   *  'walk' → 'action' → 'bonus' → end turn. Movement is usable in any phase;
+   *  using an action skill advances to 'bonus', a bonus skill back to 'walk'. */
+  turnMode: 'walk' | 'action' | 'bonus' = 'walk';
+
+  /** unit ids of enemies that DIED during the current fight (most-recent last) —
+   *  the raise-dead skills (reanimate / undead_army) resurrect from here */
+  private corpses: string[] = [];
+
   /**
    * Place a fresh copy of `template` on the nearest free walkable tile to
    * `near` and join it to the fight (inserted right after the summoner in
@@ -156,6 +165,7 @@ export class Combat {
   start(): CombatEvent[] {
     this.surpriseRound = false;
     this.surpriseHits.clear();
+    this.corpses = [];
     const ev: CombatEvent[] = [];
     this.inCombat = true;
     this.phase = 'combat';
@@ -197,6 +207,8 @@ export class Combat {
   private beginTurn(): CombatEvent[] {
     const u = this.active!;
     const ev: CombatEvent[] = [];
+    // BG3-style phase progression starts at 'walk' on the party's turns
+    if (u.team === 'party') this.turnMode = 'walk';
     // tick cooldowns & conditions (happen at start of turn regardless)
     for (const k of Object.keys(u.cooldowns)) if (u.cooldowns[k] > 0) u.cooldowns[k]--;
 
@@ -349,6 +361,10 @@ export class Combat {
     if (!s || (skillId !== 'attack' && !u.equippedSkills.includes(skillId))) return [];
     const deny = this.canUse(u, s);
     if (deny) return [{ type: 'log', text: deny, kind: 'info' }];
+    // BG3 phase advance: action → bonus (if any left), bonus → back to walk
+    if (u.team === 'party' && (s.cost === 'action' || s.cost === 'bonus')) {
+      this.turnMode = s.cost === 'bonus' ? 'walk' : (u.hasBonus ? 'bonus' : 'walk');
+    }
 
     // resolve targets
     let center: GridPos;
@@ -486,8 +502,59 @@ export class Combat {
       return ev;
     }
 
-    // buffs (bless / arcane shield / bubble shield / sovereign sudds)
+    // buffs & summons — the whole family must never crash on a missing
+    // appliesCondition (bless / arcane shield / reanimate / stone skin / …)
     if (s.kind === 'buff') {
+    // ── raise-dead (Grave Caller / Mortician): rebuild this fight's fallen
+    //    enemies as skeletons on the party's side ──
+    if (s.raiseCorpses) {
+      const targets = s.raiseCorpses === 'all'
+        ? [...this.corpses]
+        : (this.corpses.length ? [this.corpses[this.corpses.length - 1]] : []);
+      if (!targets.length) {
+        ev.push({ type: 'log', text: 'No corpses to raise — the dead have moved on.', kind: 'info' });
+        return ev;
+      }
+      const raised: Unit[] = [];
+      for (const cid of targets) {
+        const corpse = this.byId(cid);
+        if (!corpse) continue;
+        const skel: Unit = JSON.parse(JSON.stringify(corpse));
+        skel.team = 'party';
+        skel.scheme = { ...skel.scheme, monster: 'skeleton', skin: 0xd8d2be, cloth: 0x3a2f28, accent: 0x9a9a9a, hair: 0x8fe3ff, bulk: 0.95 };
+        skel.knownSkills = skel.knownSkills.filter((id) => id !== 'bone_strike').concat('bone_strike');
+        skel.equipment = {};
+        skel.name = 'Risen Skeleton';
+        const unit = this.summon(skel, u.pos, u.id);
+        raised.push(unit);
+        ev.push({ type: 'summon', unit });
+      }
+      ev.push({ type: 'log', text: `${raised.length} skeleton${raised.length > 1 ? 's' : ''} ${raised.length > 1 ? 'rise' : 'rises'} to serve!`, kind: 'system' });
+      ev.push({ type: 'skillfx', skill: s, at: center, targets: raised.map((r) => r.id) });
+      ev.push(...this.checkEnd());
+      return ev;
+    }
+
+    // ── minion summons (spirits, beasts, ghouls, champions) ──
+    if (s.summonId) {
+      const tpl = SUMMON_TEMPLATES[s.summonId];
+      if (!tpl) {
+        ev.push({ type: 'log', text: `${s.name} fizzles — no minion template.`, kind: 'info' });
+        return ev;
+      }
+      const count = s.summonCount ?? 1;
+      for (let i = 0; i < count; i++) {
+        const unit = this.summon(tpl(), u.pos, u.id);
+        ev.push({ type: 'summon', unit });
+        ev.push({ type: 'log', text: `${unit.name} answers the call!`, kind: 'system' });
+      }
+      ev.push({ type: 'skillfx', skill: s, at: center, targets: this.living(u.team).map((t) => t.id) });
+      ev.push(...this.checkEnd());
+      return ev;
+    }
+
+    // condition buffs (bless / arcane shield / bubble shield / sovereign sudds)
+    if (s.appliesCondition) {
       for (const ally of (s.selfOnly ? [u] : this.living(u.team))) {
         if (!ally.conditions.some((c) => c.id === s.appliesCondition)) {
           ally.conditions.push({ id: s.appliesCondition!, name: CONDITIONS[s.appliesCondition!].name, roundsLeft: s.appliesRounds ?? 3 });
@@ -499,6 +566,13 @@ export class Combat {
       ev.push({ type: 'skillfx', skill: s, at: center, targets: this.living(u.team).map((t) => t.id) });
       ev.push(...this.checkEnd());
       return ev;
+    }
+
+    // anything else — never crash, never silently fake: say so honestly
+    ev.push({ type: 'log', text: `${s.name} fizzles — its effect is still on the drawing board.`, kind: 'info' });
+    ev.push({ type: 'skillfx', skill: s, at: center, targets: this.living(u.team).map((t) => t.id) });
+    ev.push(...this.checkEnd());
+    return ev;
     }
 
     // heals (single ally / self / whole party)
@@ -559,6 +633,8 @@ export class Combat {
           case 'hungover': atkMod -= hangoverPenalty(u.level); break;
           case 'hungover_mild': atkMod -= 1; break;
           case 'well_fed': atkMod += 1; break;
+          case 'wraith': case 'shadow_form': case 'dire_form': case 'eldritch_form': atkMod += 2; break;
+          case 'spirit_form': case 'beast_form': atkMod += 1; break;
         }
       }
       const atk = rollD20(atkMod, blessed ? '1d4' : '');
@@ -590,6 +666,8 @@ export class Combat {
       // damage-dealt modifiers (intimidated / enraged / dwarven ale)
       if (u.conditions.some((x) => x.id === 'intimidated')) amount = Math.max(1, amount - 4);
       if (u.conditions.some((x) => x.id === 'enraged')) amount += 4;
+      if (u.conditions.some((x) => x.id === 'lich_form')) amount += 2;
+      if (u.conditions.some((x) => x.id === 'kings_lounge')) amount += 2;
       this.applyDamage(ev, t, amount, s.damageType, crit);
       // skill rider condition on a landed hit (soap splash → slippery, …)
       if (t.alive && s.appliesCondition && !t.conditions.some((x) => x.id === s.appliesCondition)) {
@@ -644,6 +722,13 @@ export class Combat {
 
   private applyDamage(ev: CombatEvent[], t: Unit, amount: number, kind: DamageType, crit: boolean) {
     if (this.godMode && t.team === 'party') return;   // cheat: party takes no damage
+    // lich form: immune to physical damage
+    if (t.conditions.some((c) => c.id === 'lich_form')
+        && (kind === 'slashing' || kind === 'piercing' || kind === 'bludgeoning')) {
+      ev.push({ type: 'log', text: `${t.name}'s lich form shrugs off the ${kind} damage.`, kind: 'system' });
+      ev.push({ type: 'float', unitId: t.id, text: 'IMMUNE', cls: 'dmg' });
+      return;
+    }
     // armor physResist (sturdy boots, pipe helmet, ribcage…) — physical only, min 1
     if (kind === 'slashing' || kind === 'piercing' || kind === 'bludgeoning') {
       const resist = effPhysResist(t);
@@ -662,6 +747,7 @@ export class Combat {
     const out: CombatEvent[] = [];
     if (!t.alive) return out;
     t.alive = false;
+    if (t.team === 'enemy' && this.inCombat) this.corpses.push(t.id);
     out.push({ type: 'death', unitId: t.id });
     out.push({ type: 'log', text: `☠ ${t.name} is slain!`, kind: 'death' });
     if (t.team === 'enemy') {

@@ -2,11 +2,14 @@
 // Floor 50 layout sanity — imports the authored level and asserts:
 //   1. Every one of the 25 rooms is reachable from spawn with NO
 //      blockers/doors applied (pure walkability).
-//   2. With ALL blockers + doors closed, exactly rooms {1,2,3,4,5}
-//      are reachable (soft-lock guard — the shortcut debris must be
-//      the ONLY way into the west cluster, from Room 1's side).
-//   3. With shortcut_open + debris_56 + pipe_climbed opened (doors
-//      open), every room except {16,17} is reachable.
+//   2. With ALL blockers + doors closed, rooms {1,2,3,4,5} plus the
+//      OPEN back-shortcut cluster {8,9,11,12,13,15,18,19,20} are
+//      reachable (the 1↔19 shortcut has no gate — player request — so
+//      the north/west cluster is explorable from the start; the soap
+//      gate, pipe climb, vault and the r5→r6 debris still seal their
+//      rooms).
+//   3. With debris_56 + pipe_climbed opened (doors open), every room
+//      except {16,17} is reachable.
 //   4. {16,17} open only with mushroom_door / vault_tunnel.
 //   5. Every spawn / door / chest / NPC tile is walkable.
 //
@@ -125,17 +128,17 @@ const walkAll = applyState({ openFlags: [], doorsOpen: true });
   }
 }
 
-// ── TEST 2: everything closed → exactly {1,2,3,4,5} ──
+// ── TEST 2: everything closed → start cluster + the OPEN back shortcut ──
 {
   const walkClosed = applyState({ openFlags: [], doorsOpen: false });
   const reach = reachableRooms(walkClosed, structures.partySpawn);
-  const expect = new Set(['r1', 'r2', 'r3', 'r4', 'r5']);
-  check('all closed → only rooms 1-5 reachable', same(reach, expect), `got ${[...reach].sort().join(',')}`);
+  const expect = new Set(['r1', 'r2', 'r3', 'r4', 'r5', 'r8', 'r9', 'r11', 'r12', 'r13', 'r15', 'r18', 'r19', 'r20']);
+  check('all closed → start cluster + open back shortcut reachable', same(reach, expect), `got ${[...reach].sort().join(',')}`);
 }
 
-// ── TEST 3: shortcut + debris56 + pipeclimb open, doors open ──
+// ── TEST 3: debris56 + pipeclimb open, doors open ──
 {
-  const walk = applyState({ openFlags: ['shortcut_open', 'debris_56', 'pipe_climbed'], doorsOpen: true });
+  const walk = applyState({ openFlags: ['debris_56', 'pipe_climbed'], doorsOpen: true });
   const reach = reachableRooms(walk, structures.partySpawn);
   const missing = ROOMS.map((r) => r.id).filter((id) => !reach.has(id) && id !== 'r16' && id !== 'r17');
   check('shortcut+debris+pipe open → all rooms except 16,17 reachable', missing.length === 0,
@@ -144,12 +147,12 @@ const walkAll = applyState({ openFlags: [], doorsOpen: true });
 
 // ── TEST 4: mushroom_door → 16; vault_tunnel → 17 ──
 {
-  const walk = applyState({ openFlags: ['shortcut_open', 'debris_56', 'pipe_climbed', 'mushroom_door'], doorsOpen: true });
+  const walk = applyState({ openFlags: ['debris_56', 'pipe_climbed', 'mushroom_door'], doorsOpen: true });
   const reach = reachableRooms(walk, structures.partySpawn);
   check('mushroom_door opens room 16', reach.has('r16'), reach.has('r16') ? '' : 'r16 unreachable');
 }
 {
-  const walk = applyState({ openFlags: ['shortcut_open', 'debris_56', 'pipe_climbed', 'vault_tunnel'], doorsOpen: true });
+  const walk = applyState({ openFlags: ['debris_56', 'pipe_climbed', 'vault_tunnel'], doorsOpen: true });
   const reach = reachableRooms(walk, structures.partySpawn);
   check('vault_tunnel opens room 17', reach.has('r17'), reach.has('r17') ? '' : 'r17 unreachable');
 }
