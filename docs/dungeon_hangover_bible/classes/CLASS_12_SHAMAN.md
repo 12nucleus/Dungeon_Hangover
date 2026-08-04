@@ -67,7 +67,7 @@ Philosophy: The spirits are ALWAYS talking. The spirits are ALWAYS judging. And 
 | 26 | The Vision Quest Deep | Active | 25 | 2 | Deeper vision. See all enemy positions, next 3 actions, AND hidden items. | — | Free info. | *"Deep-quested. SEES MORE. Deep-quested many times. The quest is DEEP."* |
 | 27 | The Spirit Guide Pack | Passive | 30 | 0 | When you kill an enemy, 50% chance to summon a spirit. | — | Upgrades Spirit Guide. | *"Pack-guided. MORE SPIRIT. Pack-guided many times. The pack is SPIRIT."* |
 | 28 | The Totem Grove | Active | 30 | 3 | Place a grove of totems. Allies near them gain +15% dmg and +10% resistance 3 turns. | 5 | One grove at a time. | *"Grove-totemed. MORE BUFFED. Grove-totemed many times. The grove is TOTEM."* |
-| 29 | The Ancestral Fury | Active | 30 | 4 | Ancestral fury. All enemies take 10 dmg. All allies gain shield 2 turns. | 6 | Stacks with other AoE. | *"Fury-ancestrated. MORE SHIELDED. Fury-ancestrated many times. The fury is ANCESTRAL."* |
+| 29 | The Ancestral Crash-Out | Active | 30 | 4 | Ancestral crash-out. All enemies take 10 dmg. All allies gain shield 2 turns. | 6 | Stacks with other AoE. | *"Crash-out-ancestrated. MORE SHIELDED. Crash-out-ancestrated many times. The crash-out is ANCESTRAL."* |
 | 30 | The Spirit Barrage | Active | 30 | 1 | Barrage of spirit bolts. 6 dmg. Ignores armor. | — | Stacks with other spirit dmg. | *"Barraged. MORE HAUNTED. Barraged many times. The barrage is SPIRIT."* |
 
 ### Tier 4 — Levels 31-40

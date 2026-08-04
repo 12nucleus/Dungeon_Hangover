@@ -66,7 +66,7 @@ Greg's philosophy: I've been thrown out of better places than this. You're not o
 | 23 | Bouncer's Privilege | Passive | 21 | 0 | +15% dmg to enemies larger than you. | — | Stacks with other size-based dmg. | *"They're bigger. So what? Been bigger than many bouncers. Still got in. Always gets in."* |
 | 24 | The Boot | Active | 25 | 2 | Kick target out of fight 2 turns. They return with –20% HP. | 4 | [COMBO] With Ejector Seat: 4 dmg on return. | *"Kicked them out. Out of the fight. Out of sight. Been kicked out of fourteen taverns. The kicking expert."* |
 | 25 | Iron Stance | Passive | 25 | 0 | Cannot be moved against your will (no knockback, no shove). | — | Does not stack. Absolute. | *"Planted. Rooted. Been planted in every tavern. The bouncers couldn't move."* |
-| 26 | Bouncer's Fury | Passive | 30 | 0 | When you kill an enemy, gain +10% dmg for the rest of the fight (cumulative). | — | Stacks with Mortician's Grave Markers. | *"Killed one. Will kill the next. Killed fourteen tavern reputations. A killing machine."* |
+| 26 | Bouncer's Crash-Out | Passive | 30 | 0 | When you kill an enemy, gain +10% dmg for the rest of the fight (cumulative). | — | Stacks with Mortician's Grave Markers. | *"Killed one. Will kill the next. Killed fourteen tavern reputations. A killing machine."* |
 | 27 | The Door | Active | 30 | 2 | Create a temporary wall (2 turns). Blocks movement and projectiles. | 4 | One wall at a time. | *"Made a door. A door that leads nowhere. Been behind many doors. Knows the doors."* |
 | 28 | Bouncer's Challenge | Active | 30 | 1 | Target must attack you 2 turns. Cannot target others. | 3 | Does not stack with other taunt effects. | *"Challenged them. They have to fight. Don't want to. Challenged many bouncers. Always wins."* |
 | 29 | Heavyweight | Passive | 30 | 0 | +20% dmg with two-handed weapons. +10% physical resistance. | — | Stacks with other weapon buffs. | *"Picked up something big. It's heavy. Gonna be heavy on their face. Picked up many heavy things. In taverns."* |
@@ -118,7 +118,7 @@ Greg's philosophy: I've been thrown out of better places than this. You're not o
 
 **[COMBO: The Wall + Thorn Armor (Barista)]:** Reflect 20% + Thorn Armor 15% = 35% reflect. Hit them, lose a THIRD of your HP. Been hit by professionals. Knows the reflect.
 
-**[COMBO: Bouncer's Fury + Mortician's Grave Markers]:** +10% per kill (Bouncer) + 5% per kill (Mortician) = +15% per kill. The body count is a BUFF. A long body count. In taverns.
+**[COMBO: Bouncer's Crash-Out + Mortician's Grave Markers]:** +10% per kill (Bouncer) + 5% per kill (Mortician) = +15% per kill. The body count is a BUFF. A long body count. In taverns.
 
 **[COMBO: The List + Architect's Compass (any)]:** See all enemies + reveal hidden doors = knows EVERYTHING. Been hidden in every tavern. Knows the secrets.
 
