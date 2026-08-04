@@ -23,6 +23,8 @@ export function setupTitleScene(h: CutsceneHost): { ext: THREE.Group; prevBg: an
 
   h.worldGroup.visible = false;
   h.propsGroup.visible = false;
+  if (h.dressingGroup) h.dressingGroup.visible = false;
+  if (h.trapGroup) h.trapGroup.visible = false;
   for (const [, v] of h.visuals) v.rig.group.visible = false;
 
   const prevBg = h.scene.background as any;

@@ -52,6 +52,8 @@ export interface CutsceneHost {
   readonly worldGroup: THREE.Group;
   /** dungeon dressing group (bath, weapon rack, door, chests, lever, rubble) */
   readonly dressingGroup: THREE.Group | null;
+  /** trap-marker group (hidden with the dressing on menu/tavern-exterior views) */
+  readonly trapGroup: THREE.Group | null;
   /** the underlying WebGL renderer's canvas element */
   readonly canvas: HTMLCanvasElement;
   readonly fadeEl: HTMLElement | null;

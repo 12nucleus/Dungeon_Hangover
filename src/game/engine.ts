@@ -260,6 +260,8 @@ export class GameEngine {
   public weaponRack: THREE.Group | null = null;
   public rackClub: THREE.Object3D | null = null;
   public rubbleMeshes: { mesh: THREE.Group; tile: GridPos }[] = [];
+  /** dungeon set-dressing root (bath, doors, chests, lever, rubble) — created by setupDungeon */
+  public dressingGroup: THREE.Group | null = null;
   /** authored doors (floor 50): id → mesh + open flag */
   public doorMeshes: { id: string; pos: GridPos; flag: string; mesh: THREE.Group }[] = [];
   /** authored blockers (rubble / secret doors) keyed by open flag */
@@ -521,6 +523,10 @@ export class GameEngine {
       this.world.group.visible = false;
       this.props.group.visible = false;
       if (this.fogGroup) this.fogGroup.visible = false;
+      // dungeon dressing (rubble, bath, iron doors, chests) + trap markers
+      // must not leak beside the tavern exterior on the title screen
+      if (this.dressingGroup) this.dressingGroup.visible = false;
+      if (this.trapManager?.group) this.trapManager.group.visible = false;
     }
     this.playerCone.renderOrder = 0;
     this.scene.add(this.playerCone);
@@ -634,6 +640,7 @@ export class GameEngine {
       get propsGroup() { return self.props.group; },
       get worldGroup() { return self.world.group; },
       get dressingGroup() { return (self as any).dressingGroup ?? null; },
+      get trapGroup() { return (self as any).trapManager?.group ?? null; },
       get canvas() { return self.renderer.domElement; },
       get fadeEl() { return self.fadeEl; },
       get heroLight() { return self.heroLight; },
@@ -1344,6 +1351,9 @@ export class GameEngine {
     if (this.world) this.world.group.visible = false;
     if (this.props) this.props.group.visible = false;
     if (this.fogGroup) this.fogGroup.visible = false;
+    // dungeon dressing + trap markers stay out of the tavern-exterior view
+    if (this.dressingGroup) this.dressingGroup.visible = false;
+    if (this.trapManager?.group) this.trapManager.group.visible = false;
     for (const [, v] of this.visuals) {
       if (v.rig?.group) v.rig.group.visible = false;
       if (v.proxy) v.proxy.visible = false;
@@ -1401,6 +1411,8 @@ export class GameEngine {
    this.inTavern = true;
    this.world.group.visible = false;
    this.props.group.visible = false;
+   if (this.dressingGroup) this.dressingGroup.visible = false;
+   if (this.trapManager?.group) this.trapManager.group.visible = false;
    for (const [, v] of this.visuals) v.rig.group.visible = false;
    this.tavern = this._buildTavern();
    this.scene.add(this.tavern);
@@ -1717,6 +1729,8 @@ export class GameEngine {
     // -- reveal the dungeon + reposition every rig --
     this.world.group.visible = true;
     this.props.group.visible = true;
+    if (this.dressingGroup) this.dressingGroup.visible = true;
+    if (this.trapManager?.group) this.trapManager.group.visible = true;
     this.repositionAllVisuals();
     if (this.bonfireLit) this.spawnBonfireFlame();
 

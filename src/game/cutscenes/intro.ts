@@ -436,6 +436,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.worldGroup.visible = true;
   h.propsGroup.visible = true;
   if (h.dressingGroup) h.dressingGroup.visible = true;
+  if (h.trapGroup) h.trapGroup.visible = true;
   // No fog in the dungeon wake-up scene — the cobblestone + props are fully
   // visible without the ugly atmospheric haze. (Fog was making the floor read
   // as a muddy void and obscured the props behind Greg.)
@@ -538,6 +539,7 @@ export function finishIntro(h: CutsceneHost) {
   h.worldGroup.visible = true;
   h.propsGroup.visible = true;
   if (h.dressingGroup) h.dressingGroup.visible = true;
+  if (h.trapGroup) h.trapGroup.visible = true;
   // tear down the tavern set like the wake path does
   if (h.tavern) { h.scene.remove(h.tavern); h.tavern = null; }
   h.tavernRigs = [];
