@@ -693,7 +693,7 @@ export class Combat {
       case 'capital_gains': addCond(u, 'enraged', 3); ev.push({type:'log', text:'Capital gains — Enraged!', kind:'system'}); break;
       case 'amortize': { const t = targets[0]; if (t) addCond(t, 'bleeding', 3); ev.push({type:'log', text:`${t?.name ?? 'Target'} amortizes — Bleeding!`, kind:'system'}); break; }
       case 'avatar': addCond(u, 'enraged', 3); addCond(u, 'lich_form', 3); ev.push({type:'log', text:`${u.name} ascends to Avatar form!`, kind:'crit'}); break;
-      case 'plumbers_rage': addCond(u, 'enraged', 3); addCond(u, 'armored', 3); ev.push({type:'log', text:`${u.name} plummets into rage — Enraged + Armored!`, kind:'crit'}); break;
+      case 'plumbers_rage': addCond(u, 'crash_out', 3); addCond(u, 'armored', 3); ev.push({type:'log', text:`${u.name} plummets into rage — Crash Out + Armored!`, kind:'crit'}); break;
       case 'the_toast_2': for (const a of this.living(u.team)) { addCond(a, 'fortified', 3); addCond(a, 'enraged', 3); } ev.push({type:'log', text:'The Grand Toast — Fortified + Enraged all!', kind:'system'}); break;
       case 'the_vows': for (const a of this.living(u.team)) addCond(a, 'shielded', 99); ev.push({type:'log', text:'The Eternal Vows — party Shielded indefinitely!', kind:'system'}); break;
       case 'editorial_2': for (const a of this.living(u.team)) addCond(a, 'enraged', 3); ev.push({type:'log', text:'A scathing editorial — Enraged all!', kind:'system'}); break;
@@ -702,7 +702,7 @@ export class Combat {
       case 'solder': { const h = Math.min(rollDice('3d8').total, effMaxHp(u) - u.hp); u.hp += h; ev.push({type:'float', unitId: u.id, text:`+${h}`, cls:'heal'}); ev.push({type:'log', text:`${u.name} solders wounds — +${h} HP.`, kind:'heal'}); break; }
       case 'souffle': { const a = targets[0]; if (a) { const h = Math.min(rollDice('4d8').total, effMaxHp(a) - a.hp); a.hp += h; addCond(a, 'shielded', 3); ev.push({type:'float', unitId: a.id, text:`+${h}`, cls:'heal'}); ev.push({type:'log', text:`${a.name} enjoys a soufflé — heal + Shielded!`, kind:'heal'}); } break; }
       case 'midnight_snack': { const h = Math.min(rollDice('2d8').total, effMaxHp(u) - u.hp); u.hp += h; giveExtra(u, 2); ev.push({type:'float', unitId: u.id, text:`+${h} heal +2 act`, cls:'heal'}); ev.push({type:'log', text:`${u.name} sneak-eats — heal + 2 actions!`, kind:'heal'}); break; }
-      case 'beast_fury': addCond(u, 'enraged', 3); addCond(u, 'stoneskin', 3); ev.push({type:'log', text:`${u.name} feels beast fury — Enraged + Stone Skin!`, kind:'crit'}); break;
+      case 'beast_fury': addCond(u, 'crash_out', 3); addCond(u, 'stoneskin', 3); ev.push({type:'log', text:`${u.name} crashes out — +50% dmg + Stone Skin!`, kind:'crit'}); break;
       case 'write_off': clean(u); ev.push({type:'log', text:`${u.name} writes everything off — cleansed!`, kind:'heal'}); ev.push({type:'float', unitId: u.id, text:'✨ Cleanse', cls:'buff'}); break;
       case 'steam_armor': addCond(u, 'shielded', 3); ev.push({type:'log', text:`${u.name} steams up — Shielded (dodge 3 turns).`, kind:'system'}); break;
       case 'rummage': giveExtra(u, 1); ev.push({type:'log', text:`${u.name} rummages around — finds a bonus action!`, kind:'system'}); ev.push({type:'float', unitId: u.id, text:'💨 +1 act', cls:'buff'}); break;
@@ -806,6 +806,7 @@ export class Combat {
       let amount = dmg.total;
       if (crit) amount += rollDice(diceExpr.replace(/[+-]\d+$/, '')).total; // double the dice
       // damage-dealt modifiers (intimidated / enraged / dwarven ale)
+      if (u.conditions.some((x) => x.id === 'crash_out')) amount = Math.round(amount * 1.5); // +50% multiplicative
       if (u.conditions.some((x) => x.id === 'intimidated')) amount = Math.max(1, amount - 4);
       if (u.conditions.some((x) => x.id === 'enraged')) amount += 4;
       if (u.conditions.some((x) => x.id === 'lich_form')) amount += 2;

@@ -344,6 +344,7 @@ export const CONDITIONS: Record<string, { name: string; desc: string }> = {
   hungover_mild: { name: 'Hungover (Mild)', desc: '−1 to attack rolls' },
   cursed: { name: 'Cursed', desc: 'Loot quality downgraded one step' },
   enraged: { name: 'Enraged', desc: '+4 damage dealt' },
+  crash_out: { name: 'Crash Out', desc: '+50% damage dealt (multiplicative)' },
 
   // ── class-form buffs (buffs branch of useSkill) ──
   stoneskin: { name: 'Stone Skin', desc: '+4 AC' },
