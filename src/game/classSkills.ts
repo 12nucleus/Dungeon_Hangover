@@ -106,7 +106,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'bouncer_privilege', name: "Bouncer's Privilege", icon: '🏋️', kind: 'buff', desc: 'Passive: +15% dmg to enemies larger than you.', passive: true, selfOnly: true, fxColor: 0xc9a227, fx: 'buff' },
       { id: 'the_boot', name: 'The Boot', icon: '🥾', kind: 'ranged', desc: 'Kick target out of the fight 2 turns; they return at -20% HP.', range: 3, cooldown: 4, apCost: 2, fxColor: 0xff7a1f, fx: 'bash' },
       { id: 'iron_stance', name: 'Iron Stance', icon: '🗿', kind: 'buff', desc: 'Passive: cannot be moved against your will (no knockback/shove).', passive: true, selfOnly: true, fxColor: 0x6a6a75, fx: 'buff' },
-      { id: 'bouncer_fury', name: "Bouncer's Fury", icon: '🔥', kind: 'buff', desc: 'Passive: on kill, +10% dmg for the rest of the fight (cumulative).', passive: true, procsOncePerTurn: true, selfOnly: true, fxColor: 0xff7a1f, fx: 'buff' },
+      { id: 'bouncer_crashout', name: "Bouncer's Crash-Out", icon: '🔥', kind: 'buff', desc: 'Passive: on kill, +10% dmg for the rest of the fight (cumulative).', passive: true, procsOncePerTurn: true, selfOnly: true, fxColor: 0xff7a1f, fx: 'buff' },
       { id: 'the_door', name: 'The Door', icon: '🚪', kind: 'buff', desc: 'Conjure a temporary wall: it blocks the tile for 2 turns.', cooldown: 4, apCost: 2, selfOnly: true, summonId: 'door_wall', fxColor: 0x8a5a2a, fx: 'buff' },
       { id: 'last_word', name: 'Last Word', icon: '💬', kind: 'ranged', desc: 'Insult target: they take 4 dmg and are taunted onto you 2 turns.', range: 6, cooldown: 3, apCost: 1, fxColor: 0xd24a1f, fx: 'slash' },
       { id: 'bouncer_charge', name: "Bouncer's Charge", icon: '💨', kind: 'melee', desc: 'Charge through enemies, knocking them aside. 3d6+4 dmg to the target of your charge.', cooldown: 3, apCost: 2, fxColor: 0xff7a1f, fx: 'slash' },
@@ -229,7 +229,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'dissonance', name: 'Dissonance', icon: '🎻', kind: 'aoe', desc: 'A grating chord: all enemies take 2d6 psychic and are debuffed.', ability: 'cha', dice: '2d6', dtype: 'force', aoeRadius: 2, range: 4, cooldown: 3, fxColor: 0xd24a1f, fx: 'arcane' },
       { id: 'encore_ultimate', name: 'Encore: The Encore', icon: '🔄', kind: 'buff', desc: 'Refresh all ally cooldowns.', ability: 'cha', allAllies: true, cooldown: 5, apCost: 2, fxColor: 0xffe08a, fx: 'buff' },
       { id: 'stage_presence', name: 'Stage Presence', icon: '✨', kind: 'buff', desc: 'Passive: enemies near you take -10% dmg (too distracted to fight).', passive: true, ability: 'cha', selfOnly: true, fxColor: 0xff7a9a, fx: 'buff' },
-      { id: 'power_ballad_2', name: 'Ballad Of Fury', icon: '⚔️', kind: 'buff', desc: 'A war ballad: all allies gain +2 AC and +10% dmg 3 turns.', ability: 'cha', allAllies: true, cooldown: 4, apCost: 2, fxColor: 0xff7a1f, fx: 'buff' },
+      { id: 'power_ballad_2', name: 'Ballad of Crash-Out', icon: '⚔️', kind: 'buff', desc: 'A war ballad: all allies gain +2 AC and +10% dmg 3 turns.', ability: 'cha', allAllies: true, cooldown: 4, apCost: 2, fxColor: 0xff7a1f, fx: 'buff' },
       { id: 'death_of_taste', name: 'Death Of Taste', icon: '💀', kind: 'ranged', desc: 'Your voice kills: 4d6 psychic to target.', range: 6, ability: 'cha', dice: '4d6', dtype: 'force', cooldown: 4, fxColor: 0xc084fc, fx: 'arcane' },
     ]),
     ...tierT('karaoke_bard', 4, [
@@ -361,7 +361,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'bean_barrage', name: 'Bean Barrage', icon: '🫘', kind: 'ranged', desc: 'Hurl a handful of beans: 4d6 dmg to a line.', ability: 'dex', dice: '4d6', dtype: 'bludgeoning', range: 6, cooldown: 4, fxColor: 0x6a4a2a, fx: 'arrow' },
       { id: 'caffeine_aura', name: 'Caffeine Aura', icon: '☕', kind: 'buff', desc: 'Passive: all allies near you get +1 action.', passive: true, ability: 'dex', allAllies: true, fxColor: 0xffe08a, fx: 'buff' },
       { id: 'steam_blast_2', name: 'Absolute Steam', icon: '♨️', kind: 'aoe', desc: 'A room-filling steam cloud: 5d6 fire and blinded to all.', ability: 'int', dice: '5d6', dtype: 'fire', aoeRadius: 4, range: 4, cooldown: 5, cond: 'rooted', fxColor: 0xff7a1f, fx: 'fire' },
-      { id: 'espresso_fury', name: 'Espresso Fury', icon: '😡', kind: 'buff', desc: 'Passive: every attack refunds a bonus action on crit.', passive: true, ability: 'dex', procsOncePerTurn: true, selfOnly: true, fxColor: 0xd24a1f, fx: 'buff' },
+      { id: 'espresso_crashout', name: 'Espresso Crash-Out', icon: '😡', kind: 'buff', desc: 'Passive: every attack refunds a bonus action on crit.', passive: true, ability: 'dex', procsOncePerTurn: true, selfOnly: true, fxColor: 0xd24a1f, fx: 'buff' },
       { id: 'last_orders', name: 'Last Orders', icon: '🔔', kind: 'aoe', desc: 'The final call: 4d8 dmg to all enemies, allies get +1 action.', ability: 'dex', dice: '4d8', dtype: 'bludgeoning', aoeRadius: 3, range: 4, cooldown: 5, fxColor: 0xffe08a, fx: 'bash' },
     ]),
     ...tierT('barista', 5, [
@@ -590,7 +590,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'table_arrangement', name: 'Table Arrangement', icon: '🪑', kind: 'aoe', desc: 'Rearrange the room: push all enemies to one side, 3d6 dmg.', ability: 'wis', dice: '3d6', dtype: 'bludgeoning', aoeRadius: 3, range: 4, cooldown: 4, fxColor: 0xd24a4a, fx: 'bash' },
       { id: 'unity', name: 'Unity', icon: '💞', kind: 'buff', desc: 'Passive: allies share 30% of damage taken.', passive: true, ability: 'wis', allAllies: true, fxColor: 0xff7a9a, fx: 'buff' },
       { id: 'the_toast_2', name: 'The Grand Toast', icon: '🥂', kind: 'buff', desc: 'All allies gain +30% dmg and +3 AC 3 turns.', ability: 'wis', allAllies: true, cooldown: 4, apCost: 2, fxColor: 0xffe08a, fx: 'buff' },
-      { id: 'coordinated_fury', name: 'Coordinated Fury', icon: '🔥', kind: 'aoe', desc: 'The whole wedding party attacks: 5d6 dmg to all enemies.', ability: 'wis', dice: '5d6', dtype: 'bludgeoning', aoeRadius: 3, range: 4, cooldown: 5, fxColor: 0xd24a4a, fx: 'bash' },
+      { id: 'coordinated_crashout', name: 'Coordinated Crash-Out', icon: '🔥', kind: 'aoe', desc: 'The whole wedding party attacks: 5d6 dmg to all enemies.', ability: 'wis', dice: '5d6', dtype: 'bludgeoning', aoeRadius: 3, range: 4, cooldown: 5, fxColor: 0xd24a4a, fx: 'bash' },
     ]),
     ...tierT('wedding_planner', 4, [
       { id: 'legendary_planner', name: 'Legendary Planner', icon: '👑', kind: 'buff', desc: 'Passive: allies are immortal (can\'t drop below 1 HP).', passive: true, ability: 'wis', allAllies: true, fxColor: 0xff7a9a, fx: 'buff' },
@@ -749,7 +749,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'offering', name: 'The Offering', icon: '🕯️', kind: 'heal', desc: 'Make an offering: heal 2d8 and cleanse a curse.', ability: 'wis', healDice: '2d8', selfOnly: true, cooldown: 2, fxColor: 0x6f9c3f, fx: 'heal' },
     ]),
     ...tierT('shaman', 2, [
-      { id: 'spirit_fury', name: 'Spirit Fury', icon: '🌪️', kind: 'ranged', desc: 'A furious spirit: 3d8 psychic dmg and knockback.', range: 5, ability: 'wis', dice: '3d8', dtype: 'force', cooldown: 2, fxColor: 0xc084fc, fx: 'arcane' },
+      { id: 'spirit_crashout', name: 'Spirit Crash-Out', icon: '🌪️', kind: 'ranged', desc: 'A crash-out spirit: 3d8 psychic dmg and knockback.', range: 5, ability: 'wis', dice: '3d8', dtype: 'force', cooldown: 2, fxColor: 0xc084fc, fx: 'arcane' },
       { id: 'bind_spirit', name: 'Bind Spirit', icon: '⛓️', kind: 'ranged', desc: 'Bind an enemy\'s spirit: they are Rooted 2 turns.', range: 5, ability: 'wis', cond: 'rooted', cooldown: 3, fxColor: 0xc084fc, fx: 'buff' },
       { id: 'spirit_shield', name: 'Spirit Shield', icon: '🛡️', kind: 'buff', cond: 'stoneskin', appliesRounds: 3, desc: 'Wrap in spirits: gain +4 AC 3 turns.', ability: 'wis', selfOnly: true, cooldown: 3, apCost: 1, fxColor: 0xc084fc, fx: 'buff' },
       { id: 'haunt', name: 'The Haunt', icon: '👻', kind: 'ranged', desc: 'Haunt the target: they take 2d6 dmg each turn and are Frightened.', range: 5, ability: 'wis', dice: '2d6', dtype: 'force', cooldown: 3, fxColor: 0xc084fc, fx: 'arcane' },
@@ -823,7 +823,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
     ...tierT('zoologist', 3, [
       { id: 'dire_form', name: 'Dire Form', icon: '🐺', kind: 'buff', desc: 'A dire transformation: +50% dmg, +6 AC 3 turns.', ability: 'int', selfOnly: true, cost: 'action', cooldown: 5, apCost: 3, cond: 'dire_form', appliesRounds: 3, fxColor: 0xd24a1f, fx: 'buff' },
       { id: 'master_of_beasts', name: 'Master Of Beasts', icon: '👑', kind: 'buff', desc: 'Passive: your beasts deal +50% dmg.', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
-      { id: 'primal_fury', name: 'Primal Fury', icon: '⚡', kind: 'aoe', desc: 'All your beasts attack at once: 5d6 dmg to all enemies.', ability: 'int', dice: '5d6', dtype: 'piercing', aoeRadius: 3, range: 4, cooldown: 4, fxColor: 0xd24a1f, fx: 'slash' },
+      { id: 'primal_crashout', name: 'Primal Crash-Out', icon: '⚡', kind: 'aoe', desc: 'All your beasts attack at once: 5d6 dmg to all enemies.', ability: 'int', dice: '5d6', dtype: 'piercing', aoeRadius: 3, range: 4, cooldown: 4, fxColor: 0xd24a1f, fx: 'slash' },
       { id: 'wereform', name: 'Wereform', icon: '🐺', kind: 'buff', desc: 'Passive: at full moon you are stronger (always active in dungeon).', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
       { id: 'swarm', name: 'The Swarm', icon: '🐝', kind: 'ranged', desc: 'Call a swarm: 4d6 dmg to a target each turn 3 turns.', range: 4, ability: 'int', dice: '4d6', dtype: 'piercing', cooldown: 4, fxColor: 0xc9a227, fx: 'slash' },
       { id: 'beast_armor', name: 'Beast Armor', icon: '🦏', kind: 'buff', desc: 'Passive: +15% dmg reduction (thick hide).', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
@@ -839,7 +839,7 @@ export const CLASS_SKILLS: Record<string, SkillDef[]> = {
       { id: 'immortal_beast', name: 'Immortal Beast', icon: '🦏', kind: 'buff', desc: 'Passive: your beasts cannot die.', passive: true, ability: 'int', selfOnly: true, fxColor: 0x8a6a2a, fx: 'buff' },
       { id: 'primal_god', name: 'Primal God', icon: '🌿', kind: 'buff', desc: 'Passive: +50% dmg, immune to status.', passive: true, ability: 'int', selfOnly: true, fxColor: 0x6f9c3f, fx: 'buff' },
       { id: 'the_herd', name: 'The Herd', icon: '🐘', kind: 'buff', desc: 'Summon a stampede that tramples all enemies.', ability: 'int', selfOnly: true, cooldown: 5, apCost: 3, fxColor: 0x8a6a2a, fx: 'buff' },
-      { id: 'beast_fury', name: 'Beast Fury', icon: '😡', kind: 'buff', desc: 'Rage of the wild: +50% dmg, +4 AC 3 turns.', ability: 'int', selfOnly: true, cooldown: 4, apCost: 2, fxColor: 0xd24a1f, fx: 'buff' },
+      { id: 'beast_crashout', name: 'Beast Crash-Out', icon: '😡', kind: 'buff', desc: 'Rage of the wild: +50% dmg, +4 AC 3 turns.', ability: 'int', selfOnly: true, cooldown: 4, apCost: 2, fxColor: 0xd24a1f, fx: 'buff' },
       { id: 'wild_finale', name: 'Wild Finale', icon: '🎆', kind: 'aoe', desc: 'The ultimate hunt: 8d6 dmg to all, summon a great beast.', ability: 'int', dice: '8d6', dtype: 'piercing', aoeRadius: 4, range: 4, cooldown: 6, apCost: 4, fxColor: 0xd24a1f, fx: 'slash' },
       { id: 'nature_god', name: 'Nature God', icon: '🌳', kind: 'buff', desc: 'Passive: regenerate 10% HP each turn.', passive: true, ability: 'int', procsOncePerTurn: true, selfOnly: true, fxColor: 0x6f9c3f, fx: 'heal' },
       { id: 'pack_god', name: 'Pack God', icon: '🐺', kind: 'buff', desc: 'Passive: allies deal +20% dmg.', passive: true, ability: 'int', allAllies: true, fxColor: 0x8a6a2a, fx: 'buff' },

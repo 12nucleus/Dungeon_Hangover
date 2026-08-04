@@ -671,7 +671,7 @@ export class Combat {
       case 'venom_blade': addCond(u, 'inspired', 3); ev.push({type:'log', text:`${u.name}'s blade gleams with venom.`, kind:'system'}); break;
       case 'shadow_cloak': u.sneak = true; addCond(u, 'evading', 2); ev.push({type:'log', text:`${u.name} vanishes — Evading + sneaking.`, kind:'crit'}); break;
       case 'infusion': u.cooldowns['infusion_next'] = 1; ev.push({type:'log', text:'Next consumable is guaranteed success.', kind:'system'}); break;
-      case 'power_ballad_2': for (const a of this.living(u.team)) { addCond(a, 'shielded', 3); addCond(a, 'inspired', 3); } ev.push({type:'log', text:'Ballad of Fury — Shielded + Inspired all!', kind:'system'}); break;
+      case 'power_ballad_2': for (const a of this.living(u.team)) { addCond(a, 'shielded', 3); addCond(a, 'inspired', 3); } ev.push({type:'log', text:'Ballad of Crash-Out — Shielded + Inspired all!', kind:'system'}); break;
       case 'power_crescendo': addCond(u, 'inspired', 3); ev.push({type:'log', text:`${u.name}'s song crescendoes — Inspired.`, kind:'system'}); break;
       case 'encore_all': for (const a of this.living(u.team)) giveExtra(a, 1); ev.push({type:'log', text:'Encore for everyone — +1 bonus action!', kind:'system'}); break;
       case 'spontaneous': { const pool = ['inspired','shielded','fortified','enraged']; const id = pool[Math.floor(Math.random()*pool.length)]; for (const a of this.living(u.team)) addCond(a, id, 3); ev.push({type:'log', text:`A spontaneous ${CONDITIONS[id].name} sweeps the party!`, kind:'system'}); break; }
@@ -702,7 +702,7 @@ export class Combat {
       case 'solder': { const h = Math.min(rollDice('3d8').total, effMaxHp(u) - u.hp); u.hp += h; ev.push({type:'float', unitId: u.id, text:`+${h}`, cls:'heal'}); ev.push({type:'log', text:`${u.name} solders wounds — +${h} HP.`, kind:'heal'}); break; }
       case 'souffle': { const a = targets[0]; if (a) { const h = Math.min(rollDice('4d8').total, effMaxHp(a) - a.hp); a.hp += h; addCond(a, 'shielded', 3); ev.push({type:'float', unitId: a.id, text:`+${h}`, cls:'heal'}); ev.push({type:'log', text:`${a.name} enjoys a soufflé — heal + Shielded!`, kind:'heal'}); } break; }
       case 'midnight_snack': { const h = Math.min(rollDice('2d8').total, effMaxHp(u) - u.hp); u.hp += h; giveExtra(u, 2); ev.push({type:'float', unitId: u.id, text:`+${h} heal +2 act`, cls:'heal'}); ev.push({type:'log', text:`${u.name} sneak-eats — heal + 2 actions!`, kind:'heal'}); break; }
-      case 'beast_fury': addCond(u, 'crash_out', 3); addCond(u, 'stoneskin', 3); ev.push({type:'log', text:`${u.name} crashes out — +50% dmg + Stone Skin!`, kind:'crit'}); break;
+      case 'beast_crashout': addCond(u, 'crash_out', 3); addCond(u, 'stoneskin', 3); ev.push({type:'log', text:`${u.name} crashes out — +50% dmg + Stone Skin!`, kind:'crit'}); break;
       case 'write_off': clean(u); ev.push({type:'log', text:`${u.name} writes everything off — cleansed!`, kind:'heal'}); ev.push({type:'float', unitId: u.id, text:'✨ Cleanse', cls:'buff'}); break;
       case 'steam_armor': addCond(u, 'shielded', 3); ev.push({type:'log', text:`${u.name} steams up — Shielded (dodge 3 turns).`, kind:'system'}); break;
       case 'rummage': giveExtra(u, 1); ev.push({type:'log', text:`${u.name} rummages around — finds a bonus action!`, kind:'system'}); ev.push({type:'float', unitId: u.id, text:'💨 +1 act', cls:'buff'}); break;
