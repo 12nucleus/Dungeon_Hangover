@@ -118,72 +118,247 @@ export function updateExploredVisibility(engine: any) {
 }
 
 // ══ tile picking ═══════════════════════════════════════════
-// Iterative height refinement: we first intersect a flat plane at the
-// leader's height to get a candidate tile, then re-intersect the ray at that
-// tile's *actual* terrain height (world.heights is the single source of truth
-// for the ground surface in both the voxel-terrain and fallback renderers).
-// With the 55° perspective camera this converges to sub-tile accuracy in
-// 2-3 passes on uneven floors — fixing the "pointer vs. clicked ground"
-// offset.
+// Voxel-accurate DDA (Amanatides & Woo): the ray is walked tile by tile
+// through the grid and the FIRST solid column it enters wins — a wall face
+// returns the wall tile, never the floor behind it. The old plane
+// intersection let clicks pass through walls/fog to tiles on the far side,
+// which is what sent the hero wandering across the map.
 export function pickTile(engine: any): GridPos | null {
   engine.ray.setFromCamera(engine.pointer, engine.iso.cam);
-  const origin = engine.ray.ray.origin;
-  const dir = engine.ray.ray.direction;
-  if (Math.abs(dir.y) < 1e-6) return null;
+  const o = engine.ray.ray.origin;
+  const d = engine.ray.ray.direction;
+  const world = engine.world;
+  if (!world?.heights?.length) return null;
+  const S = world.heights.length;
 
-  const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat?.living('party')[0];
-  let pickY = leader ? engine.world.heightAt(leader.pos.x, leader.pos.z) : 1;
+  // column top (world y) for a tile. Real walls (cave_wall) rise to wallH;
+  // prop-blocked FLOOR tiles (bonfire, brazier, rubble — stone tiles with
+  // blocked=true) only get a prop-height column so rays passing above the
+  // prop still reach the floor behind it.
+  const colTop = (x: number, z: number): number => {
+    const h = world.heights[x][z];
+    if (world.blocked[x]?.[z]) {
+      const isWall = world.topMat?.[x]?.[z] === 'cave_wall' || h >= 3;
+      if (isWall) {
+        const wh = world.wallH?.[x]?.[z];
+        return (typeof wh === 'number' && wh > 0 ? wh : h) + 0.5;
+      }
+      return h + 1.7;
+    }
+    return h + 0.5;
+  };
 
-  let tile: GridPos | null = null;
-  for (let i = 0; i < 3; i++) {
-    const t = (pickY - origin.y) / dir.y;
-    if (t < 0) return null;
-    const hx = origin.x + dir.x * t;
-    const hz = origin.z + dir.z * t;
-    tile = engine.world.worldToTile(hx, hz);
-    if (!tile) return null;
-    const nextY = engine.world.heightAt(tile.x, tile.z);
-    if (Math.abs(nextY - pickY) < 0.05) break;
-    pickY = nextY;
+  let tx = Math.floor(o.x + S / 2);
+  let tz = Math.floor(o.z + S / 2);
+  const stepX = d.x > 0 ? 1 : -1;
+  const stepZ = d.z > 0 ? 1 : -1;
+  const tDeltaX = Math.abs(d.x) > 1e-9 ? Math.abs(1 / d.x) : Infinity;
+  const tDeltaZ = Math.abs(d.z) > 1e-9 ? Math.abs(1 / d.z) : Infinity;
+  // distance along the ray to the first tile boundary on each axis
+  const boundX = (tx + (stepX > 0 ? 1 : 0) - S / 2);
+  const boundZ = (tz + (stepZ > 0 ? 1 : 0) - S / 2);
+  let tMaxX = Math.abs(d.x) > 1e-9 ? (boundX - o.x) / d.x : Infinity;
+  let tMaxZ = Math.abs(d.z) > 1e-9 ? (boundZ - o.z) / d.z : Infinity;
+
+  let tPrev = 0;
+  for (let i = 0; i < 512; i++) {
+    const tNext = Math.min(tMaxX, tMaxZ);
+    if (world.inBounds(tx, tz)) {
+      const top = colTop(tx, tz);
+      const yA = o.y + d.y * Math.max(tPrev, 0);
+      const yB = o.y + d.y * tNext;
+      if (Math.min(yA, yB) <= top) return { x: tx, z: tz };
+    }
+    if (tNext > 260) return null;
+    if (tMaxX < tMaxZ) { tPrev = tMaxX; tMaxX += tDeltaX; tx += stepX; }
+    else { tPrev = tMaxZ; tMaxZ += tDeltaZ; tz += stepZ; }
   }
-  return tile;
+  return null;
+}
+
+// ══ interactable picking (raycast + screen-space forgiveness) ═══════════
+// Direct ray hits win first (units, destructible props). If nothing is hit,
+// candidates whose projected screen position is within PICK_TOLERANCE_PX of
+// the cursor are considered — this is what makes the bonfire, NPCs and [E]
+// prompts clickable without pixel-perfect aim (BG3-style generous picking).
+export interface InteractPick {
+  kind: 'unit' | 'prop' | 'npc' | 'bonfire' | 'active';
+  unitId?: string;
+  propId?: string;
+  npcId?: string;
+  /** screen-space distance in px (0 = direct ray hit) */
+  dist: number;
+}
+
+const PICK_TOLERANCE_PX = 42;
+const pickProj = new THREE.Vector3();
+
+export function pickInteractable(engine: any): InteractPick | null {
+  engine.ray.setFromCamera(engine.pointer, engine.iso.cam);
+  const unitHit = engine.ray.intersectObjects(engine.unitProxies, false)[0];
+  if (unitHit) {
+    const ud = unitHit.object.userData;
+    if (ud.npcId) return { kind: 'npc', npcId: ud.npcId as string, dist: 0 };
+    if (ud.unitId) return { kind: 'unit', unitId: ud.unitId as string, dist: 0 };
+  }
+  const propHit = engine.ray.intersectObjects(engine.props.pickboxes, false)[0];
+  if (propHit) return { kind: 'prop', propId: propHit.object.userData.propId as string, dist: 0 };
+
+  // screen-space forgiveness pass
+  const r = engine.renderer.domElement.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return null;
+  const cx = ((engine.pointer.x + 1) / 2) * r.width;
+  const cy = ((1 - engine.pointer.y) / 2) * r.height;
+  let best: InteractPick | null = null;
+  let bestD = PICK_TOLERANCE_PX;
+  const consider = (world: THREE.Vector3, pick: Omit<InteractPick, 'dist'>) => {
+    pickProj.copy(world).project(engine.iso.cam);
+    if (pickProj.z > 1 || pickProj.z < -1) return; // behind the camera
+    const sx = ((pickProj.x + 1) / 2) * r.width;
+    const sy = ((1 - pickProj.y) / 2) * r.height;
+    const d = Math.hypot(sx - cx, sy - cy);
+    if (d <= bestD) { bestD = d; best = { ...pick, dist: d }; }
+  };
+  if (engine.bonfirePos) {
+    const wp = engine.world.tileToWorld(engine.bonfirePos.x, engine.bonfirePos.z, new THREE.Vector3());
+    wp.y += 0.6;
+    consider(wp, { kind: 'bonfire' });
+  }
+  const it = engine.activeInteractable;
+  if (it) {
+    const wp = engine.world.tileToWorld(it.pos.x, it.pos.z, new THREE.Vector3());
+    wp.y += 0.6;
+    consider(wp, { kind: 'active' });
+  }
+  for (const n of engine.npcs ?? []) {
+    if (n.proxy) consider(n.proxy.position as THREE.Vector3, { kind: 'npc', npcId: n.npcId });
+  }
+  return best;
+}
+
+// ══ hover path preview (explore mode) ═══════════════════════
+// A dotted preview of the exact route a click would take, plus a
+// destination ring. Red ring = can't walk there. Recomputed only when the
+// hovered tile changes (pathTo is a full BFS — never run it per frame).
+function ensurePathPreview(engine: any) {
+  if (engine.pathPreviewGroup) return;
+  const g = new THREE.Group();
+  const dotGeo = new THREE.CircleGeometry(0.085, 10);
+  dotGeo.rotateX(-Math.PI / 2);
+  const dotMat = new THREE.MeshBasicMaterial({ color: 0x8fd4ff, transparent: true, opacity: 0.85, depthWrite: false });
+  engine.pathDots = [];
+  for (let i = 0; i < 96; i++) {
+    const m = new THREE.Mesh(dotGeo, dotMat);
+    m.visible = false;
+    m.renderOrder = 3;
+    g.add(m);
+    engine.pathDots.push(m);
+  }
+  const ringGeo = new THREE.RingGeometry(0.3, 0.44, 24);
+  ringGeo.rotateX(-Math.PI / 2);
+  engine.pathDestRing = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+  engine.pathDestRing.visible = false;
+  engine.pathDestRing.renderOrder = 3;
+  g.add(engine.pathDestRing);
+  engine.scene.add(g);
+  engine.pathPreviewGroup = g;
+}
+
+export function hidePathPreview(engine: any) {
+  for (const d of engine.pathDots ?? []) d.visible = false;
+  if (engine.pathDestRing) engine.pathDestRing.visible = false;
+}
+
+function showDestRing(engine: any, tile: GridPos, color: number) {
+  ensurePathPreview(engine);
+  const ring = engine.pathDestRing!;
+  const wp = unitWorld(engine, tile);
+  ring.position.set(wp.x, engine.world.heightAt(tile.x, tile.z) + 0.55, wp.z);
+  (ring.material as THREE.MeshBasicMaterial).color.setHex(color);
+  ring.visible = true;
+}
+
+function refreshPathPreview(engine: any, tile: GridPos | null, suppressed: boolean) {
+  hidePathPreview(engine);
+  if (!tile || suppressed) return;
+  const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat?.living('party')[0];
+  if (!leader) return;
+  const seen = !!engine.explored[tile.x]?.[tile.z];
+  if (!engine.world.isWalkable(tile.x, tile.z)) {
+    // walls/voids are always rendered → red "can't stand there" ring;
+    // unexplored floor stays silent (you can't see it anyway)
+    showDestRing(engine, tile, 0xef4444);
+    return;
+  }
+  if (!seen) return;
+  const path = engine.combat.pathTo(leader, tile.x, tile.z, 90);
+  if (!path || !path.length) { showDestRing(engine, tile, 0xef4444); return; }
+  ensurePathPreview(engine);
+  const n = Math.min(path.length, engine.pathDots.length);
+  for (let i = 0; i < n; i++) {
+    const d = engine.pathDots[i];
+    const wp = unitWorld(engine, path[i]);
+    d.position.set(wp.x, engine.world.heightAt(path[i].x, path[i].z) + 0.54, wp.z);
+    d.visible = true;
+  }
+  showDestRing(engine, path[path.length - 1], 0x9fdcff);
 }
 
 // ══ hover ══════════════════════════════════════════════════
 export function updateHover(engine: any) {
-  engine.ray.setFromCamera(engine.pointer, engine.iso.cam);
-  const unitHit = engine.ray.intersectObjects(engine.unitProxies, false)[0];
+  const explore = engine.phase === 'explore' && !engine.combat?.inCombat;
+  const pick = pickInteractable(engine);
   let info: string | null = null;
-  if (unitHit) {
-    const u = engine.byId(unitHit.object.userData.unitId as string);
+  if (pick?.kind === 'unit' && pick.unitId) {
+    const u = engine.byId(pick.unitId);
     if (u && u.alive) info = `${u.name} · ${u.title} — HP ${u.hp}/${u.maxHp} · AC ${u.ac}${u.conditions.length ? ' · ' + u.conditions.map((c: any) => c.name).join(', ') : ''}`;
-  }
-  if (!info) {
-    const propHit = engine.ray.intersectObjects(engine.props.pickboxes, false)[0];
-    const p = propHit ? engine.props.byId(propHit.object.userData.propId as string) : null;
+  } else if (pick?.kind === 'npc' && pick.npcId) {
+    info = `💬 ${NPCS[pick.npcId]?.name ?? 'A stranger'} — click to talk`;
+  } else if (pick?.kind === 'prop' && pick.propId) {
+    const p = engine.props.byId(pick.propId);
     if (p) info = `${p.def.icon} ${p.def.name} — destructible`;
+  } else if (pick?.kind === 'bonfire') {
+    info = engine.bonfireLit ? '🔥 Bonfire — click to walk over and rest' : '🔥 Unlit bonfire — click to walk over and kindle it';
+  } else if (pick?.kind === 'active' && engine.activeInteractable) {
+    info = engine.activeInteractable.label;
   }
-  if (!info && engine.phase === 'explore' && !engine.combat.inCombat) {
-    const tile = pickTile(engine);
-    if (tile) {
-      const trap = engine.trapManager.at(tile.x, tile.z);
-      if (trap && trap.revealed) {
-        const adj = engine.combat.living('party').some((u: any) => Combat.dist(u.pos, trap.pos) <= 1.5);
-        info = `⚠ ${trap.def.icon} ${trap.def.name}${adj ? ' — click to disarm' : ''}`;
-      } else {
-        // decor props (torches, braziers, the hermit's tent…) — hover label
-        const eo = engine.world?.exploredObjects?.find((o: any) => o.x === tile.x && o.z === tile.z);
-        const kind = eo?.object?.userData?.propKind as string | undefined;
-        if (kind && PROP_HOVER[kind]) info = PROP_HOVER[kind];
-      }
+  const needTile = explore || engine.targeting;
+  const tile = needTile ? pickTile(engine) : null;
+  if (!info && explore && tile) {
+    const trap = engine.trapManager.at(tile.x, tile.z);
+    if (trap && trap.revealed) {
+      const adj = engine.combat.living('party').some((u: any) => Combat.dist(u.pos, trap.pos) <= 1.5);
+      info = `⚠ ${trap.def.icon} ${trap.def.name}${adj ? ' — click to disarm' : ''}`;
+    } else {
+      // decor props (torches, braziers, the hermit's tent…) — hover label
+      const eo = engine.world?.exploredObjects?.find((o: any) => o.x === tile.x && o.z === tile.z);
+      const kind = eo?.object?.userData?.propKind as string | undefined;
+      if (kind && PROP_HOVER[kind]) info = PROP_HOVER[kind];
     }
   }
-  if (engine.targeting && !unitHit) {
-    const tile = pickTile(engine);
+  if (engine.targeting && pick?.kind !== 'unit') {
     const s = skillById(engine.targeting);
     const a = engine.combat.active;
     if (tile && s && s.aoeRadius > 0 && !s.selfCentered && a) showAoePreview(engine, s, tile);
   }
+
+  // explore hover path preview — the exact route a click would walk
+  if (explore && !engine.targeting && !engine.firstPerson && !engine.busy) {
+    const key = tile ? `${tile.x},${tile.z}` : '';
+    if (key !== engine.hoverPathKey) {
+      engine.hoverPathKey = key;
+      refreshPathPreview(engine, tile, pick !== null);
+    }
+  } else if (engine.hoverPathKey) {
+    engine.hoverPathKey = '';
+    hidePathPreview(engine);
+  }
+
+  // cursor feedback — pointer over anything clickable, crosshair while aiming
+  const style = engine.renderer.domElement.style as CSSStyleDeclaration;
+  const cursor = engine.targeting ? 'crosshair' : pick ? 'pointer' : 'default';
+  if (style.cursor !== cursor) style.cursor = cursor;
+
   if (info !== engine.hoverInfo) { engine.hoverInfo = info; engine.emitSnapshot(); }
 }
 
@@ -211,7 +386,108 @@ const PROP_HOVER: Record<string, string> = {
 };
 
 // ══ click logic ════════════════════════════════════════════
-export function clickExplore(engine: any, unitId: string | undefined, tile: GridPos | null, propId?: string) {
+/** bonfire: forgiving click — walk up and kindle/rest automatically on arrival */
+function bonfireClick(engine: any, leader: Unit | null) {
+  const bp = engine.bonfirePos!;
+  if (!leader) return;
+  if (Combat.dist(leader.pos, bp) <= 1.5) {
+    if (engine.bonfireLit) engine.restAtBonfire(); else engine.lightBonfire();
+    return;
+  }
+  const adj = closestWalkableAdjacent(engine, bp, leader);
+  if (adj) {
+    const path = engine.combat.pathTo(leader, adj.x, adj.z);
+    if (path && path.length) {
+      engine.pendingBonfire = engine.bonfireLit ? 'rest' : 'light';
+      engine.audio.play('ui_click', 0.5);
+      pingAt(engine, adj);
+      moveUnitAlong(engine, leader, path);
+      engine.selectedId = leader.id;
+      engine.emitSnapshot();
+      return;
+    }
+  }
+  setHoverInfoOnce(engine, '🔥 Can\'t find a way to the bonfire.');
+}
+
+/** NPC: walk adjacent, then open the dialogue automatically on arrival */
+function npcClick(engine: any, leader: Unit | null, npcId: string) {
+  const entry = engine.npcs?.find((n: any) => n.npcId === npcId);
+  if (!entry || !leader) return;
+  if (Combat.dist(leader.pos, entry.pos) <= 1.5) { talkToNpc(engine, npcId); return; }
+  const adj = closestWalkableAdjacent(engine, entry.pos, leader);
+  if (adj) {
+    const path = engine.combat.pathTo(leader, adj.x, adj.z);
+    if (path && path.length) {
+      engine.pendingTalk = npcId;
+      engine.audio.play('ui_click', 0.5);
+      pingAt(engine, adj);
+      moveUnitAlong(engine, leader, path);
+      engine.selectedId = leader.id;
+      engine.emitSnapshot();
+      return;
+    }
+  }
+  setHoverInfoOnce(engine, `${NPCS[npcId]?.name ?? 'The figure'} — can't find a way to them.`);
+}
+
+/**
+ * Walk click — BG3 rules: you may only plot a route to tiles you can SEE
+ * (explored) and STAND on (walkable). Clicking a wall/fog/void snaps to the
+ * closest reachable explored tile within 3 (never to the far side of a
+ * wall), and anything deeper is refused with a message instead of sending
+ * the hero wandering across the map.
+ */
+function walkClick(engine: any, leader: Unit, tile: GridPos) {
+  const seenOk = (x: number, z: number) => engine.world.isWalkable(x, z) && !!engine.explored[x]?.[z];
+  let dest: GridPos | null = null;
+  let path: GridPos[] | null = null;
+  if (seenOk(tile.x, tile.z)) {
+    const p = engine.combat.pathTo(leader, tile.x, tile.z, 90);
+    if (p && p.length) { dest = tile; path = p; }
+  }
+  if (!dest) {
+    // spiral out from the clicked tile — nearest explored+walkable+reachable
+    let bestScore = Infinity;
+    for (let r = 1; r <= 3; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          const tx = tile.x + dx, tz = tile.z + dz;
+          if (!seenOk(tx, tz)) continue;
+          const p = engine.combat.pathTo(leader, tx, tz, 90);
+          if (!p || !p.length) continue;
+          const score = r * 1000 + p.length;
+          if (score < bestScore) { bestScore = score; dest = { x: tx, z: tz }; path = p; }
+        }
+      }
+      if (dest) break;
+    }
+  }
+  if (!dest || !path) {
+    const dark = !engine.explored[tile.x]?.[tile.z];
+    setHoverInfoOnce(engine, dark ? '🌑 Unscouted darkness — move closer first.' : '🧱 Can\'t walk there — that\'s a wall.');
+    return;
+  }
+  engine.audio.play('ui_click', 0.5);
+  pingAt(engine, dest);
+  moveUnitAlong(engine, leader, path);
+  const followers = engine.combat.living('party').filter((u: any) => u.id !== leader.id);
+  const spots: GridPos[] = [
+    { x: dest.x - 1, z: dest.z + 1 }, { x: dest.x + 1, z: dest.z + 1 },
+    { x: dest.x - 1, z: dest.z - 1 }, { x: dest.x + 1, z: dest.z - 1 },
+    { x: dest.x, z: dest.z + 2 },
+  ];
+  followers.forEach((f: any, i: number) => {
+    const spot = spots.find((s) => engine.world.isWalkable(s.x, s.z) && !engine.combat.living('party').some((o: any) => o.id !== f.id && o.pos.x === s.x && o.pos.z === s.z)) ?? spots[i % spots.length];
+    const fp = engine.combat.pathTo(f, spot.x, spot.z, 60);
+    if (fp && fp.length) moveUnitAlong(engine, f, fp);
+  });
+  engine.selectedId = leader.id;
+  engine.emitSnapshot();
+}
+
+export function clickExplore(engine: any, pick: InteractPick | null, tile: GridPos | null) {
   // jump-mode: the click is a hop target (budget-2 move)
   if (engine.jumpMode && tile) {
     engine.jumpMode = false;
@@ -228,12 +504,24 @@ export function clickExplore(engine: any, unitId: string | undefined, tile: Grid
     engine.emitSnapshot();
     return;
   }
-  if (propId) {
-    const prop = engine.props.byId(propId);
+  const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat.living('party')[0];
+
+  // ── bonfire: forgiving click — walk up and kindle/rest automatically ──
+  if (pick?.kind === 'bonfire' && engine.bonfirePos) { bonfireClick(engine, leader); return; }
+
+  // ── active proximity prompt ([E] …): click on/near it triggers it ──
+  const it = engine.activeInteractable;
+  if (it && (pick?.kind === 'active' || (tile && Math.max(Math.abs(it.pos.x - tile.x), Math.abs(it.pos.z - tile.z)) <= it.radius))) {
+    engine.triggerActiveInteractable();
+    return;
+  }
+
+  // ── destructible props: smash, or walk adjacent and smash on arrival ──
+  if (pick?.kind === 'prop' && pick.propId) {
+    const prop = engine.props.byId(pick.propId);
     if (prop) {
       const near = engine.combat.living('party').find((u: any) => Combat.dist(u.pos, prop.pos) <= 1);
       if (near) { void engine.smashProp(near, prop); return; }
-      const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat.living('party')[0];
       if (leader) {
         const adj = closestWalkableAdjacent(engine, prop.pos, leader);
         if (adj) {
@@ -250,28 +538,17 @@ export function clickExplore(engine: any, unitId: string | undefined, tile: Grid
       return;
     }
   }
-  if (unitId) {
-    const u = engine.byId(unitId);
+
+  // ── party select ──
+  if (pick?.kind === 'unit' && pick.unitId) {
+    const u = engine.byId(pick.unitId);
     if (u?.team === 'party') { engine.selectedId = u.id; engine.audio.play('ui_click'); engine.emitSnapshot(); return; }
   }
 
-  // generic NPC registry (hermit, other hermit, Scrag, …)
-  if (!unitId) {
-    engine.ray.setFromCamera(engine.pointer, engine.iso.cam);
-    const hit = engine.ray.intersectObjects(engine.unitProxies, false)[0];
-    const npcId = hit?.object?.userData?.npcId as string | undefined;
-    if (npcId) {
-      const entry = engine.npcs?.find((n: any) => n.npcId === npcId);
-      const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat.living('party')[0];
-      if (entry && leader && Combat.dist(leader.pos, entry.pos) <= 1.5) {
-        talkToNpc(engine, npcId);
-      } else {
-        setHoverInfoOnce(engine, `${NPCS[npcId]?.name ?? 'The figure'} — get closer to talk.`);
-      }
-      return;
-    }
-  }
+  // ── NPCs: walk up and talk ──
+  if (pick?.kind === 'npc' && pick.npcId) { npcClick(engine, leader, pick.npcId); return; }
 
+  // ── revealed traps: adjacent click disarms ──
   if (tile) {
     const trap = engine.trapManager.at(tile.x, tile.z);
     if (trap && trap.revealed) {
@@ -279,66 +556,10 @@ export function clickExplore(engine: any, unitId: string | undefined, tile: Grid
       if (adj) { void engine.disarmTrap(adj, trap); return; }
     }
   }
-  const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat.living('party')[0];
+
+  // ── walk ──
   if (!leader || !tile) return;
-
-  if (engine.bonfireGroup && engine.bonfireLit && engine.bonfirePos && tile && Combat.dist(leader.pos, engine.bonfirePos!) <= 1.5) {
-    // clicking the fire or any tile right around it rests at the bonfire
-    if (Combat.dist(tile, engine.bonfirePos) <= 1) {
-      engine.restAtBonfire();
-      return;
-    }
-  }
-  const cp = engine.structures?.checkpoint;
-  if (engine.bonfireGroup && !engine.bonfireLit && cp && tile && Combat.dist(tile, cp) <= 1) {
-    if (Combat.dist(leader.pos, tile) <= 1.5) {
-      engine.lightBonfire();
-      return;
-    } else {
-      setHoverInfoOnce(engine, 'An unlit bonfire. Move closer to kindle it.');
-      return;
-    }
-  }
-
-  const path = engine.combat.pathTo(leader, tile.x, tile.z);
-  if (!path || !path.length) {
-    // clicking a wall/void tile (the tall walls cover a lot of screen):
-    // snap to the nearest walkable tile within 2 so the click never feels dead
-    let snap: GridPos | null = null;
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [2, 0], [-2, 0], [0, 2], [0, -2]]) {
-      if (engine.world.isWalkable(tile.x + dx, tile.z + dz)) { snap = { x: tile.x + dx, z: tile.z + dz }; break; }
-    }
-    if (snap) {
-      const p2 = engine.combat.pathTo(leader, snap.x, snap.z);
-      if (p2 && p2.length) {
-        engine.audio.play('ui_click', 0.5);
-        pingAt(engine, snap);
-        moveUnitAlong(engine, leader, p2);
-        engine.selectedId = leader.id;
-        engine.emitSnapshot();
-        return;
-      }
-    }
-    setHoverInfoOnce(engine, 'Can\'t walk there — that\'s a wall.');
-    return;
-  }
-  engine.audio.play('ui_click', 0.5);
-  pingAt(engine, tile);
-  moveUnitAlong(engine, leader, path);
-  const followers = engine.combat.living('party').filter((u: any) => u.id !== leader.id);
-  const dest = path[path.length - 1];
-  const spots: GridPos[] = [
-    { x: dest.x - 1, z: dest.z + 1 }, { x: dest.x + 1, z: dest.z + 1 },
-    { x: dest.x - 1, z: dest.z - 1 }, { x: dest.x + 1, z: dest.z - 1 },
-    { x: dest.x, z: dest.z + 2 },
-  ];
-  followers.forEach((f: any, i: number) => {
-    const spot = spots.find((s) => engine.world.isWalkable(s.x, s.z) && !engine.combat.living('party').some((o: any) => o.id !== f.id && o.pos.x === s.x && o.pos.z === s.z)) ?? spots[i % spots.length];
-    const fp = engine.combat.pathTo(f, spot.x, spot.z, 60);
-    if (fp && fp.length) moveUnitAlong(engine, f, fp);
-  });
-  engine.selectedId = leader.id;
-  engine.emitSnapshot();
+  walkClick(engine, leader, tile);
 }
 
 export function moveUnitAlong(engine: any, u: Unit, path: GridPos[]) {
@@ -369,7 +590,9 @@ export function closestWalkableAdjacent(engine: any, pos: GridPos, leader: Unit)
   return best;
 }
 
-export function clickCombat(engine: any, unitId: string | undefined, tile: GridPos | null, propId?: string) {
+export function clickCombat(engine: any, pick: InteractPick | null, tile: GridPos | null) {
+  const unitId = pick?.kind === 'unit' ? pick.unitId : undefined;
+  const propId = pick?.kind === 'prop' ? pick.propId : undefined;
   const active = engine.combat.active;
   if (!active || active.team !== 'party') return;
   // jump-mode: the click is a hop target (budget-2 move, costs movement)

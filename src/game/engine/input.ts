@@ -54,20 +54,12 @@ export function onPointerDown(engine: any, e: PointerEvent) {
     return;
   }
   if (engine.busy) return;
-  engine.ray.setFromCamera(engine.pointer, engine.iso.cam);
-  const unitHit = engine.ray.intersectObjects(engine.unitProxies, false)[0];
-  const propHit = engine.ray.intersectObjects(engine.props.pickboxes, false)[0];
+  // generous picking: direct ray hits first, then screen-space tolerance
+  // (bonfire / NPCs / [E] prompts) — handled inside pickInteractable.
+  const pick = pickInteractable(engine);
   const tile = pickTile(engine);
-
-  if (engine.phase === 'explore') {
-    // clicking an active interactable's tile triggers it (puddle, chest, valve…)
-    const it = engine.activeInteractable;
-    if (it && !propHit && tile && Math.max(Math.abs(it.pos.x - tile.x), Math.abs(it.pos.z - tile.z)) <= it.radius) {
-      engine.triggerActiveInteractable();
-      return;
-    }
-    engine.clickExplore(unitHit?.object.userData.unitId, tile, propHit?.object.userData.propId);
-  } else if (engine.phase === 'combat') engine.clickCombat(unitHit?.object.userData.unitId, tile, propHit?.object.userData.propId);
+  if (engine.phase === 'explore') engine.clickExplore(pick, tile);
+  else if (engine.phase === 'combat') engine.clickCombat(pick, tile);
 }
 
 export function onWheel(engine: any, e: WheelEvent) {
@@ -108,8 +100,10 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   if (engine.paused && k !== 'escape') { e.preventDefault(); return; }
   engine.keys.add(k);
   const cutscene = engine.busy && (engine.introActive || engine.bossCineActive);
-  if (k === 'q' && !cutscene) engine.iso.rotate(1);
-  if (k === 'e' && !cutscene) engine.iso.rotate(-1);
+  // Q/E rotate the iso camera; in first person they turn the view instead
+  // (handled per-frame in the engine update loop via engine.keys)
+  if (k === 'q' && !cutscene && !engine.firstPerson) engine.iso.rotate(1);
+  if (k === 'e' && !cutscene && !engine.firstPerson) engine.iso.rotate(-1);
   if (k === 'r' && !cutscene) {
     // interact with the active prompt (puddle, chest, valve…)
     if (engine.activeInteractable && engine.phase === 'explore' && !engine.combat.inCombat) engine.triggerActiveInteractable();
@@ -119,6 +113,7 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   if (k === 'j' && engine.phase !== 'menu') { engine.toggleQuestLog(); return; }
   if (k === 'i' && engine.phase !== 'menu') { engine.toggleInventory(); return; }
   if (k === 'k' && engine.phase !== 'menu') { engine.toggleSkillTree(); return; }
+  if (k === 'u' && engine.phase !== 'menu') { engine.toggleStats(); return; }
   if (k === 'c' && engine.phase === 'explore' && !engine.combat.inCombat) { engine.toggleSneak(); return; }
   if (k === 't') { engine.toggleTorch(); return; }
   if (k === 'v') { engine.followCam = !engine.followCam; engine.pushLog(`Follow camera ${engine.followCam ? 'ON' : 'OFF'}`, 'system'); engine.emitSnapshot(); return; }
@@ -135,7 +130,12 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
     // Esc closes the dialogue overlay first — pausing under it is confusing
     if (engine.showDialogue) { engine.closeDialogue(); return; }
     if (engine.showInventory) { engine.showInventory = false; engine.emitSnapshot(); return; }
+    if (engine.showStats) { engine.showStats = false; engine.emitSnapshot(); return; }
+    if (engine.showQuestLog) { engine.showQuestLog = false; engine.emitSnapshot(); return; }
     if (engine.showSkillTree) { engine.showSkillTree = false; engine.emitSnapshot(); return; }
+    // Esc leaves first person before it pauses — exiting FP also releases
+    // the pointer lock, so the cursor is back for the pause menu
+    if (engine.firstPerson) { engine.toggleFirstPerson(); return; }
     if (engine.targeting) { cancelTargeting(engine); return; }
     engine.togglePause();
     return;
@@ -168,4 +168,4 @@ export function onResize(engine: any) {
 
 import { unitWorld } from './visuals';
 import { cancelTargeting } from './targeting';
-import { pickTile } from './interaction';
+import { pickTile, pickInteractable } from './interaction';

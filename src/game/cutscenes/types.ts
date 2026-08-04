@@ -54,6 +54,8 @@ export interface CutsceneHost {
   readonly dressingGroup: THREE.Group | null;
   /** trap-marker group (hidden with the dressing on menu/tavern-exterior views) */
   readonly trapGroup: THREE.Group | null;
+  /** hand-authored dungeon NPC rigs (hermit, Scrag…) — hide with the dressing */
+  readonly npcRigs: { rig: Rig | null }[];
   /** the underlying WebGL renderer's canvas element */
   readonly canvas: HTMLCanvasElement;
   readonly fadeEl: HTMLElement | null;

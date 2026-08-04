@@ -576,8 +576,9 @@ export function finishIntro(h: CutsceneHost) {
       const wp = h.unitWorld(hero.pos);
       hv.rig.group.position.copy(wp);
       hv.rig.group.userData.baseY = wp.y;
-      // camera: back on Greg, same framing as the wake
-      h.iso.desiredYaw = Math.PI * 0.25; h.iso.desiredPitch = 0.55; h.iso.desiredDist = 7;
+      // camera: hand back the tactical 55° orbit — the player is in
+      // control now, the cramped wake framing stays in the cutscene
+      h.iso.desiredYaw = Math.PI * 0.25; h.iso.desiredPitch = 0.96; h.iso.desiredDist = 14;
       h.iso.focus(wp.clone().add(new THREE.Vector3(0, 0.7, 0)));
       h.iso.lerp = 10;
     }

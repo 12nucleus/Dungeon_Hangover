@@ -291,6 +291,15 @@ export function equipItem(engine: any, unitId: string, itemId: string) {
     u.weapon = item.weaponKind;
     const rig = engine.visuals.get(u.id)?.rig;
     if (rig) setWeapon(rig, item.weaponKind, u.scheme.accent);
+    // a freshly equipped torch is a FRESH torch — refill fuel and light it,
+    // otherwise it gutters instantly when the old flame already burned out
+    if (item.weaponKind === 'torch') {
+      engine.torchFuel = 100;
+      if (!engine.torchLit) {
+        engine.torchLit = true;
+        engine.pushLog('🔦 The fresh torch flares to life.', 'system');
+      }
+    }
   }
   engine.audio.play('ui_click', 0.7);
   engine.pushLog(`${u.name} equips ${item.icon} ${item.name}.`, 'system');

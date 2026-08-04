@@ -33,7 +33,7 @@ import { buildTavern } from './engine/tavern';
 import { buildSheep } from './engine/sheep';
 import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone, grantKey as grantKeyModule, winGame as winGameModule, grantLoot as grantLootModule } from './engine/dungeonSetup';
 import { smashProp, checkCombatTrigger, enqueue, setAnimScale, triggerTrap as triggerTrapModule } from './engine/combatAnimation';
-import { updateFog, updateExploredVisibility, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule } from './engine/interaction';
+import { updateFog, updateExploredVisibility, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule, hidePathPreview, type InteractPick } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
 import { respawn as respawnModule } from './engine/camping';
 import { offerLoot, flushLootQueue, takeAllLoot, takeLootItem, leaveLootItem, dismissLoot, clearLoot } from './engine/loot';
@@ -86,6 +86,17 @@ export class GameEngine {
   public ring!: THREE.Mesh;
   public clickPing!: THREE.Mesh;
   public clickPingT = 1;
+
+  // ── explore hover path preview (see interaction.ts) ──
+  public pathPreviewGroup: THREE.Group | null = null;
+  public pathDots: THREE.Mesh[] = [];
+  public pathDestRing: THREE.Mesh | null = null;
+  /** tile key the current hover preview was computed for ('' = none) */
+  public hoverPathKey = '';
+  /** queued once the leader finishes walking: kindle/rest at the bonfire */
+  public pendingBonfire: 'light' | 'rest' | null = null;
+  /** queued once the leader finishes walking: talk to this npc */
+  public pendingTalk: string | null = null;
 
   public phase: GamePhase = 'menu';
   public selectedId: string | null = null;   // explore-mode leader
@@ -151,14 +162,19 @@ export class GameEngine {
   public running = false;
   /** first-person camera mode (P key) — camera rides on the hero's head */
   public firstPerson = false;
-  private heroHiddenByFP = false;
-  /** first-person look direction (yaw/pitch) — mouse + Q/E + A/D drive these */
+  /** id of the unit currently hidden by first-person mode — restoring by id
+   *  (not by re-resolving the leader) is what makes FP→iso transitions
+   *  never lose the player model again */
+  public fpHiddenId: string | null = null;
+  /** first-person look direction (yaw/pitch) — mouse + Q/E drive these */
   public fpYaw = Math.PI * 0.25;
   public fpPitch = -0.12;
   /** WASD step cooldown (seconds) so holding W walks continuously */
   private fpStepAt = 0;
   /** drag-look active (pointer-lock fallback) */
   public fpDrag = false;
+  /** dim warm headlamp shown only in first person (off in iso) */
+  public fpLight: THREE.PointLight | null = null;
   public crouchLerp = 0;
   /** when true the player has queued a throw (uses inventory item as projectile) */
   public throwing = false;
@@ -527,6 +543,9 @@ export class GameEngine {
       // must not leak beside the tavern exterior on the title screen
       if (this.dressingGroup) this.dressingGroup.visible = false;
       if (this.trapManager?.group) this.trapManager.group.visible = false;
+      // hand-authored NPC rigs (hermit, Scrag…) are added straight to the scene
+      // root — hide them too or their voxel bodies read as stray cubes
+      for (const n of this.npcs) if (n.rig?.group) n.rig.group.visible = false;
     }
     this.playerCone.renderOrder = 0;
     this.scene.add(this.playerCone);
@@ -641,6 +660,7 @@ export class GameEngine {
       get worldGroup() { return self.world.group; },
       get dressingGroup() { return (self as any).dressingGroup ?? null; },
       get trapGroup() { return (self as any).trapManager?.group ?? null; },
+      get npcRigs() { return self.npcs; },
       get canvas() { return self.renderer.domElement; },
       get fadeEl() { return self.fadeEl; },
       get heroLight() { return self.heroLight; },
@@ -1354,6 +1374,7 @@ export class GameEngine {
     // dungeon dressing + trap markers stay out of the tavern-exterior view
     if (this.dressingGroup) this.dressingGroup.visible = false;
     if (this.trapManager?.group) this.trapManager.group.visible = false;
+    for (const n of this.npcs) if (n.rig?.group) n.rig.group.visible = false;
     for (const [, v] of this.visuals) {
       if (v.rig?.group) v.rig.group.visible = false;
       if (v.proxy) v.proxy.visible = false;
@@ -1413,6 +1434,7 @@ export class GameEngine {
    this.props.group.visible = false;
    if (this.dressingGroup) this.dressingGroup.visible = false;
    if (this.trapManager?.group) this.trapManager.group.visible = false;
+   for (const n of this.npcs) if (n.rig?.group) n.rig.group.visible = false;
    for (const [, v] of this.visuals) v.rig.group.visible = false;
    this.tavern = this._buildTavern();
    this.scene.add(this.tavern);
@@ -1731,6 +1753,7 @@ export class GameEngine {
     this.props.group.visible = true;
     if (this.dressingGroup) this.dressingGroup.visible = true;
     if (this.trapManager?.group) this.trapManager.group.visible = true;
+    for (const n of this.npcs) if (n.rig?.group) n.rig.group.visible = true;
     this.repositionAllVisuals();
     if (this.bonfireLit) this.spawnBonfireFlame();
 
@@ -1905,14 +1928,83 @@ export class GameEngine {
   }
 
   /** toggle the first-person camera (P) — rides on the hero's head */
-  toggleFirstPerson() {    this.firstPerson = !this.firstPerson;
+  toggleFirstPerson() {
+    this.firstPerson = !this.firstPerson;
     if (this.firstPerson) {
-      this.fpYaw = this.iso.yaw;
-      this.fpPitch = -0.12;
+      this.fpYaw = this.pickFpEntryYaw();
+      this.fpPitch = -0.08;
+      this.fpStepAt = 0;
+      hidePathPreview(this);
+      this.hoverPathKey = '';
+      // grab the mouse immediately — clicking first is a needless extra step
+      try {
+        const el = this.renderer.domElement as HTMLCanvasElement;
+        if (document.pointerLockElement !== el) {
+          const p = el.requestPointerLock?.() as unknown as Promise<void> | undefined;
+          p?.catch?.(() => { /* drag-look fallback still works */ });
+        }
+      } catch { /* pointer lock unavailable */ }
+    } else {
+      this.exitFirstPerson();
     }
     this.audio.play('ui_click', 0.5);
-    this.pushLog(this.firstPerson ? '🎥 First person. Mouse looks around · W/S walk · A/D turn · Q/E rotate.' : '🎥 Back to the isometric view.', 'system');
+    this.pushLog(this.firstPerson ? '🎥 First person. Mouse looks · W/S walk · A/D strafe · Q/E turn · P/Esc exits.' : '🎥 Back to the isometric view.', 'system');
     this.emitSnapshot();
+  }
+
+  /** leave first person: release the mouse, restore the hero model BY ID,
+   *  and glide the iso camera back to the party — never lose the model. */
+  public exitFirstPerson() {
+    if (document.pointerLockElement === this.renderer.domElement) {
+      try { document.exitPointerLock?.(); } catch { /* noop */ }
+    }
+    this.fpDrag = false;
+    if (this.fpHiddenId) {
+      const fv = this.visuals.get(this.fpHiddenId);
+      if (fv) { fv.rig.group.visible = true; fv.proxy.visible = true; }
+      this.fpHiddenId = null;
+    }
+    const hero = this.combat?.living('party')[0];
+    if (hero) {
+      this.iso.focus(this.unitWorld(hero.pos));
+      // face the iso camera roughly where the player was looking (45° steps)
+      this.iso.desiredYaw = Math.round(this.fpYaw / (Math.PI / 4)) * (Math.PI / 4);
+      // restore the FULL tactical orbit and snap instantly — FP (and any
+      // cinematic before it) may have left pitch/dist anywhere; even the
+      // first rendered frame after the toggle must show a sane 55° orbit
+      this.iso.desiredPitch = 0.96;
+      this.iso.pitch = 0.96;
+      this.iso.desiredDist = THREE.MathUtils.clamp(this.iso.desiredDist, 8, 30);
+      this.iso.dist = this.iso.desiredDist;
+      this.iso.target.copy(this.iso.desiredTarget);
+      this.iso.yaw = this.iso.desiredYaw;
+    }
+    if (this.fpLight) this.fpLight.visible = false;
+  }
+
+  /** pick the FP entry facing: the direction with the most open floor, so
+   *  the player never toggles into FP staring into a wall (ties → the
+   *  direction closest to the current iso camera yaw). */
+  private pickFpEntryYaw(): number {
+    const hero = this.combat?.living('party')[0];
+    if (!hero) return this.iso.yaw;
+    let bestYaw = this.iso.yaw;
+    let bestScore = -1;
+    for (let i = 0; i < 16; i++) {
+      const yaw = (i / 16) * Math.PI * 2;
+      const dx = Math.round(Math.sin(yaw)), dz = Math.round(Math.cos(yaw));
+      if (!dx && !dz) continue;
+      let open = 0;
+      for (let s = 1; s <= 6; s++) {
+        const tx = hero.pos.x + dx * s, tz = hero.pos.z + dz * s;
+        if (!this.world.isWalkable(tx, tz)) break;
+        open++;
+      }
+      const alignment = 1 - Math.abs(((yaw - this.iso.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) / Math.PI;
+      const score = open * 2 + alignment;
+      if (score > bestScore) { bestScore = score; bestYaw = yaw; }
+    }
+    return bestYaw;
   }
 
   toggleTorch() {
@@ -2527,8 +2619,8 @@ export class GameEngine {
   public executeDialogueAction(action: DialogueAction, npc: NPCDef) { executeDialogueActionModule(this, action, npc); }
   public pickTile(): GridPos | null { return pickTileModule(this); }
   public updateHover() { updateHoverModule(this); }
-  public clickExplore(unitId: string | undefined, tile: GridPos | null, propId?: string) { clickExploreModule(this, unitId, tile, propId); }
-  public clickCombat(unitId: string | undefined, tile: GridPos | null, propId?: string) { clickCombatModule(this, unitId, tile, propId); }
+  public clickExplore(pick: InteractPick | null, tile: GridPos | null) { clickExploreModule(this, pick, tile); }
+  public clickCombat(pick: InteractPick | null, tile: GridPos | null) { clickCombatModule(this, pick, tile); }
   public moveUnitAlong(u: Unit, path: GridPos[]) { moveUnitAlongModule(this, u, path); }
   public talkToNpc(npcId: string) { talkToNpcModule(this, npcId); }
   public onPointerMove = (e: PointerEvent) => { onPointerMoveModule(this, e); };
@@ -2575,11 +2667,6 @@ export class GameEngine {
       if (this.keys.has('s') || this.keys.has('arrowdown')) this.iso.pan(0, pan);
       if (this.keys.has('a') || this.keys.has('arrowleft')) this.iso.pan(-pan, 0);
       if (this.keys.has('d') || this.keys.has('arrowright')) this.iso.pan(pan, 0);
-    } else if (this.firstPerson) {
-      // A/D turn the view (hold to keep turning)
-      const turn = dt * 2.4;
-      if (this.keys.has('a') || this.keys.has('arrowleft')) this.fpYaw -= turn;
-      if (this.keys.has('d') || this.keys.has('arrowright')) this.fpYaw += turn;
     }
 
     // follow camera: the camera stays where the player left it (WASD pan
@@ -2597,30 +2684,52 @@ export class GameEngine {
     //    pathfinding, traps and fog all behave normally. ──
     const fpHero = this.combat?.living('party')[0];
     if (this.firstPerson && fpHero && fpHero.alive) {
-      const eye = this.unitWorld(fpHero.pos).add(new THREE.Vector3(0, 1.7, 0));
+      // hide the hero's own model so the camera isn't inside the voxels —
+      // tracked by id so a mid-FP roster change can never strand a hidden rig
+      if (this.fpHiddenId && this.fpHiddenId !== fpHero.id) {
+        const old = this.visuals.get(this.fpHiddenId);
+        if (old) { old.rig.group.visible = true; old.proxy.visible = true; }
+      }
+      const fv = this.visuals.get(fpHero.id);
+      if (fv) { fv.rig.group.visible = false; fv.proxy.visible = false; this.fpHiddenId = fpHero.id; }
+      this.ring.visible = false;
+      // the eye rides the RIG's smoothed position (not the tile-snapped
+      // logical one) so walking feels continuous instead of hopping
+      const base = fv?.rig.group.position ?? this.unitWorld(fpHero.pos);
+      const eye = new THREE.Vector3(base.x, base.y + 1.7, base.z);
       const cp = Math.cos(this.fpPitch);
       const dir = new THREE.Vector3(cp * Math.sin(this.fpYaw), Math.sin(this.fpPitch), cp * Math.cos(this.fpYaw));
       this.iso.cam.position.copy(eye);
       this.iso.cam.lookAt(eye.clone().addScaledVector(dir, 4));
       this.iso.cam.up.set(0, 1, 0);
-      const fv = this.visuals.get(fpHero.id);
-      if (fv) { fv.rig.group.visible = false; fv.proxy.visible = false; }
-      this.ring.visible = false;
-      this.heroHiddenByFP = true;
-      // W/S continuous movement (one tile per step)
+      // headlamp — FP without a lit torch must still read (dim warm glow)
+      if (!this.fpLight) {
+        this.fpLight = new THREE.PointLight(0xffd9a0, 5, 10, 1.6);
+        this.scene.add(this.fpLight);
+      }
+      this.fpLight.visible = true;
+      this.fpLight.position.copy(eye).addScaledVector(dir, 0.6);
+      // Q/E smooth-turn (hold)
+      const turn = dt * 2.6;
+      if (this.keys.has('q')) this.fpYaw += turn;
+      if (this.keys.has('e')) this.fpYaw -= turn;
+      // WASD: W/S step forward/back along the view, A/D strafe. One tile
+      // per step keeps traps, fog and aggro honest; the short cooldown +
+      // smoothed rig makes holding a key feel like continuous walking.
       const now = performance.now() / 1000;
-      if (now - this.fpStepAt > 0.26 && !this.busy && !this.combat.inCombat) {
-        const fwd = this.keys.has('w') || this.keys.has('arrowup');
-        const back = this.keys.has('s') || this.keys.has('arrowdown');
-        if (fwd || back) {
-          const sgn = fwd ? 1 : -1;
-          const fx = Math.round(Math.sin(this.fpYaw) * sgn);
-          const fz = Math.round(Math.cos(this.fpYaw) * sgn);
-          // pick the best walkable step (forward, or a diagonal nudge)
+      if (now - this.fpStepAt > 0.19 && !this.busy && !this.combat.inCombat) {
+        const fwd = (this.keys.has('w') || this.keys.has('arrowup') ? 1 : 0) - (this.keys.has('s') || this.keys.has('arrowdown') ? 1 : 0);
+        const side = (this.keys.has('d') || this.keys.has('arrowright') ? 1 : 0) - (this.keys.has('a') || this.keys.has('arrowleft') ? 1 : 0);
+        if (fwd || side) {
+          const s = Math.sin(this.fpYaw), c = Math.cos(this.fpYaw);
+          // forward = (s, c); right = (−c, s)
+          const dx = Math.round(s * fwd + (-c) * side);
+          const dz = Math.round(c * fwd + s * side);
           let step: GridPos | null = null;
-          for (const [dx, dz] of [[fx, fz], [fx, 0], [0, fz], [fx + (fx ? 0 : (sgn)), fz], [fx, fz + (fz ? 0 : sgn)]]) {
-            const tx = fpHero.pos.x + dx, tz = fpHero.pos.z + dz;
-            if (this.world.isWalkable(tx, tz) && !this.world.blocked[tx]?.[tz] && !this.trapManager?.at(tx, tz)?.revealed) {
+          for (const [ox, oz] of [[dx, dz], [dx, 0], [0, dz]]) {
+            if (!ox && !oz) continue;
+            const tx = fpHero.pos.x + ox, tz = fpHero.pos.z + oz;
+            if (this.world.isWalkable(tx, tz) && !this.trapManager?.at(tx, tz)?.revealed) {
               step = { x: tx, z: tz }; break;
             }
           }
@@ -2635,10 +2744,11 @@ export class GameEngine {
           }
         }
       }
-    } else if (this.heroHiddenByFP) {
-      const fv = this.visuals.get(fpHero?.id ?? '');
+    } else if (this.fpHiddenId) {
+      // FP ended (or the hero is gone) — restore the hidden rig by id
+      const fv = this.visuals.get(this.fpHiddenId);
       if (fv) { fv.rig.group.visible = true; fv.proxy.visible = true; }
-      this.heroHiddenByFP = false;
+      this.fpHiddenId = null;
     }
     this.world.update(dt);
     this.updateDroppedWeapons(dt);
@@ -2761,6 +2871,21 @@ export class GameEngine {
           const unit = this.byId(ps.unitId);
           if (prop && unit && unit.alive) void this.smashProp(unit, prop);
         }
+        // bonfire click from afar — kindle/rest once the leader arrives
+        if (this.pendingBonfire && u.team === 'party') {
+          const act = this.pendingBonfire;
+          this.pendingBonfire = null;
+          if (this.bonfirePos && Combat.dist(u.pos, this.bonfirePos) <= 1.5) {
+            if (act === 'rest') this.restAtBonfire(); else this.lightBonfire();
+          }
+        }
+        // NPC click from afar — open the dialogue once the leader arrives
+        if (this.pendingTalk && u.team === 'party') {
+          const npcId = this.pendingTalk;
+          this.pendingTalk = null;
+          const entry = this.npcs.find((n) => n.npcId === npcId);
+          if (entry && Combat.dist(u.pos, entry.pos) <= 1.5) this.talkToNpc(npcId);
+        }
       }
           else FX.dust(this.particles, pos.clone());
         } else {
@@ -2774,6 +2899,12 @@ export class GameEngine {
     }
 
     this.checkCombatTrigger();
+
+    // combat (or leaving explore) kills the hover path preview
+    if ((this.combat?.inCombat || this.phase !== 'explore') && this.hoverPathKey) {
+      this.hoverPathKey = '';
+      hidePathPreview(this);
+    }
 
     // -- vision cones (explore only) --
     if (this.phase === 'explore' && !this.combat.inCombat) {

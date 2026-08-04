@@ -105,10 +105,10 @@ function LootPreviewOverlay({ snap, engine }: { snap: UISnapshot; engine: GameEn
           <div className="loot-gold">🪙 {offer.gold} gold</div>
         )}
         <div className="loot-actions">
-          <button className="btn-primary" onClick={() => engine?.takeAllLoot()} style={{ fontSize: 14, padding: '8px 24px' }}>
+          <button className="btn-primary btn-sm" onClick={() => engine?.takeAllLoot()}>
             Take All{offer.gold > 0 ? ` + ${offer.gold}🪙` : ''}
           </button>
-          <button className="btn-secondary" onClick={() => engine?.dismissLoot()} style={{ fontSize: 14, padding: '8px 24px' }}>
+          <button className="btn-secondary" onClick={() => engine?.dismissLoot()}>
             {allQuest && hasItems ? 'Keep Required' : hasItems ? 'Leave the rest' : 'Close'}
           </button>
         </div>
@@ -117,12 +117,17 @@ function LootPreviewOverlay({ snap, engine }: { snap: UISnapshot; engine: GameEn
   );
 }
 
+/* cartographer's palette — parchment rises out of dark ink */
+const MAP_INK = '#13100a';
+const MAP_HEIGHT_TONES = ['#8f7a4e', '#a8905c', '#c2a76e', '#dac188'];
+
 function Minimap({ snap }: { snap: UISnapshot }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fullViewRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(2);
   const fullMap = snap.showFullMap ?? false;
   const SIZE = 142;
-  const FULL_SIZE = Math.min(window.innerWidth * 0.78, window.innerHeight * 0.78);
+  const FULL_SIZE = Math.min(window.innerWidth * 0.78, window.innerHeight * 0.72);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -135,68 +140,115 @@ function Minimap({ snap }: { snap: UISnapshot }) {
     const h = S * zoom;
     canvas.width = w;
     canvas.height = h;
-    
-    ctx.clearRect(0, 0, w, h);
-    
-    // draw terrain
+
+    // dark-ink unexplored ground
+    ctx.fillStyle = MAP_INK;
+    ctx.fillRect(0, 0, w, h);
+
+    // explored terrain — parchment shaded by elevation
     for (let x = 0; x < S; x++) {
       for (let z = 0; z < S; z++) {
-        if (walk[x][z]) {
-          const ht = heights[x][z];
-          if (ht >= 1.5) ctx.fillStyle = '#8a7a5a';
-          else if (ht >= 1.25) ctx.fillStyle = '#7a6a4a';
-          else if (ht >= 1.0) ctx.fillStyle = '#5a5a5a';
-          else ctx.fillStyle = '#4a4a4a';
-        } else {
-          ctx.fillStyle = '#1a1a2a';
-        }
+        if (!walk[x][z]) continue;
+        const ht = heights[x][z];
+        const tone = ht >= 1.5 ? 3 : ht >= 1.25 ? 2 : ht >= 1.0 ? 1 : 0;
+        ctx.fillStyle = MAP_HEIGHT_TONES[tone] ?? MAP_HEIGHT_TONES[0] ?? '#8f7a4e';
         ctx.fillRect(z * zoom, x * zoom, zoom, zoom);
       }
     }
-    
-    // draw units
+
+    const player = units.find((u) => u.team === 'party');
+
+    // party allies — small gold-green ticks
     for (const u of units) {
-      ctx.fillStyle = u.team === 'party' ? '#4ade80' : '#ef4444';
-      ctx.fillRect(u.z * zoom, u.x * zoom, Math.max(2, zoom), Math.max(2, zoom));
+      if (u.team !== 'party' || u === player) continue;
+      ctx.fillStyle = '#8fd06a';
+      ctx.fillRect(u.z * zoom, u.x * zoom, Math.max(2, zoom - 1), Math.max(2, zoom - 1));
     }
-    
-    // draw player highlight
-    const player = units.find(u => u.team === 'party');
+
+    // enemies — ember-red dots with a faint glow
+    for (const u of units) {
+      if (u.team !== 'enemy') continue;
+      const r = Math.max(1.6, zoom * 0.55);
+      ctx.save();
+      ctx.shadowColor = 'rgba(208, 58, 42, 0.8)';
+      ctx.shadowBlur = 4;
+      ctx.fillStyle = '#d03a2a';
+      ctx.beginPath();
+      ctx.arc(u.z * zoom + zoom / 2, u.x * zoom + zoom / 2, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // the player — a burning gilded diamond
     if (player) {
-      ctx.strokeStyle = '#ffffff';
+      const cx = player.z * zoom + zoom / 2;
+      const cy = player.x * zoom + zoom / 2;
+      const s = Math.max(3.2, zoom * 1.05);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.PI / 4);
+      ctx.shadowColor = 'rgba(232, 196, 102, 0.95)';
+      ctx.shadowBlur = 7;
+      ctx.fillStyle = '#fff3c8';
+      ctx.fillRect(-s / 2, -s / 2, s, s);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#8a6d14';
       ctx.lineWidth = 1;
-      ctx.strokeRect(player.z * zoom - 1, player.x * zoom - 1, Math.max(2, zoom) + 2, Math.max(2, zoom) + 2);
+      ctx.strokeRect(-s / 2, -s / 2, s, s);
+      ctx.restore();
     }
   }, [snap.minimapTiles, zoom]);
-  
+
+  // centre the cartographer's viewport on the player when it (re)opens
+  const ppz = snap.minimapTiles?.units.find((u) => u.team === 'party')?.z ?? 0;
+  const ppx = snap.minimapTiles?.units.find((u) => u.team === 'party')?.x ?? 0;
+  useEffect(() => {
+    const el = fullViewRef.current;
+    if (!fullMap || !el) return;
+    el.scrollLeft = ppz * zoom + zoom / 2 - el.clientWidth / 2;
+    el.scrollTop = ppx * zoom + zoom / 2 - el.clientHeight / 2;
+  }, [fullMap, zoom, ppz, ppx]);
+
   if (!snap.minimapTiles) return null;
   const S = snap.minimapTiles.walk.length;
-  const player = snap.minimapTiles.units.find(u => u.team === 'party');
+  const player = snap.minimapTiles.units.find((u) => u.team === 'party');
   const px = player?.x ?? 0, pz = player?.z ?? 0;
+
+  if (fullMap) {
+    return (
+      <div className="fullmap-overlay">
+        <div className="fullmap-panel">
+          <div className="fullmap-head">✦ Cartographer's Map ✦</div>
+          <div className="fullmap-viewport" ref={fullViewRef} style={{ width: FULL_SIZE, height: FULL_SIZE }}>
+            <canvas ref={canvasRef} style={{ width: S * zoom, height: S * zoom }} />
+          </div>
+          <div className="fullmap-foot">
+            <span>press M to close</span>
+            <div className="minimap-zoom">
+              <button className="mm-coin" onClick={() => setZoom((z) => Math.max(1, z - 1))} title="Zoom out">−</button>
+              <button className="mm-coin" onClick={() => setZoom((z) => Math.min(8, z + 1))} title="Zoom in">+</button>
+            </div>
+            <span>only explored ground is inked</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ position: 'relative' }}>
-      {!fullMap ? (
-        <div style={{ width: SIZE, height: SIZE, overflow: 'hidden', border: '1px solid #334', borderRadius: 6, background: '#0a0a14' }}>
-          <div style={{ transform: `translate(${SIZE/2 - pz * zoom}px, ${SIZE/2 - px * zoom}px)`, width: S * zoom, height: S * zoom }}>
-            <canvas ref={canvasRef} style={{ width: S * zoom, height: S * zoom }} />
-          </div>
-          <div style={{ position: 'absolute', top: 2, right: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <button onClick={() => setZoom(z => Math.max(1, z - 1))} style={{ background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: 3, width: 18, height: 18, fontSize: 11, lineHeight: 0, cursor: 'pointer' }}>−</button>
-            <button onClick={() => setZoom(z => Math.min(6, z + 1))} style={{ background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: 3, width: 18, height: 18, fontSize: 11, lineHeight: 0, cursor: 'pointer' }}>+</button>
-          </div>
+    <div className="minimap-frame">
+      <div className="minimap-viewport" style={{ width: SIZE, height: SIZE }}>
+        <div
+          className="minimap-pan"
+          style={{ transform: `translate(${SIZE / 2 - pz * zoom - zoom / 2}px, ${SIZE / 2 - px * zoom - zoom / 2}px)`, width: S * zoom, height: S * zoom }}
+        >
+          <canvas ref={canvasRef} style={{ width: S * zoom, height: S * zoom }} />
         </div>
-      ) : (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(5,5,15,0.92)', zIndex: 9998, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ color: '#888', fontSize: 13, marginBottom: 6, fontFamily: 'monospace' }}>FULL MAP — press M to close — [+/−] to zoom</div>
-          <div style={{ width: FULL_SIZE, height: FULL_SIZE, overflow: 'auto', border: '2px solid #4a9', borderRadius: 8, background: '#0a0a14' }}>
-            <canvas ref={canvasRef} style={{ width: S * zoom, height: S * zoom }} />
-          </div>
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <button onClick={() => setZoom(z => Math.max(1, z - 1))} style={{ background: '#222', color: '#ccc', border: '1px solid #444', borderRadius: 4, width: 28, height: 28, fontSize: 15, cursor: 'pointer' }}>−</button>
-            <button onClick={() => setZoom(z => Math.min(8, z + 1))} style={{ background: '#222', color: '#ccc', border: '1px solid #444', borderRadius: 4, width: 28, height: 28, fontSize: 15, cursor: 'pointer' }}>+</button>
-          </div>
-        </div>
-      )}
+      </div>
+      <div className="minimap-zoom">
+        <button className="mm-coin" onClick={() => setZoom((z) => Math.max(1, z - 1))} title="Zoom out">−</button>
+        <button className="mm-coin" onClick={() => setZoom((z) => Math.min(6, z + 1))} title="Zoom in">+</button>
+      </div>
     </div>
   );
 }
@@ -227,7 +279,7 @@ export function HUD({ snap, engine }: Props) {
             <div className="menu-rune">◆ ◆ ◆</div>
             <h1>DUNGEON HANGOVER</h1>
             <h2>— 50 Floors of Regret —</h2>
-            <p className="menu-tag">A turn-based voxel roguelite. You wake at the bottom in your underwear, with a headache and a rusty dagger. The only way out is up.</p>
+            <p className="menu-tag">A turn-based voxel dungeon crawler. You wake at the bottom in your underwear, with a headache and a rusty dagger. The only way out is up.</p>
             <button className="btn-primary" onClick={() => engine?.startGame()}>⚔ Enter the Realm</button>
             <div className="menu-features">
               <span>🎲 d20 rolls &amp; initiative</span><span>🔥 15+ skills &amp; AoE spells</span>
@@ -364,17 +416,17 @@ export function HUD({ snap, engine }: Props) {
             <div className="bonfire-rest-title">🔥 Resting at the Bonfire</div>
             <p className="bonfire-rest-desc">The flames warm your bones. The dungeon stirs beyond the light.</p>
             <div className="bonfire-rest-actions">
-              <button className="btn-primary" onClick={() => engine?.toggleSkillTree()} style={{ fontSize: 14, padding: '8px 24px' }}>
+              <button className="btn-primary btn-sm" onClick={() => engine?.toggleSkillTree()}>
                 📜 Skill Tree
               </button>
-              <button className="btn-primary" onClick={() => engine?.toggleBonfireLoadout()} style={{ fontSize: 14, padding: '8px 24px' }}>
+              <button className="btn-primary btn-sm" onClick={() => engine?.toggleBonfireLoadout()}>
                 🎛 Loadout
               </button>
-              <button className="btn-primary" onClick={() => engine?.toggleInventory()} style={{ fontSize: 14, padding: '8px 24px' }}>
+              <button className="btn-primary btn-sm" onClick={() => engine?.toggleInventory()}>
                 🎒 Inventory
               </button>
               <p className="bonfire-rest-hint">Spend XP to level up in the skill tree panel.</p>
-              <button className="btn-primary" onClick={() => engine?.closeBonfireUI()} style={{ fontSize: 14, padding: '8px 24px', background: 'linear-gradient(180deg, #5a3a1e, #3a2010)', border: '1px solid #8a6d14' }}>
+              <button className="btn-primary btn-sm btn-ember" onClick={() => engine?.closeBonfireUI()}>
                 🔥 Leave Bonfire
               </button>
             </div>
@@ -439,7 +491,7 @@ export function HUD({ snap, engine }: Props) {
             <div className="enemy-turn-banner">⚔ {activeUnit.name} is acting…</div>
           )}
           {phase === 'explore' && (
-            <div className="explore-hint">🧭 Click ground to move · I Inventory · K Skill tree · C Sneak · P First-person · Space Rest</div>
+            <div className="explore-hint">🧭 Click ground to move · I Inventory · K Skills · U Stats · C Sneak · T Torch · P First-person · Q/E Rotate</div>
           )}
 
           {/* right controls */}

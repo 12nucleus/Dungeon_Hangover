@@ -78,7 +78,7 @@ export function SplashScreen({ visible, onNewGame, onLoad, onExit, engineRef }: 
         <h1 className="splash__title">DUNGEON HANGOVER</h1>
         <h2 className="splash__subtitle">50 Floors of Regret</h2>
         <p className="splash__tag">
-          A turn-based voxel roguelite. You wake at the bottom in your underwear, with a headache
+          A turn-based voxel dungeon crawler. You wake at the bottom in your underwear, with a headache
           and a rusty dagger. The only way out is up.
         </p>
 
