@@ -1250,9 +1250,15 @@ export class GameEngine {
 
   // -- unit visuals ------------------------------------------
 
+  /** canonical tile→world already used by the world meshes/props (see
+   *  VoxelWorld.tileToWorld); every other converter (visuals.unitWorld,
+   *  traps tileWorld) must delegate here so they can't drift into a
+   *  different offset (the old hardcoded `-60`/`-23` sent Greg running
+   *  15 tiles up-right on the first floor click). */
   unitWorld(p: GridPos): THREE.Vector3 {
-    const h = this.world.heightAt(p.x, p.z);
-    return new THREE.Vector3(p.x - WORLD_SIZE / 2 + 0.5, h + 0.5, p.z - WORLD_SIZE / 2 + 0.5);
+    const wp = this.world.tileToWorld(p.x, p.z, new THREE.Vector3());
+    wp.y += 0.5;
+    return wp;
   }
 
   // Detach a dying unit's held weapon from its rig and let it tumble to the

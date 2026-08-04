@@ -141,8 +141,9 @@ export class TrapManager {
   }
 
   private tileWorld(p: GridPos): THREE.Vector3 {
-    const h = this.world.heightAt(p.x, p.z);
-    return new THREE.Vector3(p.x - 23 + 0.5, h + 0.5, p.z - 23 + 0.5);
+    const wp = this.world.tileToWorld(p.x, p.z, new THREE.Vector3());
+    wp.y += 0.5;
+    return wp;
   }
 
   dispose() {

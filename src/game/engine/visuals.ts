@@ -41,10 +41,16 @@ export function addUnit(engine: GameEngine, u: Unit) {
   engine.visuals.set(u.id, { rig, proxy, bar, barFill, walker: null, yaw: rig.group.rotation.y, targetYaw: rig.group.rotation.y });
 }
 
-/** Convert a grid tile to world position using the engine's world height */
+/** Convert a grid tile to world position — delegates to the world's canonical
+ *  tile mapping (VoxelWorld.tileToWorld, offset by half a tile in Y so a rig's
+ *  feet rest on the floor surface). MUST stay identical to engine.unitWorld,
+ *  which uses WORLD_SIZE / 2 — the old hardcoded `-60` (half of a 120-wide
+ *  grid) put every walker target / rig offset 15 tiles up-right, so clicking
+ *  a floor tile sent Greg bolting through the wall. */
 export function unitWorld(engine: GameEngine, p: GridPos): THREE.Vector3 {
-  const h = engine.world.heightAt(p.x, p.z);
-  return new THREE.Vector3(p.x - 60 + 0.5, h + 0.5, p.z - 60 + 0.5);
+  const wp = engine.world.tileToWorld(p.x, p.z, new THREE.Vector3());
+  wp.y += 0.5;
+  return wp;
 }
 
 /** Detach a dying unit's held weapon and let it tumble to the floor */
