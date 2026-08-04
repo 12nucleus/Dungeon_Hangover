@@ -230,7 +230,7 @@ export const SKILLS: Record<string, SkillDef> = {
   // ── floor 50 — Boss Rat ──
   gnaw: {
     id: 'gnaw', name: 'Gnaw', icon: '🐀', kind: 'melee',
-    desc: 'A furious chomp. 1d6+2 piercing; CON save DC 12 or Bleeding.',
+    desc: 'A crash-out chomp. 1d6+2 piercing; CON save DC 12 or Bleeding.',
     range: 1, aoeRadius: 0, cost: 'action', cooldown: 0,
     attackAbility: 'str', damageDice: '1d6+2', damageType: 'piercing',
     saveAbility: 'con', saveDC: 12, appliesCondition: 'bleeding', appliesRounds: 3,

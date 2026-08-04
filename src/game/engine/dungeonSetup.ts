@@ -282,7 +282,7 @@ export function updateDungeon(engine: any, dt: number) {
       scrag.proxy = null;
       const guard = SUMMON_TEMPLATES.goblin_guard();
       guard.name = 'Scrag';
-      guard.title = 'Furious Goblin Guard';
+      guard.title = 'Crash-Out Goblin Guard';
       guard.groupId = 'scrag_hostile';
       guard.dormant = false;
       engine.combat.summon(guard, scrag.pos);
