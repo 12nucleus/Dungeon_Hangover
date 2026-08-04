@@ -439,7 +439,9 @@ export class Combat {
       center = target;
       if (Combat.dist(u.pos, center) > s.range) return [{ type: 'log', text: 'Target out of range.', kind: 'info' }];
       targets = this.units.filter((t) => t.alive && Combat.dist(t.pos, center) <= s.aoeRadius);
-      if (!s.targetsAllies) targets = targets.filter((t) => t.team !== u.team || s.id === 'fireball' ? t.id !== u.id : true);
+      // hostile AoE: only enemies are targets (fireball also nicks the caster).
+      // (was a precedence bug — `A || (B ? C : D)` kept every ally.)
+      if (!s.targetsAllies) targets = targets.filter((t) => t.team !== u.team || (s.id === 'fireball' && t.id === u.id));
     } else if (typeof target === 'string') {
       const t = this.byId(target);
       if (!t || !t.alive) return [{ type: 'log', text: 'Invalid target.', kind: 'info' }];

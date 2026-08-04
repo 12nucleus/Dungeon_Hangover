@@ -1757,7 +1757,7 @@ export class GameEngine {
     }
     this.selectedId = this.selectedId ?? hero?.id ?? null;
 
-    this.pushLog('Save loaded ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ welcome back, adventurer.', 'system');
+    this.pushLog('🎉 Save loaded — welcome back, adventurer.', 'system');
     this.emitSnapshot();
     return true;
   }
@@ -1904,7 +1904,7 @@ export class GameEngine {
   toggleTorch() {
     this.torchLit = !this.torchLit;
     this.audio.play('ui_click', 0.4);
-    this.pushLog(this.torchLit ? 'Torch lit ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ the cave walls flicker back into view.' : 'Torch extinguished ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ darkness swallows you.', 'system');
+    this.pushLog(this.torchLit ? '🔦 Torch lit — the cave walls flicker back into view.' : '🔦 Torch extinguished — darkness swallows you.', 'system');
     this.emitSnapshot();
   }
 
