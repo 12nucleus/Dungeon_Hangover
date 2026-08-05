@@ -1,8 +1,7 @@
 // ─────────────────────────────────────────────────────────────
-// Audio: WebAudio manager. SFX & the ambient loop are AI-generated
-// mp3s in /public/audio (see EXPANSION_GUIDE.md § Audio Pipeline
-// for the exact prompts). The combat drum layer is synthesized at
-// runtime (kick/toms/hats) so battle music adapts without assets.
+// Audio: WebAudio manager. SFX and the ambient loop are AI-generated mp3s
+// in /public/audio (see EXPANSION_GUIDE.md § Audio Pipeline for the prompts).
+// Combat deliberately uses only the encounter music; there is no drum layer.
 // ─────────────────────────────────────────────────────────────
 
 const SFX_FILES = [
@@ -23,9 +22,6 @@ export class AudioManager {
   private buffers = new Map<string, AudioBuffer>();
   private musicSource: AudioBufferSourceNode | null = null;
   private tavernSource: AudioBufferSourceNode | null = null;
-  private drumTimer: number | null = null;
-  private nextBeat = 0;
-  private beatCount = 0;
   muted = false;
   private started = false;
   private tavernPending = false;
@@ -429,61 +425,6 @@ export class AudioManager {
     mk(t + 0.11, 1800, 1400);
   }
 
-  /** adaptive layer: war drums while in combat */
-  setDrums(on: boolean) {
-    if (!this.ctx) return;
-    if (on && this.drumTimer === null) {
-      this.nextBeat = this.ctx.currentTime + 0.1;
-      this.beatCount = 0;
-      this.drumTimer = window.setInterval(() => this.scheduleDrums(), 90);
-    } else if (!on && this.drumTimer !== null) {
-      clearInterval(this.drumTimer);
-      this.drumTimer = null;
-    }
-  }
-
-  private scheduleDrums() {
-    if (!this.ctx || this.muted) return;
-    const BPM = 132, spb = 60 / BPM / 2; // 8th notes
-    while (this.nextBeat < this.ctx.currentTime + 0.25) {
-      const b = this.beatCount % 16;
-      if (b === 0 || b === 6 || b === 10) this.drum(this.nextBeat, 110, 0.5, 0.9);  // kick
-      if (b === 4 || b === 12) this.drum(this.nextBeat, 190, 0.32, 0.7);             // tom
-      if (b % 2 === 1) this.hat(this.nextBeat, 0.12 + (b % 4 === 3 ? 0.1 : 0));      // hat
-      if (b === 14) this.drum(this.nextBeat, 90, 0.6, 1);                            // accent
-      this.nextBeat += spb;
-      this.beatCount++;
-    }
-  }
-
-  private drum(t: number, freq: number, dur: number, vol: number) {
-    const ctx = this.ctx!;
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, t);
-    osc.frequency.exponentialRampToValueAtTime(freq * 0.32, t + dur);
-    g.gain.setValueAtTime(vol * 0.5, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    osc.connect(g).connect(this.musicGain);
-    osc.start(t); osc.stop(t + dur);
-  }
-
-  private hat(t: number, vol: number) {
-    const ctx = this.ctx!;
-    const len = 0.05;
-    const buf = ctx.createBuffer(1, ctx.sampleRate * len, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const f = ctx.createBiquadFilter();
-    f.type = 'highpass'; f.frequency.value = 6500;
-    const g = ctx.createGain();
-    g.gain.value = vol * 0.35;
-    src.connect(f).connect(g).connect(this.musicGain);
-    src.start(t);
-  }
 
   /** procedural crash for destructible props: filtered-noise burst + low thump */
   crumble(volume = 0.9) {

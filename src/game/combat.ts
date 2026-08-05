@@ -191,8 +191,6 @@ export class Combat {
       ev.push({ type: 'log', text: `${u.name} rolls initiative ${r.roll}${fmtMod(abilityMod(u.abilities.dex))} = ${r.total}`, kind: 'roll' });
       if (u.team === 'party' && !partyIni) partyIni = r;
     }
-    // one dice overlay for the party's opening roll
-    if (partyIni) ev.push({ type: 'dice', die: 'd20', total: partyIni.total, reason: 'Initiative (DEX)' });
     this.turnOrder = this.units.filter((u) => u.alive && !u.dormant).sort((a, b) => b.initiative - a.initiative).map((u) => u.id);
     this.activeIdx = 0;
     ev.push({ type: 'log', text: '— ⚔ COMBAT BEGINS —', kind: 'system' });
@@ -489,7 +487,6 @@ export class Combat {
       if (!t) return ev;
       const atk = rollD20(abilityMod(u.abilities.str));
       const dc = 10 + abilityMod(t.abilities.str);
-      ev.push({ type: 'dice', die: 'd20', total: atk.total, reason: 'Shove (STR)' });
       ev.push({ type: 'log', text: `${u.name} shoves ${t.name}: STR ${atk.roll}${fmtMod(atk.bonus)} vs DC ${dc}`, kind: 'roll' });
       if (atk.total < dc) {
         ev.push({ type: 'float', unitId: t.id, text: 'Holds!', cls: 'miss' });
@@ -799,10 +796,6 @@ export class Combat {
       if (u.sneak) { sneakCrit = true; u.sneak = false; }
       const hit = auto || atk.crit || surpriseCrit || sneakCrit || (!atk.fumble && atk.total >= tgtAC);
       let crit = !auto && (atk.crit || surpriseCrit || sneakCrit);
-      // dice overlay — every real attack roll (magic missile is unerring)
-      if (!auto) {
-        ev.push({ type: 'dice', die: 'd20', total: atk.total, reason: `${s.name} vs AC ${tgtAC}` });
-      }
       ev.push({
         type: 'log',
         text: auto

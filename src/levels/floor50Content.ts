@@ -262,7 +262,8 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
           return;
         }
         e.setFlag('chest_r2_open');
-        const { items, gold } = rollLootTable('chest');
+        const { items, gold, lootRoll } = rollLootTable('chest');
+        if (lootRoll !== undefined) e.showDiceRoll?.('d20', lootRoll, 'Treasure quality');
         e.grantLoot(items, gold);
         e.pushLog(`🗝️ The chest opens: ${[...items.map((i: any) => `${i.icon} ${i.name}`), `🪙 ${gold} gold`].join(', ')}.`, 'system');
       },

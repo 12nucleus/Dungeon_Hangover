@@ -948,7 +948,6 @@ export class GameEngine {
   private winGame() {
     this.gameWon = true;
     this.phase = 'victory';
-    this.audio.setDrums(false);
     this.audio.setMusicDucked(false);
     this.audio.play('victory', 0.95);
     this.bigMessage = 'VICTORY — The Warlord\'s hoard is yours!';
@@ -3397,7 +3396,6 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
       case 'phase': {
         this.phase = ev.phase;
         if (ev.phase === 'combat') {
-          this.audio.setDrums(true);
           this.audio.setMusicDucked(true);
           // snap any explore-mode walkers to their logical tiles
           for (const [id, v] of this.visuals) {
@@ -3407,8 +3405,6 @@ private moveUnitAlong(u: Unit, path: GridPos[]) {
             if (u.alive) { v.rig.anim.mode = 'idle'; v.rig.group.position.copy(this.unitWorld(u.pos)); }
           }
         }
-        if (ev.phase === 'victory') { this.audio.setDrums(false); this.audio.play('victory', 0.9); this.audio.setMusicDucked(false); this.spawnChest(); }
-        if (ev.phase === 'defeat') { this.audio.setDrums(false); this.audio.setMusicDucked(false); }
         await delay(200);
         break;
       }

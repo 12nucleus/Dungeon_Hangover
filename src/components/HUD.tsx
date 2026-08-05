@@ -34,8 +34,7 @@ function Portrait({ u, size = 44, active = false }: { u: Unit; size?: number; ac
   );
 }
 
-/** BG3-style dice roll — a real 3D voxel d20 tumbles with a random spin,
- *  then the total + reason pop in. */
+/** Rare full-screen roll — reserved for special checks, perception, and treasure quality. */
 function DiceRollOverlay({ snap }: { snap: UISnapshot }) {
   const d = snap.diceShow;
   if (!d) return null;
@@ -255,6 +254,7 @@ function Minimap({ snap }: { snap: UISnapshot }) {
 
 export function HUD({ snap, engine }: Props) {
   const [showLog, setShowLog] = useState(true);
+  const [initHover, setInitHover] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -332,9 +332,23 @@ export function HUD({ snap, engine }: Props) {
           <div className="initiative-round">ROUND {snap.round}</div>
           {snap.turnOrder.map((id) => {
             const u = snap.units.find((x) => x.id === id)!;
+            const teamColor = TEAM_COLOR[u.team] ?? '#aaa';
             return (
-              <div key={id} className="initiative-slot" title={`${u.name} — ${u.hp}/${u.maxHp} HP`}>
+              <div
+                key={id}
+                className="initiative-slot"
+                title={`${u.name} — ${u.hp}/${u.maxHp} HP`}
+                onMouseEnter={() => setInitHover(id)}
+                onMouseLeave={() => setInitHover((cur) => (cur === id ? null : cur))}
+              >
                 <Portrait u={u} size={40} active={id === snap.activeId} />
+                {initHover === id && (
+                  <div className="init-hover">
+                    <div className="init-hover-name" style={{ color: teamColor }}>{u.name}</div>
+                    <div className="init-hover-hp">❤ {u.hp}/{u.maxHp} HP</div>
+                    <div className="init-hover-team" style={{ background: `${teamColor}22`, color: teamColor, border: `1px solid ${teamColor}55` }}>{u.team}</div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -479,15 +493,11 @@ export function HUD({ snap, engine }: Props) {
             ))}
           </div>
 
-          {/* torch indicator + fuel bar */}
+          {/* torch indicator — the torch never burns out; T equips/stows it */}
           {snap.torchEquipped && (
-            <div className="torch-indicator" onClick={() => engine?.toggleTorch()} title="Toggle torch [T]">
-              <span>{snap.torchLit ? '🔥' : '🕯'} Torch {snap.torchLit ? 'ON' : 'OFF'}</span>
-              {typeof snap.torchFuel === 'number' && (
-                <div className="torch-fuel">
-                  <div className="torch-fuel-fill" style={{ width: `${Math.max(0, Math.min(100, (snap.torchFuel / 100) * 100))}%` }} />
-                </div>
-              )}
+            <div className="torch-indicator" onClick={() => engine?.toggleTorch()} title="Stow torch — press T to switch back [T]">
+              <span>🔥 Torch in hand</span>
+              <span className="torch-hint">press T to stow (never burns out)</span>
             </div>
           )}
 

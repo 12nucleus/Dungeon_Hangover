@@ -26,15 +26,9 @@ export function toggleSneak(engine: any) {
 }
 
 export function toggleTorch(engine: any) {
-  engine.torchLit = !engine.torchLit;
-  engine.audio.play('ui_click', 0.4);
-  engine.pushLog(
-    engine.torchLit
-      ? 'Torch lit — the cave walls flicker back into view.'
-      : 'Torch extinguished — darkness swallows you.',
-    'system',
-  );
-  engine.emitSnapshot();
+  // engine.toggleTorch() now EQUIPS/UNEQUIPS the torch in the hero's hand
+  // (T) with previous-weapon memory — the single source of truth.
+  engine.toggleTorch();
 }
 
 export function closeDialogue(engine: any) {
@@ -273,10 +267,7 @@ export function respawn(engine: any) {
       engine.iso.target.copy(wp);   // instant snap — no lerp drift from the old spot
     }
   }
-  // the defeat screen leaves the combat loop on music_combat (the phase
-  // handler restores the cellar on 'defeat', but this covers every other
-  // path into respawn): drop the drums and go back to the ambient loop.
-  engine.audio.setDrums(false);
+  // Respawn always returns to the cellar ambience.
   engine.audio.setMusicDucked(false);
   engine.audio.playMusic('music_ambient');
   engine.pushLog('💀 Death is not the end. The bonfire restores you. The dungeon stirs...', 'system');

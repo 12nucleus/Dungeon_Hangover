@@ -33,6 +33,8 @@ export interface GameEngineLike {
   applyCondition(unitId: string, condId: string, rounds: number): void;
   hasClassSkill(classId: string): boolean;
   abilityCheck(stat: string, dc: number): boolean;
+  /** show the rare die overlay for treasure quality */
+  showDiceRoll?(die: string, total: number, reason: string): void;
   setFlag(flag: string): void;
   hasFlag(flag: string): boolean;
   startQuest(questId: string): void;

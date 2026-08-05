@@ -497,7 +497,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.spawnStars(starPos);
   await h.narrate('narr_premise', 'You stand. The room spins. You are not sure if it\'s the hangover or the dungeon. Both, probably.', 4800);
   if (h.introSkipped) { finishIntro(h); return; }
-  await h.narrate('narr_premise_2', 'A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that probably won\'t last. Somewhere in the dark, something squeaks.', 6600);
+  await h.narrate('narr_premise_2', "A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that never burns out. Somewhere in the dark, something squeaks.", 6600);
   if (h.introSkipped) { finishIntro(h); return; }
 
   // ── character creation: stats, 2 classes, 2 starting skills ──

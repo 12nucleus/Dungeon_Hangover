@@ -266,9 +266,14 @@ export function generateLoot(opts?: { minTier?: Tier; maxTier?: Tier; rarityBoos
 // ── per-source loot tables ───────────────────────────────────
 export type LootSource = 'crate' | 'barrel' | 'vase' | 'chest' | 'boss' | 'goblin' | 'goldenkey' | 'secret' | 'beast' | 'undead' | 'starting';
 
-export function rollLootTable(source: LootSource): { items: Item[]; gold: number } {
+export function rollLootTable(source: LootSource): { items: Item[]; gold: number; lootRoll?: number } {
   const items: Item[] = [];
   let gold = 0;
+  // Treasure chests use one visible quality roll; ordinary enemy/prop drops
+  // stay quiet so the full-screen die remains a rare event.
+  const lootRoll = source === 'chest' || source === 'secret' || source === 'goldenkey'
+    ? 1 + Math.floor(Math.random() * 20)
+    : undefined;
   const g = (a: number, b: number) => a + Math.floor(Math.random() * (b - a + 1));
   switch (source) {
     case 'crate':
@@ -284,7 +289,7 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
       if (Math.random() < 0.55) gold = g(6, 15);
       break;
     case 'chest':
-      items.push(generateLoot({ minTier: 1, maxTier: 2, rarityBoost: 1.2 }));
+      items.push(generateLoot({ minTier: 1, maxTier: (lootRoll ?? 10) >= 12 ? 2 : 1, rarityBoost: (lootRoll ?? 10) >= 16 ? 1.8 : 1.2 }));
       if (Math.random() < 0.5) items.push(generateLoot({ minTier: 1, maxTier: 2 }));
       if (Math.random() < 0.25) items.push(makeItem('wine_bottle'));
       if (Math.random() < 0.15) items.push(makeItem('holy_water'));
@@ -311,26 +316,25 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
       if (Math.random() < 0.5) gold = g(4, 12);
       break;
     case 'secret':
-      // hidden stash: a guaranteed good item + gold
-      items.push(generateLoot({ minTier: 2, maxTier: 3, rarityBoost: 1.6 }));
+      // The quality roll determines whether the top tier is available.
+      items.push(generateLoot({ minTier: 2, maxTier: (lootRoll ?? 10) >= 13 ? 3 : 2, rarityBoost: (lootRoll ?? 10) >= 16 ? 2.2 : 1.6 }));
       if (Math.random() < 0.7) items.push(generateLoot({ minTier: 1, maxTier: 2, kind: 'consumable' }));
       gold = g(30, 60);
       break;
     case 'goldenkey':
-      // the golden-chest jackpot: the signature epic reward + spoils
+      // The signature reward is fixed; the quality roll controls the bonus item.
       items.push(makeItem('warlord_blade', 'flaming', 'epic'));
-      items.push(generateLoot({ minTier: 2, maxTier: 3, rarityBoost: 2.5 }));
+      items.push(generateLoot({ minTier: 2, maxTier: (lootRoll ?? 10) >= 12 ? 3 : 2, rarityBoost: (lootRoll ?? 10) >= 16 ? 3 : 2.5 }));
       items.push(makeItem('potion_greater'));
       gold = g(120, 200);
       break;
     case 'starting':
-      // Greg's starter satchel, looted at the dungeon wake: the rusty dagger,
-      // a lit torch, and a healing potion. Fixed drop, always the same kit.
+      // Greg's starter satchel: fixed drop, always the same kit.
       items.push(makeItem('dagger1'));
       items.push(makeItem('torch1'));
       items.push(makeItem('potion'));
       gold = 0;
       break;
   }
-  return { items, gold };
+  return { items, gold, lootRoll };
 }

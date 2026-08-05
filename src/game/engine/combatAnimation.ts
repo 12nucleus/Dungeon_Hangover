@@ -46,12 +46,6 @@ export async function animate(engine: any, ev: CombatEvent) {
       break;
     }
     case 'float': spawnFloater(engine, ev.unitId, ev.text, ev.cls); await delay(90); break;
-    case 'save': {
-      spawnFloater(engine, ev.unitId, ev.success ? `Save ${ev.total} ✓` : `Save ${ev.total} ✗`, ev.success ? 'save-ok' : 'save-fail');
-      engine.showDiceRoll?.('d20', ev.total, 'Saving Throw');
-      await delay(60);
-      break;
-    }
     case 'death': {
       const v = engine.visuals.get(ev.unitId);
       if (v) {
@@ -156,7 +150,6 @@ export async function animate(engine: any, ev: CombatEvent) {
       }
       engine.phase = ev.phase;
       if (ev.phase === 'combat') {
-        engine.audio.setDrums(true);
         engine.audio.setMusicDucked(true);
         // the encounter theme takes over from the ambient loop
         engine.audio.playMusic('music_combat');
@@ -169,14 +162,11 @@ export async function animate(engine: any, ev: CombatEvent) {
       }
       if (ev.phase === 'explore') {
         engine.hazardUsed?.clear();   // hazards reset per fight
-        engine.audio.setDrums(false);
         engine.audio.setMusicDucked(false);
         if (engine.phase === 'explore') engine.audio.playMusic('music_ambient');  // back to the cellar
         // drops that piled up during the fight surface now
         engine.flushLootQueue?.();
       }
-      if (ev.phase === 'victory') { engine.audio.setDrums(false); engine.audio.playMusic('music_victory'); engine.audio.setMusicDucked(false); spawnChest(engine); }
-      if (ev.phase === 'defeat') { engine.audio.setDrums(false); engine.audio.setMusicDucked(false); engine.audio.playMusic('music_ambient'); }
       await delay(200);
       break;
     }
@@ -340,7 +330,6 @@ export async function disarmTrap(engine: any, u: Unit, trap: any) {
   const dexMod = Math.floor((u.abilities.dex - 10) / 2);
   const roll = 1 + Math.floor(Math.random() * 20);
   const total = roll + dexMod + u.proficiency;
-  engine.showDiceRoll?.('d20', total, 'Disarm (DEX)');
   engine.pushLog(`${u.name} attempts to disarm ${trap.def.icon} ${trap.def.name}... Roll ${roll}${dexMod >= 0 ? '+' : ''}${dexMod} (DEX) +${u.proficiency} prof = ${total} vs DC 12`, 'roll');
   if (total >= 12) {
     engine.pushLog(`${u.name} disarms the ${trap.def.name}!`, 'system');
@@ -501,7 +490,8 @@ export function checkCombatTrigger(engine: any) {
       if (wp.distanceTo(cp) < 1.6) {
         engine.scene.remove(engine.chest);
         engine.chest = null;
-        const { items, gold } = rollLootTable('chest');
+        const { items, gold, lootRoll } = rollLootTable('chest');
+        if (lootRoll !== undefined) engine.showDiceRoll?.('d20', lootRoll, 'Treasure quality');
         engine.audio.play('victory', 0.6, 1.4);
         FX.levelup(engine.particles, cp);
         engine.pushLog(`You pry open the chest: ${[...items.map((i: any) => `${i.icon} ${i.name}`), `🪙 ${gold} gold`].join(', ')}.`, 'system');

@@ -456,7 +456,8 @@ export function openSecretChest(engine: any) {
   const lid = engine.secretChestMesh.userData.lid as THREE.Group;
   animateTo(engine, () => lid.rotation.x, (v: any) => { lid.rotation.x = v; }, engine.secretChestMesh.userData.openAngle as number, 0.6);
   engine.audio.chestOpen();
-  const { items, gold } = rollLootTable('secret');
+  const { items, gold, lootRoll } = rollLootTable('secret');
+  if (lootRoll !== undefined) engine.showDiceRoll?.('d20', lootRoll, 'Hidden treasure quality');
   FX.levelup(engine.particles, engine.secretChestMesh.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
   offerLoot(engine, 'The hidden stash', items, gold);
   engine.pushLog(`🗝️ The hidden stash holds: ${[...items.map((i: any) => `${i.icon} ${i.name}`), `🪙 ${gold} gold`].join(', ')}.`, 'system');
@@ -469,7 +470,8 @@ export function openGoldenChest(engine: any) {
   const lid = engine.goldenChest.userData.lid as THREE.Group;
   animateTo(engine, () => lid.rotation.x, (v: any) => { lid.rotation.x = v; }, engine.goldenChest.userData.openAngle as number, 0.7);
   engine.audio.chestOpen(); engine.audio.bossSting();
-  const { items, gold } = rollLootTable('goldenkey');
+  const { items, gold, lootRoll } = rollLootTable('goldenkey');
+  if (lootRoll !== undefined) engine.showDiceRoll?.('d20', lootRoll, 'Golden treasure quality');
   FX.levelup(engine.particles, engine.goldenChest.position.clone().add(new THREE.Vector3(0, 0.6, 0)));
   offerLoot(engine, 'The golden chest', items, gold);
   engine.pushLog(`👑 The golden chest bursts open: ${[...items.map((i: any) => `${i.icon} ${i.name}`), `🪙 ${gold} gold`].join(', ')}!`, 'system');
@@ -480,7 +482,6 @@ export function openGoldenChest(engine: any) {
 export function winGame(engine: any) {
   engine.gameWon = true;
   engine.phase = 'victory';
-  engine.audio.setDrums(false);
   engine.audio.setMusicDucked(false);
   // the victory "music" is a short ta-da chime — one shot, no loop
   engine.audio.playMusic('music_victory');

@@ -181,6 +181,8 @@ export class GameEngine {
   /** bonfire loadout editor open (only reachable while resting at a bonfire) */
   public showBonfireLoadout = false;
   public torchLit = true;
+  /** the weapon kind held before the last 'T' torch-equip — restored on toggle-off */
+  public heroPrevWeapon: string | null = null;
   public torchLight: THREE.PointLight | null = null;
   public bonfireGroup: THREE.Group | null = null;
   public bonfirePos: GridPos | null = null;
@@ -2084,10 +2086,26 @@ export class GameEngine {
     return bestYaw;
   }
 
+  /** 'T' — equip a torch into the hero's hand, or switch back to the weapon
+   *  he held before. The torch never burns out (no fuel timer). */
   toggleTorch() {
-    this.torchLit = !this.torchLit;
+    const hero = this.combat?.living('party')[0];
+    const rig = hero ? this.visuals.get(hero.id)?.rig : null;
+    if (!hero) return;
+    if (hero.weapon === 'torch') {
+      const prev = this.heroPrevWeapon ?? 'unarmed';
+      hero.weapon = prev as typeof hero.weapon;
+      this.torchLit = false;
+      if (rig) setWeapon(rig, prev as any, hero.scheme.accent);
+      this.pushLog('🔦 You stow the torch and take up what you held before.', 'system');
+    } else {
+      this.heroPrevWeapon = hero.weapon ?? null;
+      hero.weapon = 'torch' as typeof hero.weapon;
+      this.torchLit = true;
+      if (rig) setWeapon(rig, 'torch', hero.scheme.accent);
+      this.pushLog('🔦 You raise a torch — the flame never gutters out.', 'system');
+    }
     this.audio.play('ui_click', 0.4);
-    this.pushLog(this.torchLit ? '🔦 Torch lit — the cave walls flicker back into view.' : '🔦 Torch extinguished — darkness swallows you.', 'system');
     this.emitSnapshot();
   }
 
@@ -2752,15 +2770,7 @@ export class GameEngine {
     // The render loop (composer.render) still runs, so the frozen frame shows.
     if (this.paused) return;
 
-    // torch fuel (floor 50): drains while lit in explore, auto-off at 0
-    if (this.torchLit && this.phase === 'explore' && !this.combat.inCombat) {
-      this.torchFuel = Math.max(0, this.torchFuel - dt);
-      if (this.torchFuel <= 0 && this.torchLit) {
-        this.torchLit = false;
-        this.pushLog('Your torch gutters out. Darkness swallows you.', 'system');
-        this.emitSnapshot();
-      }
-    }
+    // (torch fuel timer removed — the torch never burns out)
     // cursed gold: loot quality downgraded while the leader is cursed
     const leader = this.combat?.living('party')[0];
     setCursedLoot(!!leader?.conditions.some((c) => c.id === 'cursed'));
@@ -2875,30 +2885,41 @@ export class GameEngine {
       }
     }
 
-    // player torch light
+    // ever-present ambient light around the player. A modest pool of light
+    // follows the hero everywhere; holding a lit torch widens the pool into a
+    // bright, large radius centred right on the flame.
     const player = this.combat?.living('party')[0];
     if (!this.torchLight) {
-      this.torchLight = new THREE.PointLight(0xffb545, 12, 14, 1.5);  // torch radius: change '14' (distance) to widen/narrow
+      this.torchLight = new THREE.PointLight(0xffcf9a, 1.6, 10, 1.5);
       this.scene.add(this.torchLight);
     }
     if (this.torchLight) {
-      // position light at the actual torch flame, not player center
       const rig = player ? this.visuals.get(player.id)?.rig : null;
       const weaponG = rig ? rig.parts.weapon as THREE.Object3D : null;
-      if (weaponG) {
-        const flamePos = new THREE.Vector3(0.02, rig?.pivots ? 5.85 * 0.055 : 0.58, 0.02);  // flame cubes are at weapon-local y=5.4*C to 6.3*C
-        weaponG.localToWorld(flamePos);
+      if (player && player.weapon === 'torch' && this.torchLit) {
+        // torch held: wide bright flame light + flame FX
+        this.torchLight.color.setHex(0xffb545);
+        this.torchLight.intensity = 12;
+        this.torchLight.distance = 18;
+        const flamePos = new THREE.Vector3(0.02, rig?.pivots ? 5.85 * 0.055 : 0.58, 0.02);
+        if (weaponG) weaponG.localToWorld(flamePos);
+        else flamePos.set(flamePos.x, 2.2, flamePos.z);
         this.torchLight.position.copy(flamePos);
-        if (player && player.weapon === 'torch' && this.torchLit && (!player || this.explored?.[player.pos.x]?.[player.pos.z])) {
-          this.torchLight.intensity = 12;
-          this.torchLight.distance = 14;
+        if (this.explored?.[player.pos.x]?.[player.pos.z]) {
           FX.flame(this.particles, flamePos.clone());
           if (Math.random() < 0.35) {
             const sp = flamePos.clone().add(new THREE.Vector3((Math.random()-0.5)*0.25, 0.3+Math.random()*0.4, (Math.random()-0.5)*0.25));
             this.particles.burst({ pos: sp, count: 3, color: [0x3a3a3a, 0x4a4a4a], speed: [0.2, 0.6], life: [0.4, 1.0], size: [0.2, 0.5], gravity: -1.0, up: 0.5, endScale: 1.5, solid: true });
           }
-        } else {
-          this.torchLight.intensity = 0;
+        }
+      } else {
+        // no torch: soft always-on pool centred over the hero's head
+        this.torchLight.color.setHex(0xd7deef);
+        this.torchLight.intensity = 1.6;
+        this.torchLight.distance = 10;
+        if (player) {
+          const wp = this.unitWorld(player.pos);
+          this.torchLight.position.set(wp.x, wp.y + 2.1, wp.z);
         }
       }
     }
