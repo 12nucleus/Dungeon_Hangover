@@ -411,11 +411,9 @@ function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 
 function buildPlayerRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
   const C = C_DETAIL;
   const WC = C_NORMAL;   // weapon scale (keeps torch-flame light offset valid)
-  // SUB=2 subdivides every voxel into 2×2×2 = 8 cubes — this is the documented
-  // "double the voxels" bump for Greg's model: 8× fidelity (smoother rounded
-  // limbs, finer hair/face/equipment detail), while keeping the same grid
-  // scaffold so pivots, equipment alignment and animation all stay valid.
-  const SUB = 2;
+  // SUB=1: original voxel detail for Greg's model. (The earlier 8× fidelity bump
+  // to SUB=2 hurt performance, so it was reverted — same grid, cheaper build.)
+  const SUB = 1;
   const group = new THREE.Group();
   const parts: Record<string, THREE.Object3D> = {};
   const martial = weapon === 'sword' || weapon === 'mace' || weapon === 'club';
@@ -2091,7 +2089,7 @@ function buildPiece(def: EquipVisual): { part: string; mesh: THREE.Mesh }[] {
   const mk = (part: string, build: (v: Vox, piv: { cx: number; cy: number }) => void) => {
     const piv = PART_PIVOTS[part];
     if (!piv) return;
-    const vox = new Vox(C_DETAIL, 2);   // must match the player rig's SUB so
+    const vox = new Vox(C_DETAIL, 1);   // must match the player rig's SUB so
     build(vox, piv);                    // equipment voxels are the same size
     out.push({ part, mesh: vox.mesh() });
   };
