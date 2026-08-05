@@ -331,6 +331,10 @@ export class GameEngine {
    *  the intro so they aren't swarmed instantly. Toggle with the `noaggro`
    *  console command. */
   public aggroDisabled = false;
+  /** suppression until this wall-clock second — the intro grace plus a
+   *  short window after every respawn so the party isn't re-swarmed the
+   *  instant they stand up at the bonfire. */
+  public aggroGraceUntil = 0;
   public showFullMap = false;
   /** console overlay open? (backtick key) */
   public consoleOpen = false;
@@ -986,10 +990,11 @@ export class GameEngine {
     // aggro is disabled by default ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ the player explores freely.
     // toggle with the `noaggro` console command (backtick ? type noaggro).
     if (this.aggroDisabled) return;
-    // intro-skip grace window: after the intro ends (whether naturally or
-    // by skipping), suppress proximity aggro for a beat so Greg doesn't
-    // instantly get swarmed by the dormant rats in his starter room.
-    if (performance.now() / 1000 < this.introGraceUntil) return;
+    // grace window: after the intro ends (whether naturally or by skipping)
+    // and after every respawn, suppress proximity aggro for a beat so Greg
+    // doesn't instantly get swarmed by the dormant rats in his starter room
+    // or at the bonfire he just respawned at.
+    if (performance.now() / 1000 < Math.max(this.introGraceUntil, this.aggroGraceUntil)) return;
     const st = this.structures;
     const party = this.combat.living('party');
     if (!party.length) return;
@@ -1933,6 +1938,72 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
+  /** snap the tactical camera back onto the player (active combat unit, else
+   *  the selected/leader party member). The camera otherwise only re-centers
+   *  on movement clicks, so this is the explicit "find me" button. */
+  recenterCamera() {
+    const u = this.combat.inCombat
+      ? this.combat.active
+      : (this.byId(this.selectedId ?? '') ?? this.combat.living('party')[0]);
+    if (!u) return;
+    const wp = this.unitWorld(u.pos);
+    this.iso.focus(wp);
+    this.iso.desiredTarget?.copy(wp);
+    this.iso.target.copy(wp);
+    this.audio.play('ui_click', 0.5);
+    this.emitSnapshot();
+  }
+
+  /** true while the overhead tactical view is active (top-down on the field) */
+  public tacticalView = false;
+  private tacticalRestore: { pitch: number; dist: number } | null = null;
+
+  /** the midpoint of the CURRENT fight (aggroed enemies + party), else the
+   *  leader. Scoped so dormant enemies elsewhere in the dungeon don't drag the
+   *  top-down view away from the actual battlefield. */
+  private battleCenter(): GridPos {
+    const party = this.combat.living('party');
+    const foes = this.combat.inCombat ? this.combat.activeEnemies() : [];
+    const living = [...party, ...foes].filter((u) => u.alive);
+    if (living.length >= 2) {
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const u of living) {
+        minX = Math.min(minX, u.pos.x); maxX = Math.max(maxX, u.pos.x);
+        minZ = Math.min(minZ, u.pos.z); maxZ = Math.max(maxZ, u.pos.z);
+      }
+      return { x: (minX + maxX) >> 1, z: (minZ + maxZ) >> 1 };
+    }
+    const u = this.combat.inCombat ? this.combat.active : (this.byId(this.selectedId ?? '') ?? party[0]);
+    return u ? { ...u.pos } : { x: 0, z: 0 };
+  }
+
+  /** toggle the overhead "tactical view": straight down on the battlefield.
+   *  Restores the previous pitch/distance when toggled off. */
+  toggleTacticalView() {
+    this.tacticalView = !this.tacticalView;
+    this.audio.play('ui_click', 0.5);
+    const wp = this.unitWorld(this.battleCenter());
+    if (this.tacticalView) {
+      this.tacticalRestore = { pitch: this.iso.desiredPitch, dist: this.iso.desiredDist };
+      this.iso.desiredYaw = this.iso.yaw;      // keep facing — the pitch does the drop
+      this.iso.desiredPitch = Math.PI / 2;     // 90° — straight down
+      this.iso.desiredDist = 30;               // pull back so the whole field fits
+    } else {
+      if (this.tacticalRestore) {
+        this.iso.desiredPitch = this.tacticalRestore.pitch;
+        this.iso.desiredDist = this.tacticalRestore.dist;
+      }
+      this.tacticalRestore = null;
+      this.recenterCamera();
+      return;
+    }
+    this.iso.focus(wp);
+    this.iso.desiredTarget?.copy(wp);
+    this.iso.target.copy(wp);
+    this.pushLog(this.tacticalView ? '🗺 Tactical view — overhead on the field.' : 'Camera restored.', 'system');
+    this.emitSnapshot();
+  }
+
   /** toggle the first-person camera (P) — rides on the hero's head */
   toggleFirstPerson() {
     this.firstPerson = !this.firstPerson;
@@ -2388,6 +2459,34 @@ export class GameEngine {
         this.pushLog("🪙 The curse lifts. The vault's saint pays you back with a Blessed Penny.", 'system');
       }
     }
+  }
+
+  /** combat bonus action — arm a throw: the next tile/unit click hurls the
+   *  given consumable (range 6). Toggle off by clicking the 🎯 again. */
+  startThrow(itemId: string) {
+    const it = this.inventory.find((i) => i.id === itemId);
+    if (!it || it.kind !== 'consumable') return;
+    if (this.targeting === `THROW:${itemId}`) { this.cancelTargeting(); return; }
+    this.targeting = `THROW:${itemId}`;
+    this.audio.play('ui_click', 0.6);
+    this.emitSnapshot();
+  }
+
+  /** resolve a thrown consumable — gate the range/bonus here, the effect in
+   *  combat.throwItem (allies take the item's effect at range, enemies take
+   *  glass + condition). Costs the active hero's bonus action. */
+  public throwConsumable(itemId: string, tx: number, tz: number) {
+    const idx = this.inventory.findIndex((i) => i.id === itemId);
+    const u = this.combat.active;
+    if (idx < 0 || !u || u.team !== 'party') return;
+    const item = this.inventory[idx];
+    if (item.kind !== 'consumable') return;
+    if (!this.combat.inCombat) { this.setHoverInfoOnce('Throwing is a combat bonus action.'); return; }
+    if (!u.hasBonus) { this.setHoverInfoOnce('No bonus action left.'); return; }
+    if (Combat.dist(u.pos, { x: tx, z: tz }) > 6) { this.setHoverInfoOnce('Too far to throw (6 tiles).'); return; }
+    this.inventory.splice(idx, 1);
+    this.audio.play('sword_hit', 0.6, 1.2);
+    this.enqueue(this.combat.throwItem(u, item, tx, tz));
   }
 
   public hotkeySkill(i: number) {
@@ -3104,6 +3203,7 @@ export class GameEngine {
       sneaking: this.sneaking,
       running: this.running,
       throwing: this.throwing,
+      tacticalView: this.tacticalView,
       torchLit: this.torchLit,
       torchEquipped: this.combat?.living('party')[0]?.weapon === 'torch',
       bigMessage: this.bigMessage,

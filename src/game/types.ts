@@ -248,6 +248,8 @@ export interface UISnapshot {
   sneaking: boolean;
   running: boolean;
   throwing: boolean;
+  /** overhead tactical camera view active (top-down on the field) */
+  tacticalView: boolean;
   torchLit: boolean;
   torchEquipped: boolean;
   bigMessage?: string | null;

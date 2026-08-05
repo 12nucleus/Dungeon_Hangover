@@ -33,9 +33,47 @@ export function Hotbar({ snap, engine }: Props) {
   if (!active || active.team !== 'party') return null;
   const phase = snap.phase;
   const loadout = (active.hotbarLoadout ?? active.equippedSkills) as (string | null)[];
+  // persistent consumable/item bar — the party's shared usable items, always
+  // reachable above the skill bar. Click to drink/eat/use on the active hero:
+  // free in explore, costs the bonus action in combat. In combat each item
+  // also offers a Throw (🎯) bonus action.
+  const items = (snap.inventory ?? []).filter((i) => i.kind === 'consumable').slice(0, 12);
 
   return (
-    <div className="hotbar-bg3">
+    <div className="hotbar-stack">
+      {/* usable item bar — above the skill bar, usable any time */}
+      {items.length > 0 && (
+        <div className={`item-bar ${phase === 'combat' ? '' : 'idle'}`}>
+          <span className={`item-bar-label ${phase === 'combat' && snap.turnMode === 'bonus' ? 'on' : ''}`} title="Click an item to use it — free in explore, a bonus action in combat">
+            ITEMS
+          </span>
+          <div className="item-bar-slots">
+            {items.map((it) => (
+              <div key={it.id} className={`item-slot ${phase === 'combat' && !active.hasBonus ? 'no-bonus' : ''}`}>
+                <button
+                  className={`item-use ${phase === 'combat' && !active.hasBonus ? 'disabled' : ''}`}
+                  onClick={() => engine.useConsumable(it.id, active.id)}
+                  title={`${it.icon} ${it.name} — ${it.desc} (${phase === 'combat' ? 'bonus action' : 'free'})`}
+                >
+                  <span className="skill-icon">{it.icon}</span>
+                  {phase === 'combat' && <span className="item-cost">B</span>}
+                </button>
+                {phase === 'combat' && (
+                  <button
+                    className={`item-throw ${snap.selectedSkill === `THROW:${it.id}` ? 'on' : ''}`}
+                    onClick={() => engine.startThrow(it.id)}
+                    title={`Throw ${it.name} at a unit (bonus action)`}
+                  >
+                    🎯
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="hotbar-bg3">
       {/* default actions */}
       <div className="hotbar-defaults">
         {DEFAULTS.map((d) => (
@@ -103,6 +141,7 @@ export function Hotbar({ snap, engine }: Props) {
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

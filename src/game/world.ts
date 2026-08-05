@@ -15,11 +15,13 @@ import { buildVoxelTerrain, DEFAULT_BUDGET, paletteLookup, type Grid } from './v
 // decorative props that also block their tile (preserve legacy behaviour)
 const BLOCKING_PROPS = new Set(['torch', 'bonfire', 'brazier']);
 
-// NOTE: bumped from 46 → 90 to fit ~50 rooms + a boss room comfortably.
-// If you still use the open-world heightmap mode (level === null), its
-// hardcoded `arena` rect and river placement were tuned for 46 and will
-// need re-tuning for the bigger grid.
-export const WORLD_SIZE = 150;
+// NOTE: bumped 46 → 90 → 150 → 250. Floor 50's authored layout is now
+// SCALE=2.0 (rooms ~2× the original cells, corridors 5 tiles wide), so
+// the level needs a 240+ grid to sit in with margin. If you still use the
+// open-world heightmap mode (level === null), its hardcoded `arena` rect
+// and river placement were tuned for 46 and will need re-tuning for the
+// bigger grid.
+export const WORLD_SIZE = 250;
 export const TILE = 1;
 const MAX_H = 3;
 

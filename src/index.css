@@ -456,6 +456,40 @@ button:focus-visible, [tabindex]:focus-visible {
 .hotbar-divider { width: 1px; height: 42px; background: linear-gradient(180deg, transparent, var(--gold-dim), transparent); margin: 0 7px; }
 .hotbar-skills { display: flex; gap: 5px; align-items: center; }
 
+/* usable item bar — a dedicated row above the skill bar (drink / eat / use),
+   reachable any time in or out of combat */
+.hotbar-stack { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.item-bar {
+  display: flex; gap: 6px; align-items: center; padding: 4px 10px;
+  background: linear-gradient(180deg, rgba(24, 32, 44, 0.94), rgba(14, 18, 28, 0.92));
+  border: 1px solid var(--edge-hi); border-radius: 11px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.4);
+}
+.item-bar-label {
+  font-family: var(--font-display); font-size: 10px; letter-spacing: 1.5px; color: var(--parchment-dim);
+  user-select: none; padding-right: 4px;
+}
+.item-bar-label.on { color: #7dd3fc; text-shadow: 0 0 8px rgba(125, 211, 252, 0.6); }
+.item-bar-slots { display: flex; gap: 6px; align-items: center; }
+.item-slot { position: relative; }
+.item-use {
+  position: relative; width: 44px; height: 44px; cursor: pointer;
+  background: linear-gradient(180deg, var(--stone-hi), var(--stone-lo) 70%, #11141d);
+  border: 1px solid var(--edge-hi); border-radius: 9px; font-size: 22px; color: var(--text);
+}
+.item-use:hover { transform: translateY(-2px); border-color: var(--gold); box-shadow: 0 0 12px rgba(201, 162, 39, 0.4); }
+.item-use.disabled { opacity: 0.38; cursor: not-allowed; }
+.item-use.disabled:hover { transform: none; border-color: var(--edge-hi); box-shadow: none; }
+.item-cost { position: absolute; bottom: 1px; right: 4px; font-size: 9px; color: #f0b060; font-weight: 800; }
+.item-slot .item-throw {
+  position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; font-size: 11px; line-height: 1;
+  border: 1px solid var(--edge-hi); border-radius: 50%; cursor: pointer;
+  background: linear-gradient(180deg, var(--stone-hi), var(--stone-lo)); color: var(--parchment);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.55); z-index: 2;
+}
+.item-slot .item-throw:hover { border-color: var(--gold); box-shadow: 0 0 10px rgba(201, 162, 39, 0.5); }
+.item-slot .item-throw.on { border-color: var(--gold-hi); background: linear-gradient(180deg, #6a541a, #3a2c0e); box-shadow: 0 0 12px rgba(232, 196, 102, 0.7); }
+
 /* beveled stone/gold hotbar slot */
 .skill-btn {
   position: relative; width: 52px; height: 52px; cursor: pointer;

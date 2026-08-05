@@ -8,12 +8,13 @@
 // seed, never by the layout.
 //
 // All coordinates below are MAP-LOCAL; OFFSET is added to every tile so
-// the 105×105 region sits inside the WORLD_SIZE=150 grid.
+// the ~170×170 region sits inside the WORLD_SIZE=250 grid.
 //
-// GRANDEUR PASS: SCALE = 1.5 stretches every room/corridor (width-2
-// corridors become width 3, width-1 gate lanes stay width 1 so blockers
-// can still seal them). Walls are taller and the terrain gets raised
-// mezzanine shelves (r24/r25/r6) plus a sunken oubliette (r20).
+// GRANDEUR PASS 2: SCALE = 2.0 stretches every room/corridor (width-2
+// corridors become width 5 grand sewer mains, width-1 gate lanes stay
+// width 1 so blockers can still seal them). Walls are taller and the
+// terrain gets raised mezzanine shelves (r24/r25/r6) plus a sunken
+// oubliette (r20).
 // ─────────────────────────────────────────────────────────────
 import type { LevelDef, LevelStructures, PropPlacement, Rect } from './levelTypes';
 import type { GridPos } from '../game/types';
@@ -28,7 +29,7 @@ const S = WORLD_SIZE;
 const OFFSET: GridPos = { x: 24, z: 24 };
 
 /** grandeur scale — every authored dimension stretches by this factor */
-const SCALE = 1.5;
+const SCALE = 2.0;
 const sc = (n: number) => Math.round(n * SCALE);
 
 // ── the 25 authored rooms (map-local top-left + size, UNSCALED) ────
@@ -94,15 +95,16 @@ const CORRIDOR_SPECS: CorridorSpec[] = [
   { pts: [{ x: 14, z: 54 }, { x: 15, z: 54 }], width: 1 },                    // 5→6 (debris gate — single lane so the rubble seals it)
   { pts: [{ x: 23, z: 53 }, { x: 24, z: 53 }], width: 1 },                    // 6→7 (trapdoor — single lane)
   { pts: [{ x: 35, z: 53 }, { x: 59, z: 53 }], width: 2 },                    // 7→24
-  // the shortcut: room 1 → down the WEST side (x 5..6, clear of rooms 4/5
-  // which span x 8..13) → across the SOUTH edge (z 69, the only row clear of
-  // room 25's z 60..67) → up the EAST side (x 70) → room 19's east edge.
+  // the shortcut: room 1 → down the WEST side (x 8..9, clear of rooms 3/4/5
+  // which span x 16..27) → across the SOUTH edge (z 141, below room 25's
+  // z 120..135) → up the EAST side (x 140) → room 19's east edge (z 28).
   // Every segment keeps a ≥1-tile gap from rooms it must NOT connect to.
-  { pts: [{ x: 20, z: 39 }, { x: 20, z: 40 }], width: 1 },                    // debris tiles
-  { pts: [{ x: 5, z: 41 }, { x: 20, z: 41 }], width: 2 },
-  { pts: [{ x: 5, z: 43 }, { x: 5, z: 68 }], width: 2 },
-  { pts: [{ x: 7, z: 69 }, { x: 69, z: 69 }], width: 1 },
-  { pts: [{ x: 70, z: 14 }, { x: 70, z: 69 }], width: 1 },
+  { pts: [{ x: 39, z: 78 }, { x: 39, z: 79 }], width: 1 },                    // debris tiles below r1
+  { pts: [{ x: 39, z: 80 }, { x: 39, z: 100 }], width: 1 },                   // south leg
+  { pts: [{ x: 8, z: 100 }, { x: 39, z: 100 }], width: 2 },                   // west leg
+  { pts: [{ x: 8, z: 101 }, { x: 8, z: 140 }], width: 2 },                    // vertical down west side
+  { pts: [{ x: 8, z: 141 }, { x: 140, z: 141 }], width: 1 },                  // south run
+  { pts: [{ x: 140, z: 28 }, { x: 140, z: 141 }], width: 3 },                 // east run up to r19
 ];
 
 // ── scaled copies: rooms get 1.5×, corridors 1.5× (width 2→3; the
@@ -120,28 +122,30 @@ const SCALED = (c: CorridorSpec): CorridorSpec => {
     const d1 = { x: Math.sign(pts[L].x - pts[L - 1].x), z: Math.sign(pts[L].z - pts[L - 1].z) };
     pts[L] = { x: pts[L].x + d1.x, z: pts[L].z + d1.z };
   }
-  return { pts, width: c.width === 1 ? 1 : 3 };
+  return { pts, width: c.width === 1 ? 1 : 5 };
 };
 const SHORTCUT_SPECS: CorridorSpec[] = [
-  { pts: [{ x: 20, z: 39 }, { x: 20, z: 40 }], width: 1 },   // debris tiles (r1 end)
-  { pts: [{ x: 5, z: 41 }, { x: 20, z: 41 }], width: 2 },    // west run
-  { pts: [{ x: 5, z: 43 }, { x: 5, z: 68 }], width: 2 },     // south-west vertical
-  { pts: [{ x: 7, z: 69 }, { x: 69, z: 69 }], width: 1 },    // south edge
-  { pts: [{ x: 70, z: 14 }, { x: 70, z: 69 }], width: 1 },   // east run
+  { pts: [{ x: 39, z: 78 }, { x: 39, z: 79 }], width: 1 },    // debris tiles below r1
+  { pts: [{ x: 39, z: 80 }, { x: 39, z: 100 }], width: 1 },   // south leg
+  { pts: [{ x: 8, z: 100 }, { x: 39, z: 100 }], width: 2 },   // west leg
+  { pts: [{ x: 8, z: 101 }, { x: 8, z: 140 }], width: 2 },    // vertical down west side
+  { pts: [{ x: 8, z: 141 }, { x: 140, z: 141 }], width: 1 },  // south run
+  { pts: [{ x: 140, z: 28 }, { x: 140, z: 141 }], width: 3 }, // east run up to r19
 ];
 // hand-tuned shortcut (MAP-LOCAL — buildAuthoredMap adds OFFSET): r1 south
-// edge → debris (30,59-60) → straight SOUTH at x=30 to z=75 (clear of r3/r4
-// and the 3→4 corridor at x 14..16, z 56..66) → WEST at z 75..76 to x=8
-// (clear of r5 which starts at z 78) → vertical x=8 down to z=103 → south
-// run z=104 → east run x=104 up to r19's east edge. NO crossing with any
-// room corridor: the only entrance is the debris.
+// edge → debris (39,78-79) → straight SOUTH at x=39 to z=100 (clear of r3,
+// r4 and the 3→4 corridor at x 19..21, z 75..87) → WEST at z 100..101 to
+// x=8 (clear of r5/r6 which start at z 104/106) → vertical x=8 down to
+// z=140 (clear of every room, all x > 8) → south run z=141 → east run x=140
+// up to r19's east edge (z 26..29). NO crossing with any room corridor; the
+// only entrances are the debris (r1) and r19's east side.
 const SHORTCUT: CorridorSpec[] = [
-  { pts: [{ x: 30, z: 59 }, { x: 30, z: 60 }], width: 1 },    // debris lane
-  { pts: [{ x: 30, z: 61 }, { x: 30, z: 75 }], width: 1 },    // south leg
-  { pts: [{ x: 8, z: 75 }, { x: 30, z: 75 }], width: 2 },     // west leg
-  { pts: [{ x: 8, z: 76 }, { x: 8, z: 103 }], width: 2 },     // vertical
-  { pts: [{ x: 8, z: 104 }, { x: 104, z: 104 }], width: 1 },  // south run
-  { pts: [{ x: 104, z: 21 }, { x: 104, z: 104 }], width: 3 }, // east run
+  { pts: [{ x: 39, z: 78 }, { x: 39, z: 79 }], width: 1 },    // debris lane
+  { pts: [{ x: 39, z: 80 }, { x: 39, z: 100 }], width: 1 },   // south leg
+  { pts: [{ x: 8, z: 100 }, { x: 39, z: 100 }], width: 2 },   // west leg
+  { pts: [{ x: 8, z: 101 }, { x: 8, z: 140 }], width: 2 },    // vertical
+  { pts: [{ x: 8, z: 141 }, { x: 140, z: 141 }], width: 1 },  // south run
+  { pts: [{ x: 140, z: 28 }, { x: 140, z: 141 }], width: 3 }, // east run
 ];
 // the shortcut entries live at the END of CORRIDOR_SPECS (after the 1→19
 // comment block) — strip them before mapping, then push the tuned spans
@@ -229,18 +233,18 @@ const structures: LevelStructures = {
     { npcId: 'scrag', pos: O({ x: sc(49), z: sc(22) }) },
   ],
   doors: [
-    { id: 'soap_gate', pos: O({ x: 74, z: 38 }), axis: 'z', openedByFlag: 'soap_gate_open' },
-    { id: 'trapdoor67', pos: O({ x: 35, z: 80 }), axis: 'x', openedByFlag: 'trapdoor_open' },
+    { id: 'soap_gate', pos: O({ x: 98, z: 50 }), axis: 'z', openedByFlag: 'soap_gate_open' },
+    { id: 'trapdoor67', pos: O({ x: 47, z: 106 }), axis: 'x', openedByFlag: 'trapdoor_open' },
   ],
   // gate lanes seal only if the blocker covers the WHOLE single-lane span.
   // NOTE: the 1↔19 shortcut has NO gate — it's an open back route from room
   // 1 to the north cluster (player request: the rubble wall at spawn was
   // 'in the way').
   blockers: [
-    { id: 'door16', tiles: lane(17, 34, 17, 42), kind: 'secretDoor', openedByFlag: 'mushroom_door' },
-    { id: 'door17', tiles: lane(86, 9, 90, 9), kind: 'secretDoor', openedByFlag: 'vault_tunnel' },
-    { id: 'debris56', tiles: lane(20, 81, 24, 81), kind: 'rubble', openedByFlag: 'debris_56' },
-    { id: 'pipeclimb', tiles: lane(38, 35, 38, 42), kind: 'rubble', openedByFlag: 'pipe_climbed' },
+    { id: 'door16', tiles: lane(22, 44, 22, 56), kind: 'secretDoor', openedByFlag: 'mushroom_door' },
+    { id: 'door17', tiles: lane(114, 12, 120, 12), kind: 'secretDoor', openedByFlag: 'vault_tunnel' },
+    { id: 'debris56', tiles: lane(26, 108, 32, 108), kind: 'rubble', openedByFlag: 'debris_56' },
+    { id: 'pipeclimb', tiles: lane(50, 46, 50, 56), kind: 'rubble', openedByFlag: 'pipe_climbed' },
   ],
   bossDoorOpenFlag: 'gribnab_door_open',
 };
@@ -298,6 +302,22 @@ const reserve = (p: GridPos) => reserved.add(`${p.x},${p.z}`);
 (structures.blockers ?? []).forEach((b) => b.tiles.forEach(reserve));
 (structures.npcs ?? []).forEach((n) => reserve(n.pos));
 
+// reserve every single-lane gate tile (the width-1 corridors) from torches
+// and blocking props — a torch must never seal a progression gate, and two
+// opposite torches can't cut a wide corridor either.
+const GATE_LANE_TILES = new Set<string>();
+const BLOCKING_KINDS = new Set(['torch', 'bonfire', 'brazier', 'tent', 'campfire', 'crate', 'stalagmite', 'boulder']);
+for (const c of CORRIDORS) {
+  if (c.width !== 1) continue;
+  for (let i = 0; i + 1 < c.pts.length; i++) {
+    const a = c.pts[i], b = c.pts[i + 1];
+    const dx = Math.sign(b.x - a.x), dz = Math.sign(b.z - a.z);
+    const len = Math.max(Math.abs(b.x - a.x), Math.abs(b.z - a.z));
+    for (let k = 0; k <= len; k++) GATE_LANE_TILES.add(`${a.x + dx * k + OFFSET.x},${a.z + dz * k + OFFSET.z}`);
+  }
+}
+for (const k of GATE_LANE_TILES) reserved.add(k);
+
 // ── props ─────────────────────────────────────────────────────
 const rng = mulberry32(20260802);
 const props: PropPlacement[] = [];
@@ -309,6 +329,14 @@ const on = (x: number, z: number) => !!map.walk[x]?.[z];
 const put = (kind: PropPlacement['kind'], x: number, z: number, s = rng()) => {
   const wx = x + OFFSET.x, wz = z + OFFSET.z;
   if (!on(wx, wz)) return;
+  // blocking props must never sit on a gate lane (would seal it) or pinch a
+  // corridor tile — the reserved set carries blockers/doors/NPCs already.
+  // The respawn BONFIRE is the exception: it deliberately occupies the
+  // reserved checkpoint tile (it IS the checkpoint), so it bypasses the guard.
+  if (BLOCKING_KINDS.has(kind) && kind !== 'bonfire') {
+    const k = `${wx},${wz}`;
+    if (GATE_LANE_TILES.has(k) || reserved.has(k)) return;
+  }
   props.push({ kind, x: wx, z: wz, seed: s });
 };
 
@@ -358,7 +386,9 @@ let torchN = 0;
 for (const t of corridorTiles) {
   if (reserved.has(`${t.x},${t.z}`)) { torchN++; continue; }
   if (!torchSafe(t.x, t.z)) { torchN++; continue; }
-  if (torchN % 12 === 0 && rng() < 0.6) {
+  // bigger map draws wider/longer corridors — space torches out further so
+  // the point-light count stays roughly the same as the old 105×105 level
+  if (torchN % 18 === 0 && rng() < 0.55) {
     // put() takes MAP-LOCAL coords; corridorTiles are world — convert back
     put('torch', t.x - OFFSET.x, t.z - OFFSET.z);
     torchPlaced.add(`${t.x},${t.z}`);
@@ -375,15 +405,16 @@ put('brazier', sc(21), sc(38), 0.5);
 //    braziers, a bedroll and a crate. The hermit sits by the fire (his NPC
 //    pos is set next to the campfire in `structures.npcs`). Furniture stays
 //    clear of the corridor mouth (world 56..60,78) so the room reads OPEN.
-put('tent', sc(26), sc(36), 0.3);     // (63,78) against the back wall
-put('campfire', sc(26), sc(37), 0.5); // (63,80) — the hermit's hearth
-put('brazier', sc(24), sc(37), 0.5);  // (60,80)
-put('brazier', sc(27), sc(35), 0.5);  // (64,77)
-put('bedroll', sc(25), sc(35), 0.4);  // (62,77)
-put('crate', sc(25), sc(38), 0.5);    // (63,81) corner
-// braziers flanking Gribnab's door
-put('brazier', sc(59), sc(57), 0.5);
-put('brazier', sc(59), sc(59), 0.5);
+put('tent', sc(26), sc(36), 0.3);     // (52,72) r2 back wall
+put('campfire', sc(26), sc(37), 0.5); // (52,74) — the hermit's hearth
+put('brazier', sc(24), sc(37), 0.5);  // (48,74) r2 west wall
+put('brazier', 48, 71, 0.5);          // (48,71) r2 top-left corner (clear of the 1→2 mouth at z=72)
+put('bedroll', sc(25), sc(35), 0.4);  // (50,70) r2 top-right
+put('crate', 53, 75, 0.5);            // (53,75) r2 bottom-right corner
+// braziers flanking Gribnab's door — inside r24 on either side of the gate
+// lane (120,113..119) so neither blocks the approach
+put('brazier', 121, 113, 0.5);
+put('brazier', 127, 113, 0.5);
 // room 24 braziers
 put('brazier', sc(60), sc(52), 0.5);
 put('brazier', sc(64), sc(56), 0.5);
@@ -449,14 +480,17 @@ export const floor50Level: LevelDef = {
   description: "Floor 50. The bottom of everything. Sewers, mold, vermin, forgotten cellars. Somewhere down here a goblin king bathes, and a rat owes an old man a finger.",
   groundMats: ['cave_floor', 'cave_stone', 'cave_floor', 'gravel'],
   fillMats: ['cave_floor', 'cave_stone', 'cave_stone', 'cave_floor'],
-  arena: { x0: OFFSET.x, z0: OFFSET.z, x1: OFFSET.x + 105, z1: OFFSET.z + 105 },
+  arena: { x0: OFFSET.x, z0: OFFSET.z, x1: OFFSET.x + 141, z1: OFFSET.z + 141 },
   spawn: { party: [partySpawn], enemies: [] },
   props,
-  ambient: 0.25,
-  sun: 0.0,
-  fill: 0.15,
+  // grander-scale lighting: a touch more ambient so the bigger rooms + wall
+  // detail read, and much lighter fog so the space doesn't close in on the
+  // player — the whole point of the scale-up is that you can see it.
+  ambient: 0.3,
+  sun: 0.03,
+  fill: 0.18,
   fogColor: 0x0a0f0a,
-  fogDensity: 0.045,
+  fogDensity: 0.028,
   waterColor: 0x2a4a2a,
   waterY: -3,
   layout: {

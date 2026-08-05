@@ -1021,6 +1021,43 @@ export class Combat {
     return ev;
   }
 
+  /** combat bonus action — hurl a consumable at a tile (range 6). An ally on
+   *  the landing tile takes the item's normal effect at range (thrown potion
+   *  splashes a heal); an enemy eats 1d4 glass plus the item's consume-cond.
+   *  Costs the thrower's bonus action. The engine removes the item first. */
+  throwItem(u: Unit, item: Item, tx: number, tz: number): CombatEvent[] {
+    const ev: CombatEvent[] = [];
+    if (!this.inCombat) return ev;
+    let target: Unit | null = null, best = Infinity;
+    for (const o of this.units) {
+      if (!o.alive) continue;
+      const d = Math.max(Math.abs(o.pos.x - tx), Math.abs(o.pos.z - tz));
+      if (d < best) { best = d; target = o; }
+    }
+    if (!target) {
+      ev.push({ type: 'log', text: 'The throw lands on empty floor.', kind: 'info' });
+      u.hasBonus = false;
+      return ev;
+    }
+    ev.push({ type: 'log', text: `${u.name} hurls ${item.icon} ${item.name} at ${target.name}!`, kind: 'info' });
+    if (target.team === u.team) {
+      // thrown into friendly hands — the item's normal drink/eat effect at range
+      ev.push(...this.useConsumable(u, item, target.id));
+    } else {
+      u.hasBonus = false;   // useConsumable pays this for the ally case
+      this.applyDamage(ev, target, 1 + Math.floor(Math.random() * 4), 'bludgeoning', false);
+      ev.push({ type: 'log', text: `${item.icon} shatters against ${target.name}!`, kind: 'hit' });
+      if (item.consumeCondition && Math.random() < item.consumeCondition.chance) {
+        const cc = item.consumeCondition;
+        if (!target.conditions.some((x) => x.id === cc.id)) {
+          target.conditions.push({ id: cc.id, name: CONDITIONS[cc.id]?.name ?? cc.id, roundsLeft: cc.rounds });
+          ev.push({ type: 'float', unitId: target.id, text: `❄ ${CONDITIONS[cc.id]?.name ?? cc.id}`, cls: 'debuff' });
+        }
+      }
+    }
+    return ev;
+  }
+
   // ── enemy AI: one step per call (the 'turn' animator drives these) ──
   // Behaviors (M8): weak-target focus, AoE on clusters, ranged kiting,
   // low-HP retreat, no wasted movement, adaptation via last-hit memory.

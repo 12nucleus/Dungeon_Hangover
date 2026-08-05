@@ -245,10 +245,34 @@ export function respawn(engine: any) {
     if (u.team !== 'enemy' || !u.alive || !u.bossGroup) continue;
     u.dormant = true;
   }
+  // an enemy that SURVIVED the losing fight must not keep aggro on the fresh
+  // spawn either — re-dormant every alive non-boss enemy so the party can
+  // actually stand back up at the bonfire. (The dead ones were already
+  // revived+dormant above; this catches living stragglers and any enemy that
+  // was aggroed without ever joining the combat that killed the party.)
+  for (const u of engine.combat.units) {
+    if (u.team !== 'enemy' || !u.alive || u.bossGroup) continue;
+    u.dormant = true;
+  }
+  // short aggro suppression right after a respawn so the party isn't re-swarmed
+  // the instant they stand up at the bonfire (same grace the intro uses).
+  engine.aggroGraceUntil = performance.now() / 1000 + 3;
   engine.bossRatCutscenePlayed = false;
   engine.gribnabCutscenePlayed = false;
   engine.props.resetAll();
   engine.selectedId = engine.combat.units.find((u: any) => u.team === 'party')?.id ?? null;
+  // the party TELPORTED to the bonfire — the tactical camera only re-centers on
+  // movement clicks, so snap it to the leader here or it stays staring at the
+  // death spot across the map.
+  {
+    const leader = engine.combat.living('party')[0];
+    if (leader) {
+      const wp = unitWorld(engine, leader.pos);
+      engine.iso.focus(wp);
+      engine.iso.desiredTarget?.copy(wp);
+      engine.iso.target.copy(wp);   // instant snap — no lerp drift from the old spot
+    }
+  }
   engine.pushLog('💀 Death is not the end. The bonfire restores you. The dungeon stirs...', 'system');
   engine.emitSnapshot();
 }

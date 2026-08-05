@@ -34,7 +34,7 @@ export function buildSkeletonRig(scheme: CharacterScheme, weapon?: WeaponKind): 
   for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.32, 0.52, 0.02, (v) => {
     v.add(0, 0, 0, bone); v.add(0, 0, 1, boneD); v.add(0, -1, 1, bone);
   });
-  part('head', 0, 5.8, 0, (v) => {
+  part('head', 0, 1.28, 0, (v) => {
     v.fill(-2, -1, -2, 2, 1, 2, bone);
     v.fill(-1, -1, 0, 1, -1, 2, boneD);
     v.add(-1, 0, 3, 0x101014); v.add(1, 0, 3, 0x101014);
@@ -43,7 +43,7 @@ export function buildSkeletonRig(scheme: CharacterScheme, weapon?: WeaponKind): 
   const eyeMat = new THREE.MeshLambertMaterial({ color: eye, emissive: eye, emissiveIntensity: 0.9 });
   for (const [name, x] of [['eyeL', -0.1], ['eyeR', 0.1]] as const) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.05), eyeMat);
-    m.position.set(x, 5.84, 0.24); m.castShadow = false; parts[name] = m; group.add(m);
+    m.position.set(x, 1.3, 0.24); m.castShadow = false; parts[name] = m; group.add(m);
   }
   if (weapon) {
     const wg = buildWeapon(weapon, scheme.accent, C, SUB);
@@ -55,6 +55,9 @@ export function buildSkeletonRig(scheme: CharacterScheme, weapon?: WeaponKind): 
   return {
     group, parts,
     anim: { mode: 'idle', t: 0, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
-    pivots: { hip: 0.25, torso: 0.78, head: 5.8, eye: 5.84, hair: 5.8, arm: 0.8, hand: 0.52, weapon: 0.5 },
+    // head sits directly on the torso top (torso top = 0.78 + ~0.4); the old
+    // 5.8/5.84 values were stale (a different rig's coordinate space) and put
+    // the skull ~4.5 units above the neck.
+    pivots: { hip: 0.25, torso: 0.78, head: 1.28, eye: 1.3, hair: 1.4, arm: 0.8, hand: 0.52, weapon: 0.5 },
   };
 }

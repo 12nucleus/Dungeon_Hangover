@@ -29,7 +29,8 @@ export interface RoomSpec {
 export interface CorridorSpec {
   /** polyline through map-local tiles; consecutive points are rasterized */
   pts: GridPos[];
-  width: 1 | 2 | 3;
+  /** lane thickness: 1 = single file (gate/seal lanes), 2/3 = narrow, 5 = grand sewer mains */
+  width: 1 | 2 | 3 | 4 | 5;
 }
 
 export interface AuthoredMap {
@@ -85,25 +86,20 @@ export function buildAuthoredMap(
   }
 
   // ── corridors (thick polylines) ──
-  const rasterSegment = (a: GridPos, b: GridPos, width: 1 | 2 | 3) => {
+  const rasterSegment = (a: GridPos, b: GridPos, width: 1 | 2 | 3 | 4 | 5) => {
     const dx = Math.sign(b.x - a.x), dz = Math.sign(b.z - a.z);
     const len = Math.max(Math.abs(b.x - a.x), Math.abs(b.z - a.z));
+    // symmetric perpendicular spread: width 1 = single lane, 2 = +one side,
+    // 3 = ±1, 4 = −1..+2, 5 = ±2. Perp neighbours follow the same cross-axis
+    // as the old width-2/3 logic so corners keep their L-bends full.
+    const lo = Math.floor((width - 1) / 2), hi = Math.ceil((width - 1) / 2);
     for (let i = 0; i <= len; i++) {
       const x = a.x + dx * i, z = a.z + dz * i;
       setWalk(x + offset.x, z + offset.z, 'cave_floor');
-      if (width === 2) {
-        // perpendicular neighbour — horizontal segments widen in z, vertical in x
-        if (dz !== 0) setWalk(x + offset.x + 1, z + offset.z, 'cave_floor');
-        else setWalk(x + offset.x, z + offset.z + 1, 'cave_floor');
-      } else if (width === 3) {
-        // grander corridors: the lane plus both perpendicular neighbours
-        if (dz !== 0) {
-          setWalk(x + offset.x + 1, z + offset.z, 'cave_floor');
-          setWalk(x + offset.x - 1, z + offset.z, 'cave_floor');
-        } else {
-          setWalk(x + offset.x, z + offset.z + 1, 'cave_floor');
-          setWalk(x + offset.x, z + offset.z - 1, 'cave_floor');
-        }
+      if (dz !== 0) {
+        for (let k = -lo; k <= hi; k++) setWalk(x + offset.x + k, z + offset.z, 'cave_floor');
+      } else {
+        for (let k = -lo; k <= hi; k++) setWalk(x + offset.x, z + offset.z + k, 'cave_floor');
       }
     }
   };

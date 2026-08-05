@@ -609,6 +609,16 @@ export function clickCombat(engine: any, pick: InteractPick | null, tile: GridPo
     engine.emitSnapshot();
     return;
   }
+  if (engine.targeting && typeof engine.targeting === 'string' && engine.targeting.startsWith('THROW:')) {
+    const itemId = engine.targeting.slice(6);
+    const aim = tile ?? (unitId ? engine.byId(unitId)?.pos ?? null : null);
+    engine.targeting = null;
+    clearHighlights(engine);
+    if (aim) engine.throwConsumable(itemId, aim.x, aim.z);
+    else setHoverInfoOnce(engine, 'Throw at a unit or tile.');
+    engine.emitSnapshot();
+    return;
+  }
   if (engine.targeting) {
     const s = skillById(engine.targeting);
     if (s && s.aoeRadius > 0 && !s.selfCentered) {

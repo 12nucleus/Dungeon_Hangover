@@ -350,11 +350,17 @@ export function HUD({ snap, engine }: Props) {
       )}
 
       {/* ══ TARGETING HINT ══ */}
-      {snap.targeting && playerTurn && (
-        <div className="targeting-hint">
-          🎯 Aiming <b>{(SKILLS[snap.selectedSkill!] ?? ALL_CLASS_SKILLS[snap.selectedSkill!])?.name}</b> — click a target · right-click / Esc to cancel
-        </div>
-      )}
+      {snap.targeting && playerTurn && (() => {
+        const isThrow = typeof snap.selectedSkill === 'string' && snap.selectedSkill.startsWith('THROW:');
+        const throwItem = isThrow ? snap.inventory.find((i) => i.id === snap.selectedSkill!.slice(6)) : null;
+        return (
+          <div className="targeting-hint">
+            {isThrow
+              ? <>🎯 Throwing <b>{throwItem?.icon} {throwItem?.name}</b> — click a unit or tile (range 6) · right-click / Esc to cancel</>
+              : <>🎯 Aiming <b>{(SKILLS[snap.selectedSkill!] ?? ALL_CLASS_SKILLS[snap.selectedSkill!])?.name}</b> — click a target · right-click / Esc to cancel</>}
+          </div>
+        );
+      })()}
 
       {/* ══ INTERACT PROMPT ══ */}
       {snap.interactPrompt && phase === 'explore' && !snap.showDialogue && (
@@ -502,6 +508,8 @@ export function HUD({ snap, engine }: Props) {
             </button>
           )}
           <div className="hud-right">
+            <button className="hud-btn" onClick={() => engine?.recenterCamera()} title="Re-center camera on your hero">📍</button>
+            <button className={`hud-btn ${snap.tacticalView ? 'on' : ''}`} onClick={() => engine?.toggleTacticalView()} title="Tactical view — top-down on the battlefield">🗺️</button>
             <button className={`hud-btn ${snap.showQuestLog ? 'on' : ''}`} onClick={() => engine?.toggleQuestLog()} title="Quest log [J]">📖</button>
             <button className="hud-btn" onClick={() => engine?.toggleStats()} title="Character stats [U]">📊</button>
             <button className="hud-btn" onClick={() => engine?.toggleSkillTree()} title="Skill tree [K]">📜</button>
