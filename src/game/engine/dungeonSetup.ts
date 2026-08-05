@@ -18,7 +18,7 @@ import { SUMMON_TEMPLATES } from '../skills';
 import { unitWorld } from './visuals';
 import { animateTo } from './cheats';
 import { offerLoot } from './loot';
-import { propPuddle, propBucket, propScratches } from '../voxelModels.mjs';
+import { propPuddle, propBucket, propScratches, propSkeleton } from '../voxelModels.mjs';
 import { voxelMeshC } from './voxelUtils';
 
 /** place a THREE.Group at a tile on the walkable floor */
@@ -65,9 +65,9 @@ export function setupDungeon(engine: any, L: LevelDef) {
   // R1 spawn dressing — the puddle, bucket and wall-scratches the narrator
   // promises at the wake, painted as REAL voxel props so they're visible.
   {
+    const mk = (b: () => any) => voxelMeshC(b().voxels, b().cube) as unknown as THREE.Group;
     const r1 = (st as any).rooms?.r1;
     if (r1 && engine.world) {
-      const mk = (b: () => any) => voxelMeshC(b().voxels, b().cube) as unknown as THREE.Group;
       const spots: { tile: GridPos; b: () => any; off: number }[] = [
         { tile: { x: r1.x0 + 1, z: r1.z0 }, b: propPuddle, off: 0.01 },
         { tile: { x: r1.x0, z: r1.z0 + 2 }, b: propBucket, off: 0 },
@@ -78,6 +78,12 @@ export function setupDungeon(engine: any, L: LevelDef) {
         if (!engine.world.inBounds(t.x, t.z)) continue;
         place(engine, mk(s.b), t, s.off);
       }
+    }
+    // R3 — the skeleton the narrator mentions, floating in the shallow water.
+    const r3 = (st as any).rooms?.r3;
+    if (r3 && engine.world) {
+      const t = { x: r3.x1, z: r3.z0 };   // matches the search_skeleton_r3 interactable
+      if (engine.world.inBounds(t.x, t.z)) place(engine, mk(propSkeleton), t, 0);
     }
   }
 

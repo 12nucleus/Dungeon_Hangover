@@ -247,7 +247,10 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       },
     });
     once('take_candle', r.x0, r.z0 + 1, '[R] Take the candle', (e) => {
+      // give the actual candle item (appears in the inventory) + a little torch fuel
+      grant(e, ['candle']);
       e.torchFuel = Math.min(100, e.torchFuel + 20);
+      e.pushLog('🕯️ You take the candle — it is now in your inventory.', 'system');
       void e.narrate('f50_candle', "You take the candle. The Hermit doesn't mind. The Hermit has been in the dark for centuries. He's used to it.", 3600);
       e.emitSnapshot();
     });

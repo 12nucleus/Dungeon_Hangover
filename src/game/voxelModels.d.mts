@@ -56,6 +56,7 @@ export function propRubble(seed?: number): PropModel;
 export function propPuddle(seed?: number): PropModel;
 export function propBucket(seed?: number): PropModel;
 export function propScratches(seed?: number): PropModel;
+export function propSkeleton(seed?: number): PropModel;
 
 export const PROP_BUILDERS: Record<string, (seed?: number) => PropModel>;
 

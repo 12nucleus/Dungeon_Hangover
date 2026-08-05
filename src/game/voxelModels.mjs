@@ -571,6 +571,35 @@ export function propCrate(seed = 0.5) {
   return { name: 'crate', voxels: v.list(), cube, blocks: true };
 }
 
+// SKELETON — a lying humanoid skeleton (skull + ribcage + spine + splayed
+// limbs), read as a corpse in the shallow water. Flat so it hugs the floor.
+export function propSkeleton(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 67);
+  const v = new Vox();
+  const cube = 0.055;
+  const BONE = 0xe8e2cc, BONE_D = 0xccc5aa, BONE_DRK = 0xa89f84;
+  // spine (lying along +z)
+  for (let z = 0; z <= 6; z++) v.add(0, 0, z, R() < 0.35 ? BONE_D : BONE);
+  // ribcage (a few low arcs over the spine)
+  for (const z of [1, 2, 3]) for (let x = -2; x <= 2; x++) {
+    const e = Math.abs(x) / 2.3;
+    if (e * e < 1.0 - z * 0.05) v.add(x, 0, z, e > 0.7 ? BONE_D : BONE);
+  }
+  // pelvis + skull
+  v.box(-2, 0, 4, 2, 0, 5, BONE_D);
+  v.ellipsoid(0, 1, 7, 2, 1.6, 1.7, BONE);
+  v.add(0, 0, 9, BONE_DRK);                 // jaw
+  v.add(-1, 0, 7, BONE_D); v.add(1, 0, 7, BONE_D); // eye sockets
+  // splayed arms
+  for (let x = 3; x <= 6; x++) v.add(x, 0, 2, BONE_D);
+  for (let x = -3; x >= -6; x--) v.add(x, 0, 2, BONE_D);
+  v.add(5, 0, 1, BONE_DRK); v.add(-5, 0, 1, BONE_DRK);
+  // thigh + shin bones (legs spread)
+  for (let z = 5; z <= 7; z++) { v.add(1, 0, z, BONE_D); v.add(-1, 0, z, BONE_D); }
+  for (let z = 6; z <= 8; z++) { v.add(2, 0, z, BONE_DRK); v.add(-2, 0, z, BONE_DRK); }
+  return { name: 'skeleton', voxels: v.list(), cube, blocks: false };
+}
+
 // PUDDLE — flat murky water/ground stain (the narrator's "puddle") at the spawn.
 export function propPuddle(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 61);
@@ -648,6 +677,7 @@ export const PROP_BUILDERS = {
   puddle: propPuddle,
   bucket: propBucket,
   scratches: propScratches,
+  skeleton: propSkeleton,
 };
 
 // ══════════════════════════════════════════════════════════════
