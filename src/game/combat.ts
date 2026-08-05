@@ -164,6 +164,18 @@ export class Combat {
   // ── combat lifecycle ───────────────────────────────────────
   start(): CombatEvent[] {
     if (this.inCombat) return []; // never merge a second fight into a live one
+    // Deferred bosses only ever fight from their own arena: if one is somehow
+    // still awake (aborted parley, a boss fight the party survived by leaving),
+    // it must NOT be swept into a fight across the map. Re-dormant any
+    // bossGroup unit far from the party — its cutscene wakes it again when
+    // the party actually arrives.
+    const party0 = this.living('party');
+    if (party0.length) {
+      for (const u of this.units) {
+        if (u.team !== 'enemy' || !u.alive || !u.bossGroup || u.dormant) continue;
+        if (!party0.some((p) => Combat.dist(p.pos, u.pos) <= 40)) u.dormant = true;
+      }
+    }
     this.surpriseRound = false;
     this.surpriseHits.clear();
     this.corpses = [];

@@ -176,7 +176,7 @@ export async function animate(engine: any, ev: CombatEvent) {
         engine.flushLootQueue?.();
       }
       if (ev.phase === 'victory') { engine.audio.setDrums(false); engine.audio.playMusic('music_victory'); engine.audio.setMusicDucked(false); spawnChest(engine); }
-      if (ev.phase === 'defeat') { engine.audio.setDrums(false); engine.audio.setMusicDucked(false); }
+      if (ev.phase === 'defeat') { engine.audio.setDrums(false); engine.audio.setMusicDucked(false); engine.audio.playMusic('music_ambient'); }
       await delay(200);
       break;
     }

@@ -273,6 +273,12 @@ export function respawn(engine: any) {
       engine.iso.target.copy(wp);   // instant snap — no lerp drift from the old spot
     }
   }
+  // the defeat screen leaves the combat loop on music_combat (the phase
+  // handler restores the cellar on 'defeat', but this covers every other
+  // path into respawn): drop the drums and go back to the ambient loop.
+  engine.audio.setDrums(false);
+  engine.audio.setMusicDucked(false);
+  engine.audio.playMusic('music_ambient');
   engine.pushLog('💀 Death is not the end. The bonfire restores you. The dungeon stirs...', 'system');
   engine.emitSnapshot();
 }
