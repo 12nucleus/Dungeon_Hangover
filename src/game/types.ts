@@ -196,8 +196,9 @@ export interface Unit {
   restedAtBonfire?: boolean;
   /** AI flees (full-move away) once HP drops to this value or below */
   fleesAtHp?: number;
-  /** guaranteed item/gold drop on death (items via makeItem ids) */
-  deathDrops?: { itemIds: string[]; gold: number };
+  /** guaranteed item/gold drop on death (items via makeItem ids); `random`
+   *  draws `count` random ids from each pool at kill time */
+  deathDrops?: { itemIds?: string[]; gold?: number; random?: { pool: string[]; count?: number }[] };
   /** monster passive: chance to apply a condition on a landed hit */
   onHit?: { condition: string; chance: number; rounds: number; saveAbility?: Ability; saveDC?: number };
   /** home bath tile — bath_time teleports here */

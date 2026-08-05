@@ -390,9 +390,52 @@ export class Combat {
     const paths = this.reachable(u, u.movementLeft);
     const path = paths.get(`${tile.x},${tile.z}`);
     if (!path || !path.length) return [];
+    const from = { ...u.pos };
     u.movementLeft -= path.length;
     u.pos = { ...tile };
-    return [{ type: 'move', unitId: u.id, path }];
+    const ev: CombatEvent[] = [{ type: 'move', unitId: u.id, path }];
+    // BG3 Reaction: an adjacent foe lashes out as this unit leaves its reach
+    ev.push(...this.provokedAttacks(u, from, tile));
+    return ev;
+  }
+
+  /** BG3 Reaction / opportunity attack. When `mover` steps out of the reach of
+   *  a living enemy that was adjacent to its start tile, that enemy takes a
+   *  free melee strike (once per such enemy). Returns the events. */
+  provokedAttacks(mover: Unit, from: GridPos, to: GridPos): CombatEvent[] {
+    const ev: CombatEvent[] = [];
+    const touched = new Set<string>();
+    for (const foe of this.units) {
+      if (!foe.alive || foe.team === mover.team || foe.bossGroup) continue;
+      if (touched.has(foe.id)) continue;
+      if (Combat.dist(from, foe.pos) <= 1.5 && Combat.dist(to, foe.pos) > 1.5) {
+        touched.add(foe.id);
+        ev.push(...this.reactionAttack(foe, mover));
+      }
+    }
+    return ev;
+  }
+
+  /** a single free melee strike by `att` against `tgt` (leaving reach). */
+  private reactionAttack(att: Unit, tgt: Unit): CombatEvent[] {
+    const ev: CombatEvent[] = [];
+    const wpn = att.equipment?.weapon;
+    const dice = wpn?.damageDice ?? att.knownSkills.map((id) => skillById(id)).find((s) => s && s.damageDice)?.damageDice;
+    if (!dice) return [];
+    const bonus = abilityMod(att.abilities.str) + att.proficiency;
+    const atk = rollD20(bonus);
+    const tgtAC = effAC(tgt);
+    const hit = atk.crit || (!atk.fumble && atk.total >= tgtAC);
+    ev.push({
+      type: 'log',
+      text: `⚔ ${att.name} lashes out as ${tgt.name} moves away: ${atk.roll}${fmtMod(bonus)} vs AC ${tgtAC}: ${hit ? '✨CRIT' : hit ? 'HIT' : 'MISS'}`,
+      kind: hit ? 'crit' : 'hit',
+    });
+    if (hit) {
+      const amt = rollDice(dice).total;
+      this.applyDamage(ev, tgt, amt, wpn?.damageType ?? 'slashing', atk.crit);
+    }
+    return ev;
   }
 
   // ── skill use (player) ─────────────────────────────────────
@@ -786,13 +829,16 @@ export class Combat {
         }
       }
       // ── BG3 / 5e advantage & disadvantage (roll 2d20, take high/low) ──
-      // disadvantage: blinded attacker, or a ranged attacker with a foe on top of him
-      // advantage: target is Prone or Blinded
+      // disadvantage: blinded attacker, a ranged attacker with a foe on top of him, or low ground
+      // advantage: target is Prone/Blinded, or the attacker on high ground / shrouded
       let adv: 'adv' | 'dis' | null = null;
       const isRanged = (s.kind === 'ranged') || (s.range > 1 && !s.selfCentered);
       const adjacentEnemy = this.units.some((f) => f.alive && f.team !== u.team && f.id !== t.id && Combat.dist(f.pos, u.pos) <= 1);
+      const elev = (this.world?.heightAt(u.pos.x, u.pos.z) ?? 0) - (this.world?.heightAt(t.pos.x, t.pos.z) ?? 0);
       if (u.conditions.some((c) => c.id === 'blinded')) adv = 'dis';
       else if (isRanged && adjacentEnemy) adv = 'dis';
+      else if (elev <= -1) adv = 'dis';                 // fighting from low ground
+      else if (elev >= 1) adv = 'adv';                  // high-ground advantage
       else if (t.conditions.some((c) => c.id === 'prone') || t.conditions.some((c) => c.id === 'blinded')) adv = 'adv';
       const atk = rollD20(atkMod, blessed ? '1d4' : '', adv);
       const auto = s.id === 'magic_missile';
@@ -1207,9 +1253,12 @@ export class Combat {
       }
       if (best && best.length) {
         const dest = best[best.length - 1];
+        const from = { ...u.pos };
         u.movementLeft -= best.length;
         u.pos = { ...dest };
-        return [{ type: 'move', unitId: u.id, path: best }];
+        const ev: CombatEvent[] = [{ type: 'move', unitId: u.id, path: best }];
+        ev.push(...this.provokedAttacks(u, from, dest));
+        return ev;
       }
     }
     return null;

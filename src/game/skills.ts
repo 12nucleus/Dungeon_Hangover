@@ -761,6 +761,14 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
     abilities: { str: 10, dex: 13, con: 12, int: 4, wis: 10, cha: 6 },
     knownSkills: ['bite', 'mother_summon'], moveRange: 6, xpValue: 25,
     scheme: { ...ratSmallScheme, bulk: 1.2 }, weapon: 'dagger', dormant: true, groupId: 'r4_nursery',
+    // always drops a random wearable armor (slots set so it renders on Greg)
+    // plus a random sewer trinket/potion
+    deathDrops: {
+      random: [
+        { pool: ['leather', 'chain_shirt', 'leather_vest', 'ribcage_armor', 'sturdy_boots', 'leather_boot', 'guards_cap', 'pipe_helmet', 'tattered_cloak'], count: 1 },
+        { pool: ['potion', 'rat_whisker', 'lockpick', 'leather_belt', 'blessed_penny', 'rat_bone', 'towel', 'broken_bottle'], count: 1 },
+      ],
+    },
   }));
   for (let i = 0; i < 2; i++) {
     units.push(mkUnit({

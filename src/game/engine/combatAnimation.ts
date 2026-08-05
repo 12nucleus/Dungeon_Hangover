@@ -11,6 +11,7 @@ import { rollDice } from '../dice';
 import { FX } from '../particles';
 import { makeItem, rollLootTable } from '../items';
 import type { GridPos, CombatEvent, SkillDef, Unit } from '../types';
+import type { Item } from '../items';
 import { unitWorld } from './visuals';
 import { clearHighlights, showMoveTiles } from './targeting';
 import { grantKey } from './dungeonSetup';
@@ -69,8 +70,17 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (slain?.team === 'enemy' && slain?.name !== 'Gribnab') engine.runStats.kills += 1;
       // guaranteed item/gold drops (Baron Gnaw → finger + rusty key, Gribnab → loot)
       if (slain?.deathDrops) {
-        const items = slain.deathDrops.itemIds.map((itemId: string) => makeItem(itemId));
-        const gold = slain.deathDrops.gold ?? 0;
+        const dd = slain.deathDrops;
+        const items: Item[] = dd.itemIds ? dd.itemIds.map((itemId: string) => makeItem(itemId)) : [];
+        // random pools draw `count` ids from each pool at kill time
+        for (const r of dd.random ?? []) {
+          const pool = r.pool ?? [];
+          if (!pool.length) continue;
+          for (let i = 0; i < (r.count ?? 1); i++) {
+            items.push(makeItem(pool[Math.floor(Math.random() * pool.length)]));
+          }
+        }
+        const gold = dd.gold ?? 0;
         if (items.length || gold) offerLoot(engine, `${slain.name}'s body`, items, gold);
         for (const it of items) engine.pushLog(`${slain.name} drops ${it.icon} ${it.name}!`, 'system');
         if (gold) engine.pushLog(`🪙 ${gold} gold clatters from the body.`, 'system');

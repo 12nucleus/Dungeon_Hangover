@@ -139,7 +139,7 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   // ── the boss reward (special epic loot) ──
   warlord_blade: B({ kind: 'weapon', name: "Warlord's Cleaver", icon: '⚔️', tier: 3, weaponKind: 'sword', damageDice: '2d8+4', damageType: 'slashing', value: 320, desc: 'A brutal greatblade taken from a bathing tyrant. Still faintly soapy.' }),
   severed_finger: B({ kind: 'trinket', name: "The Hermit's Severed Finger", icon: '\uD83D\uDD90\uFE0F', tier: 1, value: 0, desc: 'A gnawed-off ring finger, still wearing a tarnished silver band. The ring is engraved: "Agnes".' }),
-  toeless_boots: B({ kind: 'armor', name: "Toeless Boots", icon: '\uD83D\uDC62', tier: 2, acBonus: 1, value: 50, desc: "Fine leather boots. Missing the toes. Don't ask. +1 AC. +1 movement." }),
+  toeless_boots: B({ kind: 'armor', slot: 'boots', name: "Toeless Boots", icon: '\uD83D\uDC62', tier: 2, acBonus: 1, value: 50, desc: "Fine leather boots. Missing the toes. Don't ask. +1 AC. +1 movement." }),
 
   // ── floor 50 — the sewer cellar ──
   // improvised weapons
@@ -159,14 +159,14 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   goblin_banner: B({ kind: 'armor', name: 'Goblin Banner', icon: '🚩', tier: 1, acBonus: 1, value: 12, desc: 'Torn from the throne-room wall. +1 AC. It smells like a parade.' }),
   // armor
   tattered_cloak: B({ kind: 'armor', name: 'Tattered Cloak', icon: '🧥', tier: 1, acBonus: 1, value: 15, desc: '+1 AC. The Hermit\'s gift. It has seen better days and worse centuries.' }),
-  sturdy_boots: B({ kind: 'armor', name: 'Sturdy Boots', icon: '👢', tier: 1, acBonus: 1, value: 12, desc: '+1 AC. Physical damage taken −1. The Hermit insists they\'re lucky.' }),
-  leather_boot: B({ kind: 'armor', name: 'Leather Boot', icon: '🥾', tier: 1, acBonus: 1, value: 10, desc: '+1 AC. Found on a floating body. The body didn\'t mind.' }),
+  sturdy_boots: B({ kind: 'armor', slot: 'boots', name: 'Sturdy Boots', icon: '👢', tier: 1, acBonus: 1, value: 12, desc: '+1 AC. Physical damage taken −1. The Hermit insists they\'re lucky.' }),
+  leather_boot: B({ kind: 'armor', slot: 'boots', name: 'Leather Boot', icon: '🥾', tier: 1, acBonus: 1, value: 10, desc: '+1 AC. Found on a floating body. The body didn\'t mind.' }),
   leather_vest: B({ kind: 'armor', name: 'Leather Vest', icon: '🦺', tier: 1, acBonus: 1, value: 18, desc: '+1 AC. Boiled leather, goblin-grade stitching.' }),
   chain_shirt: B({ kind: 'armor', name: 'Chain Shirt', icon: '⛓️', tier: 2, acBonus: 2, value: 55, desc: '+2 AC. Rings of questionable provenance.' }),
-  guards_cap: B({ kind: 'armor', name: "Guard's Cap", icon: '🎖️', tier: 1, acBonus: 1, value: 8, desc: '+1 AC. Smells faintly of the guard who lost it. Probably Scrag\'s.' }),
-  pipe_helmet: B({ kind: 'armor', name: 'Pipe-Fitting Helmet', icon: '🪖', tier: 1, acBonus: 0, physResist: 1, value: 9, desc: 'Physical damage taken −1. Waterproof, too. Probably.' }),
-  ribcage_armor: B({ kind: 'armor', name: 'Ribcage Armor', icon: '🩻', tier: 1, acBonus: 0, physResist: 1, value: 14, desc: 'Physical damage taken −1. Worn by someone who no longer needs it.' }),
-  soap_crown: B({ kind: 'armor', name: 'Soap Crown', icon: '👑', tier: 2, acBonus: 1, levelReq: 2, value: 60, desc: '+1 AC. Goblins respect you. Equipping it earns the throne\'s respect — and everyone smells strawberries.' }),
+  guards_cap: B({ kind: 'armor', slot: 'head', name: "Guard's Cap", icon: '🎖️', tier: 1, acBonus: 1, value: 8, desc: '+1 AC. Smells faintly of the guard who lost it. Probably Scrag\'s.' }),
+  pipe_helmet: B({ kind: 'armor', slot: 'head', name: 'Pipe-Fitting Helmet', icon: '🪖', tier: 1, acBonus: 0, physResist: 1, value: 9, desc: 'Physical damage taken −1. Waterproof, too. Probably.' }),
+  ribcage_armor: B({ kind: 'armor', slot: 'chest', name: 'Ribcage Armor', icon: '🩻', tier: 1, acBonus: 0, physResist: 1, value: 14, desc: 'Physical damage taken −1. Worn by someone who no longer needs it.' }),
+  soap_crown: B({ kind: 'armor', slot: 'head', name: 'Soap Crown', icon: '👑', tier: 2, acBonus: 1, levelReq: 2, value: 60, desc: '+1 AC. Goblins respect you. Equipping it earns the throne\'s respect — and everyone smells strawberries.' }),
   // trinkets
   hermits_ring: B({ kind: 'trinket', name: "Hermit's Ring", icon: '💍', tier: 2, value: 40, desc: '+5% XP. Warm against the finger. Which finger is a question you stop asking.' }),
   leather_belt: B({ kind: 'trinket', name: 'Leather Belt', icon: '🧷', tier: 1, hpBonus: 2, value: 10, desc: '+2 max HP. Holds your pants up, emotionally speaking.' }),
