@@ -1654,21 +1654,25 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   const ph = a.phase;
   const idle = Math.sin((a.t + ph) * 1.1);
 
-  // crouch pose: hips sink while feet stay planted.
+  // crouch pose: hips sink deep, knees bend, torso hunches forward, and the
+  // forearms come up in a guarded sneaking stance (a proper low crouch rather
+  // than a stiff lean). Feet stay planted.
   const cr = a.crouch ?? 0;
   const HIP = P?.hip ?? 0.25;
-  let DROP = cr * 0.26;                                  // world units the hips sink
+  let DROP = cr * 0.34;                                  // world units the hips sink
   let legScaleY = HIP > 0 ? Math.max(0.5, 1 - DROP / HIP) : 1;
 
   // base limb targets (idle / walk)
   let legLX = w * 0.75, legRX = -w * 0.75;
-  let armLX = -w * 0.6 + idle * 0.05 + cr * 0.25;
-  let armRX = w * 0.6 + idle * 0.05 + cr * 0.25;
-  let torsoX = cr * 0.2, headX = -cr * 0.12;
+  let armLX = -w * 0.6 + idle * 0.05 + cr * 0.6;
+  let armRX = w * 0.6 + idle * 0.05 + cr * 0.6;
+  let torsoX = cr * 0.42, headX = -cr * 0.28;
   let hipY = HIP - DROP;
   const hasKnee = !!P && !!p.shinL;                       // two-bone limbs (player / NPC)
-  let kneeL = 0.15, kneeR = 0.15, elbowL = 0.2, elbowR = 0.2;   // bend at the joints
+  let kneeL = 0.15 + cr * 0.5, kneeR = 0.15 + cr * 0.5;  // deep knee bend in crouch
+  let elbowL = 0.2 + cr * 0.5, elbowR = 0.2 + cr * 0.5;  // forearms up, guarded
   let armLZ = 0, armRZ = 0;                                     // upper-arm lateral rotation (swings arm across the body)
+  if (cr > 0) { armLZ = -cr * 0.35; armRZ = cr * 0.35; }        // tuck forearms in while crouching
   let elbowLZ = 0, elbowRZ = 0;                                 // elbow lateral (rotates the forearm across the chest)
   let wristL = 0, wristR = 0;                                   // wrist rotation (crossed-arms pose)
   // full 3-axis support (populated by pose presets / pose editor snippets)

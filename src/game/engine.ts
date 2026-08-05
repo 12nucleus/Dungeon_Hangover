@@ -2109,8 +2109,8 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
-  /** BG3-style default hotbar actions: walk/run/jump/throw/attack. */
-  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack') {
+  /** BG3-style default hotbar actions: walk/run/jump/throw/attack + bonus attack. */
+  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack') {
     this.audio.play('ui_click', 0.5);
     switch (action) {
       case 'walk':
@@ -2139,6 +2139,12 @@ export class GameEngine {
       case 'attack': {
         const a = this.combat.active;
         if (a && a.team === 'party' && this.phase === 'combat') {
+          // backstab / surprise attack: attacking while sneaking (C mode)
+          // is a guaranteed critical — see the sneakCrit path in combat.ts
+          if (this.sneaking) {
+            a.sneak = true;
+            this.setHoverInfoOnce('Backstab! Striking from the shadows — guaranteed critical!');
+          }
           // the universal 'attack' is always an option — utility-only builds
           // can still swing their weapon
           const first = [...a.equippedSkills, 'attack'].find((id) => {
@@ -2147,6 +2153,19 @@ export class GameEngine {
           if (first) { this.selectSkill(first); return; }
         }
         this.setHoverInfoOnce('No basic attack available.');
+        return;
+      }
+      case 'bonusAttack': {
+        // 2nd attack per round: a quick BONUS-action weapon strike — every
+        // hero gets one basic attack (action) plus this bonus attack per turn.
+        const a = this.combat.active;
+        if (a && a.team === 'party' && this.phase === 'combat' && a.hasBonus) {
+          if (!a.knownSkills.includes('quick_strike')) a.knownSkills.push('quick_strike');
+          if (!a.equippedSkills.includes('quick_strike')) a.equippedSkills.push('quick_strike');
+          this.selectSkill('quick_strike');
+          return;
+        }
+        this.setHoverInfoOnce('Bonus attack unavailable — needs a bonus action in combat.');
         return;
       }
     }
@@ -3119,10 +3138,10 @@ export class GameEngine {
 
     // selection ring follows active/selected unit
     const focusUnit = this.combat.inCombat ? this.combat.active : this.byId(this.selectedId ?? '');
-    if (focusUnit && focusUnit.alive) {
-      const v = this.visuals.get(focusUnit.id)!;
+    const ringV = focusUnit && focusUnit.alive ? this.visuals.get(focusUnit.id) : undefined;
+    if (focusUnit && focusUnit.alive && ringV && ringV.rig) {
       this.ring.visible = true;
-      this.ring.position.copy(v.rig.group.position).y = this.world.heightAt(focusUnit.pos.x, focusUnit.pos.z) + 0.53;
+      this.ring.position.copy(ringV.rig.group.position).y = this.world.heightAt(focusUnit.pos.x, focusUnit.pos.z) + 0.53;
       (this.ring.material as THREE.MeshBasicMaterial).color.setHex(
         this.combat.inCombat ? (focusUnit.team === 'party' ? 0xffd76b : 0xef4444) : 0x7cc4ff,
       );

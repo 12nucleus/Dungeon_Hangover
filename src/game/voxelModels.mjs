@@ -571,6 +571,62 @@ export function propCrate(seed = 0.5) {
   return { name: 'crate', voxels: v.list(), cube, blocks: true };
 }
 
+// PUDDLE — flat murky water/ground stain (the narrator's "puddle") at the spawn.
+export function propPuddle(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 61);
+  const v = new Vox();
+  const cube = 0.055;
+  const MUD = 0x3a3328, WAT = 0x2f5346, WAT_D = 0x234238, WAT_HI = 0x4a7a68;
+  for (let x = -5; x <= 5; x++) for (let z = -4; z <= 4; z++) {
+    const dx = x / 5.4, dz = z / 4.4;
+    if (dx * dx + dz * dz > 1.0 + R() * 0.35 - 0.2) continue;
+    const edge = Math.max(Math.abs(dx / 1.2), Math.abs(dz));
+    const c = edge > 0.86 ? (R() < 0.5 ? MUD : WAT_D) : (R() < 0.18 ? WAT_HI : (R() < 0.5 ? WAT : WAT_D));
+    if (R() < 0.12) continue;                       // ragged shoreline holes
+    v.add(x, 0, z, c);
+  }
+  return { name: 'puddle', voxels: v.list(), cube, blocks: false };
+}
+
+// BUCKET — a small wooden bucket (the narrator's "bucket", takeable at spawn).
+export function propBucket(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 63);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x7a562f, W_D = 0x54391d, W_HI = 0x966f40, IRON = 0x4c4f58;
+  // banded wooden cylinder, open top
+  for (let y = 0; y <= 3; y++) v.ring(0, 0, y, y, 2.4, 2.4, speckle([W, W_D, W_HI], 10, y, 3), 1.3);
+  // solid bottom
+  for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) if (x * x + z * z <= 5) v.add(x, 0, z, W_D);
+  // iron hoop bands
+  v.ring(0, 0, 1, 1, 2.5, 2.5, IRON, 0.3);
+  v.ring(0, 0, 3, 3, 2.45, 2.45, IRON, 0.5);
+  // wire handle
+  for (let a = 0; a <= 180; a += 12) {
+    const rad = (a * Math.PI) / 180;
+    v.add(Math.round(2.3 * Math.cos(rad)), 3 + Math.round(1.3 * Math.sin(rad)), 0, IRON);
+  }
+  return { name: 'bucket', voxels: v.list(), cube, blocks: false };
+}
+
+// WALL SCRATCHES — a low carved message / tally-mark stone (the narrator's "writing").
+export function propScratches(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 65);
+  const v = new Vox();
+  const cube = 0.055;
+  const STONE = 0x595e66, STONE_D = 0x3d4148, STONE_HI = 0x6f7580, MARK = 0xb6b0a2, MARK_D = 0x8a8478;
+  // a low angled stone shard leaning near the wall
+  for (let x = -3; x <= 3; x++) for (let y = 0; y <= 2; y++) for (let z = -2; z <= 2; z++) {
+    const edge = Math.max(Math.abs(x) / 3, Math.abs(z) / 2);
+    if (edge * edge + (y / 2.6) * (y / 2.6) > 1.05) continue;
+    v.add(x, y, z, edge > 0.78 ? (R() < 0.5 ? STONE_D : STONE) : (R() < 0.25 ? STONE_D : STONE_HI));
+  }
+  // carved scratch marks (jagged tally lines)
+  const taps = [[-2,3,0],[-1,3,0],[0,3,0],[1,3,0],[2,3,0],[-1,2,2],[0,2,2],[2,2,2],[0,2,-2],[-2,2,-2],[-1,1,-1],[1,1,1]];
+  for (const [x, y, z] of taps) { v.add(x, y, z, R() < 0.5 ? MARK : MARK_D); }
+  return { name: 'scratches', voxels: v.list(), cube, blocks: false };
+}
+
 export const PROP_BUILDERS = {
   stalagmite: propStalagmite,
   stalactite: propStalactite,
@@ -589,6 +645,9 @@ export const PROP_BUILDERS = {
   campfire: propCampfire,
   bedroll: propBedroll,
   crate: propCrate,
+  puddle: propPuddle,
+  bucket: propBucket,
+  scratches: propScratches,
 };
 
 // ══════════════════════════════════════════════════════════════

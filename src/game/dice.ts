@@ -31,8 +31,12 @@ export interface D20Result {
   fumble: boolean;   // natural 1
 }
 
-export function rollD20(bonus: number, extraDice = ''): D20Result {
-  const roll = 1 + Math.floor(Math.random() * 20);
+export function rollD20(bonus: number, extraDice = '', adv: 'adv' | 'dis' | null = null): D20Result {
+  let roll = 1 + Math.floor(Math.random() * 20);
+  if (adv) {                       // BG3 / 5e: roll twice, take the higher (adv) or lower (dis)
+    const roll2 = 1 + Math.floor(Math.random() * 20);
+    roll = adv === 'adv' ? Math.max(roll, roll2) : Math.min(roll, roll2);
+  }
   const extra = extraDice ? rollDice(extraDice).total : 0;
   return {
     roll, bonus, extra,

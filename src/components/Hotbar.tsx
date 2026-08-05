@@ -17,7 +17,7 @@ interface Props {
 
 const KEYMAP = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='];
 
-type DefaultAction = 'walk' | 'run' | 'jump' | 'throw' | 'attack';
+type DefaultAction = 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack';
 
 /** default actions shown before the 12 skill slots */
 const DEFAULTS: { id: DefaultAction; icon: string; label: string }[] = [
@@ -25,7 +25,8 @@ const DEFAULTS: { id: DefaultAction; icon: string; label: string }[] = [
   { id: 'run', icon: '🏃', label: 'Run' },
   { id: 'jump', icon: '🦘', label: 'Jump' },
   { id: 'throw', icon: '🎯', label: 'Throw' },
-  { id: 'attack', icon: '⚔️', label: 'Attack' },
+  { id: 'attack', icon: '⚔️', label: 'Attack (weapon)' },
+  { id: 'bonusAttack', icon: '🔸', label: 'Bonus Attack' },
 ];
 
 export function Hotbar({ snap, engine }: Props) {
@@ -76,16 +77,21 @@ export function Hotbar({ snap, engine }: Props) {
       <div className="hotbar-bg3">
       {/* default actions */}
       <div className="hotbar-defaults">
-        {DEFAULTS.map((d) => (
-          <button
-            key={d.id}
-            className={`skill-btn default ${d.id === 'run' && (active as { running?: boolean }).running ? 'on' : ''}`}
-            onClick={() => engine.defaultAction(d.id)}
-            title={`${d.label}${d.id === 'run' ? ' [R]' : ''}`}
-          >
-            <span className="skill-icon">{d.icon}</span>
-          </button>
-        ))}
+        {DEFAULTS.map((d) => {
+          const isAttack = d.id === 'attack';
+          const weapon = isAttack ? active.equipment?.weapon : null;
+          return (
+            <button
+              key={d.id}
+              className={`skill-btn default ${d.id === 'run' && (active as { running?: boolean }).running ? 'on' : ''} ${isAttack && snap.sneaking && phase === 'combat' ? 'backstab' : ''}`}
+              onClick={() => engine.defaultAction(d.id)}
+              title={`${isAttack && weapon ? `${weapon.icon} ${weapon.name} — basic attack${snap.sneaking ? ' (Backstab: guaranteed crit)' : ''}` : `${d.label}${d.id === 'run' ? ' [R]' : ''}${d.id === 'bonusAttack' ? ' — a second (bonus-action) strike' : ''}`}`}
+            >
+              <span className="skill-icon">{weapon ? weapon.icon : d.icon}</span>
+              {weapon && <span className="weapon-label">{weapon.name}</span>}
+            </button>
+          );
+        })}
         <span className="hotbar-divider" />
       </div>
 

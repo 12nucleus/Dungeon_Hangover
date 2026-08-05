@@ -9,6 +9,13 @@ import { makeItem } from './items';
 import { mulberry32 } from '../levels/gen/dungeonGen';
 
 export const SKILLS: Record<string, SkillDef> = {
+  quick_strike: {
+    id: 'quick_strike', name: 'Bonus Strike', icon: '🔸', kind: 'melee',
+    desc: 'A quick BONUS-action strike with your weapon (off-hand / second hit). Uses the equipped weapon\'s damage.',
+    range: 1, aoeRadius: 0, cost: 'bonus', cooldown: 0,
+    attackAbility: 'str', damageDice: '1d6', damageType: 'slashing',
+    fxColor: 0xffd76b, fx: 'slash',
+  },
   // ── Universal ────────────────────────────────────────────
   // basic weapon attack — ALWAYS available, whatever skills the player
   // picked (utility-only builds had no way to attack). The damage dice
@@ -253,8 +260,8 @@ export const SKILLS: Record<string, SkillDef> = {
   },
   mother_summon: {
     id: 'mother_summon', name: 'More Mouths', icon: '🐀', kind: 'buff',
-    desc: 'Summon a Baby Rat (max 4 alive). (CD 1)',
-    range: 0, aoeRadius: 0, cost: 'action', cooldown: 1, selfOnly: true,
+    desc: 'Summon a Baby Rat (max 4 alive). (CD 3 — every 3rd turn)',
+    range: 0, aoeRadius: 0, cost: 'action', cooldown: 3, selfOnly: true,
     attackAbility: 'con', damageDice: '', damageType: 'piercing',
     summonId: 'baby_rat', fxColor: 0xd8b4a0, fx: 'buff',
   },
@@ -743,21 +750,24 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
   // first fight should come on their terms (Room 4 nursery), not from mobs
   // camping the room next to the bonfire. The tunnel keeps its interactables
   // (skeleton, barrel) and can still roll the torch-off ambush.
-  // R4 — the nursery: mother + 4 babies
+  // R4 — the nursery: mother + 2 babies (nerfed — Greg's first fight should
+  // be winnable at Lv1 with limited abilities: no endless summoning, and the
+  // babies' permanent 'infected' rider is removed so a few bites don't doom
+  // the run). Loot: rats drop only XP (no items) by design — Baron Gnaw is
+  // the sole loot rat.
   units.push(mkUnit({
     name: 'Mother Rat', title: 'Matriarch of the Nursery', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r4),
-    maxHp: 8, hp: 8, ac: 12, level: 2,
+    maxHp: 6, hp: 6, ac: 11, level: 2,
     abilities: { str: 10, dex: 13, con: 12, int: 4, wis: 10, cha: 6 },
     knownSkills: ['bite', 'mother_summon'], moveRange: 6, xpValue: 25,
     scheme: { ...ratSmallScheme, bulk: 1.2 }, weapon: 'dagger', dormant: true, groupId: 'r4_nursery',
   }));
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 2; i++) {
     units.push(mkUnit({
       name: 'Baby Rat', title: 'Nursery Squeaker', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r4),
       maxHp: 1, hp: 1, ac: 10, level: 1,
       abilities: { str: 4, dex: 13, con: 8, int: 2, wis: 8, cha: 4 },
       knownSkills: ['bite'], moveRange: 6, xpValue: 5,
-      onHit: { condition: 'infected', chance: 0.1, rounds: 99, saveAbility: 'con', saveDC: 10 },
       scheme: { ...ratSmallScheme, bulk: 0.55 }, weapon: 'dagger', dormant: true, groupId: 'r4_nursery',
     }));
   }

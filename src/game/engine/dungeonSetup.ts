@@ -18,6 +18,8 @@ import { SUMMON_TEMPLATES } from '../skills';
 import { unitWorld } from './visuals';
 import { animateTo } from './cheats';
 import { offerLoot } from './loot';
+import { propPuddle, propBucket, propScratches } from '../voxelModels.mjs';
+import { voxelMeshC } from './voxelUtils';
 
 /** place a THREE.Group at a tile on the walkable floor */
 function place(engine: any, g: THREE.Group, tile: GridPos, yOff = 0) {
@@ -58,6 +60,25 @@ export function setupDungeon(engine: any, L: LevelDef) {
     ];
     const bagSpot = near.find((t) => engine.world.inBounds(t.x, t.z) && !engine.world.blocked[t.x][t.z] && engine.world.isWalkable(t.x, t.z));
     if (bagSpot) engine.props.placeAt('starting_bag', bagSpot.x, bagSpot.z);
+  }
+
+  // R1 spawn dressing — the puddle, bucket and wall-scratches the narrator
+  // promises at the wake, painted as REAL voxel props so they're visible.
+  {
+    const r1 = (st as any).rooms?.r1;
+    if (r1 && engine.world) {
+      const mk = (b: () => any) => voxelMeshC(b().voxels, b().cube) as unknown as THREE.Group;
+      const spots: { tile: GridPos; b: () => any; off: number }[] = [
+        { tile: { x: r1.x0 + 1, z: r1.z0 }, b: propPuddle, off: 0.01 },
+        { tile: { x: r1.x0, z: r1.z0 + 2 }, b: propBucket, off: 0 },
+        { tile: { x: r1.x0 + 2, z: r1.z0 + 2 }, b: propScratches, off: 0 },
+      ];
+      for (const s of spots) {
+        const t = s.tile;
+        if (!engine.world.inBounds(t.x, t.z)) continue;
+        place(engine, mk(s.b), t, s.off);
+      }
+    }
   }
 
   // iron door(s): the boss door + any authored doors (soap gate, trapdoor)
@@ -127,7 +148,8 @@ export function setupDungeon(engine: any, L: LevelDef) {
     rig.group.position.set(wp.x, wp.y, wp.z);
     rig.group.rotation.y = 0;
     rig.group.userData.baseY = wp.y;
-    rig.anim.mode = 'idle';
+    // the Hermits sit on the ground (cross-legged); everyone else idles
+    rig.anim.mode = (n.npcId === 'hermit' || n.npcId === 'other_hermit') ? 'sit_cross' : 'idle';
     engine.scene.add(rig.group);
 
     const bb = new THREE.Box3().setFromObject(rig.group);
@@ -520,8 +542,10 @@ export function aggroGroup(engine: any, groupId: string | undefined) {
   else engine.audio.roar();
   engine.pushLog(`⚔ ${grp.length} ${grp[0].title}${grp.length > 1 ? 's' : ''} lurch from the dark!`, 'system');
   // scouted through the R11 crack → the R12 den is caught flat-footed
-  const surprise = groupId === 'r12_rats' && engine.flags?.has('scouted_12');
-  engine.enqueue(surprise ? engine.combat.startDetection(true) : engine.combat.start());
+  // BG3: ambushing from stealth (C / sneaking) = surprise round — enemies
+  // are Surprised (skip their first turn) and the party's opening hits crit.
+  const surprised = engine.sneaking || (groupId === 'r12_rats' && engine.flags?.has('scouted_12'));
+  engine.enqueue(surprised ? engine.combat.startDetection(true) : engine.combat.start());
 }
 
 export function inEnemyCone(engine: any, p: GridPos, enemy: any): boolean {

@@ -785,7 +785,16 @@ export class Combat {
           case 'inspired': atkMod += 2; break;
         }
       }
-      const atk = rollD20(atkMod, blessed ? '1d4' : '');
+      // ── BG3 / 5e advantage & disadvantage (roll 2d20, take high/low) ──
+      // disadvantage: blinded attacker, or a ranged attacker with a foe on top of him
+      // advantage: target is Prone or Blinded
+      let adv: 'adv' | 'dis' | null = null;
+      const isRanged = (s.kind === 'ranged') || (s.range > 1 && !s.selfCentered);
+      const adjacentEnemy = this.units.some((f) => f.alive && f.team !== u.team && f.id !== t.id && Combat.dist(f.pos, u.pos) <= 1);
+      if (u.conditions.some((c) => c.id === 'blinded')) adv = 'dis';
+      else if (isRanged && adjacentEnemy) adv = 'dis';
+      else if (t.conditions.some((c) => c.id === 'prone') || t.conditions.some((c) => c.id === 'blinded')) adv = 'adv';
+      const atk = rollD20(atkMod, blessed ? '1d4' : '', adv);
       const auto = s.id === 'magic_missile';
       // prone targets are easier to hit (+2)
       const tgtAC = effAC(t) - (t.conditions.some((x) => x.id === 'prone') ? 2 : 0);
@@ -800,7 +809,7 @@ export class Combat {
         type: 'log',
         text: auto
           ? `${s.name} strikes ${t.name} unerringly`
-          : `Attack ${atk.roll}${fmtMod(atk.bonus)}${blessed ? `+${atk.extra}(bless)` : ''} = ${atk.total} vs AC ${tgtAC}: ${crit ? '✨CRITICAL' : hit ? 'HIT' : 'MISS'}`,
+          : `Attack ${atk.roll}${fmtMod(atk.bonus)}${blessed ? `+${atk.extra}(bless)` : ''}${adv ? ` (${adv === 'adv' ? 'advantage' : 'disadvantage'})` : ''} = ${atk.total} vs AC ${tgtAC}: ${crit ? '✨CRITICAL' : hit ? 'HIT' : 'MISS'}`,
         kind: crit ? 'crit' : hit ? 'hit' : 'miss',
       });
       if (!hit) {
@@ -1083,25 +1092,30 @@ export class Combat {
     // keep a safe ranged distance when we only have ranged tools
     const wantsRange = !hasMelee && maxRange > 1;
 
-    // ── 1. flee: below 30% HP (or a unit's fleesAtHp), back off to the
-    // farthest safe reachable tile
+    // ── 1. flee: below 30% HP (or a unit's fleesAtHp), back off. Fleeing is
+    //    bounded so wounded enemies are catchable: only flee while a foe is
+    //    close, and never cover more than FLEE_CAP tiles in one step.
     const hpPct = u.hp / effMaxHp(u);
     const shouldFlee = u.fleesAtHp !== undefined ? u.hp <= u.fleesAtHp : hpPct < 0.3;
     if (shouldFlee && u.movementLeft > 0) {
       const nearestFoe = foes.reduce((a, b) => Combat.dist(u.pos, a.pos) < Combat.dist(u.pos, b.pos) ? a : b);
-      const reach = this.reachable(u, u.movementLeft);
-      let best: GridPos[] | null = null; let bestD = -1;
-      for (const [k, path] of reach) {
-        if (!path.length) continue;
-        const [x, z] = k.split(',').map(Number);
-        const d = Combat.dist({ x, z }, nearestFoe.pos);
-        if (d > bestD) { bestD = d; best = path; }
-      }
-      if (best && best.length) {
-        const dest = best[best.length - 1];
-        u.movementLeft -= best.length;
-        u.pos = { ...dest };
-        return [{ type: 'move', unitId: u.id, path: best }];
+      const FLEE_CAP = 3; // max tiles per flee — rats can't outrun the hero forever
+      const nearestDist = Combat.dist(u.pos, nearestFoe.pos);
+      if (nearestDist < 8) {       // already far enough away → stop running (stand to be hit)
+        const reach = this.reachable(u, Math.min(u.movementLeft, FLEE_CAP));
+        let best: GridPos[] | null = null; let bestD = -1;
+        for (const [k, path] of reach) {
+          if (!path.length) continue;
+          const [x, z] = k.split(',').map(Number);
+          const d = Combat.dist({ x, z }, nearestFoe.pos);
+          if (d > bestD) { bestD = d; best = path; }
+        }
+        if (best && best.length) {
+          const dest = best[best.length - 1];
+          u.movementLeft -= best.length;
+          u.pos = { ...dest };
+          return [{ type: 'move', unitId: u.id, path: best }];
+        }
       }
     }
 

@@ -67,6 +67,12 @@ export function restAtBonfire(engine: any) {
   for (const u of engine.combat.living('party')) {
     u.hp = effMaxHp(u);
     u.conditions = [];
+    // resting at the bonfire fully resets action points (action/bonus/move)
+    // and clears every skill cooldown so all skills are usable again
+    u.hasAction = true;
+    u.hasBonus = true;
+    u.movementLeft = u.moveRange;
+    u.cooldowns = {};
     (u as any).restedAtBonfire = true;
   }
 

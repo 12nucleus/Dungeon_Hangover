@@ -742,6 +742,21 @@ function presentNode(engine: any, npc: NPCDef, nodeId: string) {
 export function talkToNpc(engine: any, npcId: string) {
   const npc = NPCS[npcId];
   if (!npc) return;
+  // turn the NPC to face the party leader so dialogue feels like the NPC is
+  // actually talking to the player
+  const leader = engine.combat?.living?.('party')?.[0];
+  if (leader && engine.npcs) {
+    const rec = engine.npcs.find((n: any) => n.npcId === npcId);
+    if (rec?.rig?.group) {
+      const lw = engine.unitWorld?.(leader.pos);
+      const sw = engine.unitWorld?.(rec.pos ?? rec.rig.group.position);
+      if (lw && sw) {
+        // these NPC rigs aren't combat units — nothing overwrites their yaw,
+        // so setting it once here is enough to make them face the player.
+        rec.rig.group.rotation.y = Math.atan2(lw.x - sw.x, lw.z - sw.z);
+      }
+    }
+  }
   if (npcId === 'scrag' && !engine.flags?.has('met_scrag')) engine.setFlag('met_scrag');
   engine.stopDialogueVo?.();
   engine.dialogueNodeId = null;   // fresh conversation — resolve the quest-aware entry
