@@ -625,6 +625,8 @@ export class GameEngine {
     this.composer.addPass(new OutputPass());
 
     this.bindInput();
+    // honor the saved display settings (resolution + best-effort fullscreen)
+    this.applyDisplaySettings();
     this.lastT = performance.now();
     const loop = (t: number) => {
       if (this.disposed) return;
@@ -1583,11 +1585,44 @@ export class GameEngine {
     this.settings = { ...s };
     SettingsManager.save(this.settings);
     this.applyAudioSettings();
+    this.applyDisplaySettings();
     this.emitSnapshot();
   }
 
   public applyAudioSettings() {
     this.audio.applySettings(this.settings);
+  }
+
+  /** apply the display settings: fullscreen state + internal render resolution.
+   *  Resolution presets cap the drawing buffer (the canvas still stretches to
+   *  the window); 0 = native window size at devicePixelRatio. */
+  public applyDisplaySettings() {
+    // fullscreen is best-effort — browsers require a user gesture, so the
+    // saved on-launch request may be rejected silently.
+    try {
+      const wantFs = !!this.settings.fullscreen;
+      const isFs = !!document.fullscreenElement;
+      if (wantFs && !isFs) void document.documentElement.requestFullscreen?.().catch(() => { });
+      else if (!wantFs && isFs) void document.exitFullscreen?.().catch(() => { });
+    } catch { /* ignore */ }
+    const hostW = this.container.clientWidth, hostH = this.container.clientHeight;
+    if (hostW <= 0 || hostH <= 0) return;
+    const res = this.settings.resolution ?? 0;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (res > 0 && res < hostW) {
+      // preset only honored when it genuinely downscales the window
+      const iw = Math.max(320, res);
+      const ih = Math.max(180, Math.round(iw * (hostH / hostW)));
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(iw, ih, false);
+      this.composer.setSize(iw, ih);
+    } else {
+      this.renderer.setPixelRatio(dpr);
+      this.renderer.setSize(hostW, hostH);
+      this.composer.setSize(hostW, hostH);
+    }
+    this.iso.cam.aspect = hostW / hostH;
+    this.iso.cam.updateProjectionMatrix();
   }
 
   // -- pause (in-game menu) ----------------------------------

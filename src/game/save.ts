@@ -26,6 +26,10 @@ export interface GameSettings {
   music: number;
   /** master mute */
   muted: boolean;
+  /** start / stay fullscreen (web Fullscreen API — best-effort on launch) */
+  fullscreen: boolean;
+  /** internal render width, 0 = native window resolution (height follows aspect) */
+  resolution: number;
 }
 
 /** The full serializable game state captured at a bonfire. */
@@ -147,7 +151,7 @@ export const SaveManager = {
   },
 };
 
-const DEFAULT_SETTINGS: GameSettings = { master: 0.9, sfx: 0.9, music: 0.42, muted: false };
+const DEFAULT_SETTINGS: GameSettings = { master: 0.9, sfx: 0.9, music: 0.42, muted: false, fullscreen: false, resolution: 0 };
 
 export const SettingsManager = {
   load(): GameSettings {
@@ -160,6 +164,8 @@ export const SettingsManager = {
         sfx: typeof p.sfx === 'number' ? p.sfx : DEFAULT_SETTINGS.sfx,
         music: typeof p.music === 'number' ? p.music : DEFAULT_SETTINGS.music,
         muted: !!p.muted,
+        fullscreen: !!p.fullscreen,
+        resolution: typeof p.resolution === 'number' && p.resolution >= 0 ? p.resolution : DEFAULT_SETTINGS.resolution,
       };
     } catch {
       return { ...DEFAULT_SETTINGS };

@@ -151,6 +151,7 @@ export function setSettings(engine: any, s: GameSettings) {
   engine.settings = { ...s };
   SettingsManager.save(engine.settings);
   engine.applyAudioSettings();
+  engine.applyDisplaySettings?.();
   engine.emitSnapshot();
 }
 

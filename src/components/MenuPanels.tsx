@@ -107,6 +107,25 @@ export function SettingsPanel({ engineRef, onBack }: {
           <span>Mute</span>
           <input type="checkbox" checked={settings.muted} onChange={(e) => apply({ muted: e.target.checked })} />
         </label>
+        <label className="splash__set-row splash__set-row--toggle">
+          <span>Fullscreen</span>
+          <input type="checkbox" checked={settings.fullscreen}
+            onChange={(e) => apply({ fullscreen: e.target.checked })}
+            title="Fullscreen (press Esc to exit — the setting follows along)" />
+        </label>
+        <label className="splash__set-row">
+          <span>Resolution</span>
+          <select value={settings.resolution}
+            onChange={(e) => apply({ resolution: Number(e.target.value) })}
+            title="Lowers the internal render resolution for performance; height follows the window"
+            className="splash__set-select">
+            <option value={0}>Native (window)</option>
+            <option value={2560}>2560×1440</option>
+            <option value={1920}>1920×1080</option>
+            <option value={1600}>1600×900</option>
+            <option value={1280}>1280×720</option>
+          </select>
+        </label>
       </div>
       <button className="splash__btn splash__btn--back" onClick={onBack}>← Back</button>
     </>

@@ -1478,6 +1478,13 @@ button:focus-visible, [tabindex]:focus-visible {
 }
 .splash__set-row input[type="range"] { width: 200px; accent-color: var(--gold); cursor: pointer; }
 .splash__set-row--toggle input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--gold); cursor: pointer; }
+.splash__set-select {
+  min-width: 170px; padding: 5px 9px; font-size: 13px; cursor: pointer;
+  font-family: var(--font-display); letter-spacing: 1px; color: #cdd4e4;
+  background: linear-gradient(180deg, var(--stone-hi), var(--stone-lo));
+  border: 1px solid var(--edge-hi); border-radius: 7px;
+}
+.splash__set-select:hover { border-color: var(--gold); }
 
 .splash__confirm {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;

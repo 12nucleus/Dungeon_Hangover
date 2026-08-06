@@ -2,6 +2,7 @@
 // Input handling — pointer, keyboard, wheel, resize events
 // Uses `engine: any` to avoid circular import + private field errors.
 // ─────────────────────────────────────────────────────────────
+import { SettingsManager } from '../save';
 
 export function bindInput(engine: any) {
   const el = engine.renderer.domElement;
@@ -17,6 +18,14 @@ export function bindInput(engine: any) {
   window.addEventListener('keydown', engine.onKeyDown);
   window.addEventListener('keyup', engine.onKeyUp);
   window.addEventListener('resize', engine.onResize);
+  // keep the settings in sync when the user exits fullscreen with Esc
+  document.addEventListener('fullscreenchange', () => {
+    const isFs = !!document.fullscreenElement;
+    if (isFs === !!engine.settings?.fullscreen) return;
+    engine.settings.fullscreen = isFs;
+    SettingsManager.save(engine.settings);
+    engine.emitSnapshot?.();
+  });
 }
 
 export function onPointerMove(engine: any, e: PointerEvent) {
@@ -157,11 +166,7 @@ export function onKeyUp(engine: any, e: KeyboardEvent) {
 }
 
 export function onResize(engine: any) {
-  const w = engine.container.clientWidth, h = engine.container.clientHeight;
-  engine.renderer.setSize(w, h);
-  engine.composer.setSize(w, h);
-  engine.iso.cam.aspect = w / h;
-  engine.iso.cam.updateProjectionMatrix();
+  engine.applyDisplaySettings();
 }
 
 // ── cross-module helpers ──
