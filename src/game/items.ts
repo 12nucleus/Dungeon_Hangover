@@ -168,7 +168,6 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   ribcage_armor: B({ kind: 'armor', slot: 'chest', name: 'Ribcage Armor', icon: '🩻', tier: 1, acBonus: 0, physResist: 1, value: 14, desc: 'Physical damage taken −1. Worn by someone who no longer needs it.' }),
   soap_crown: B({ kind: 'armor', slot: 'head', name: 'Soap Crown', icon: '👑', tier: 2, acBonus: 1, levelReq: 2, value: 60, desc: '+1 AC. Goblins respect you. Equipping it earns the throne\'s respect — and everyone smells strawberries.' }),
   // trinkets
-  candle: B({ kind: 'trinket', name: 'Candle', icon: '🕯️', tier: 1, value: 2, desc: "A stub of tallow candle from the Hermit's cell. It burns for a good while — lights a corner of the dark." }),
   hermits_ring: B({ kind: 'trinket', name: "Hermit's Ring", icon: '💍', tier: 2, value: 40, desc: '+5% XP. Warm against the finger. Which finger is a question you stop asking.' }),
   leather_belt: B({ kind: 'trinket', name: 'Leather Belt', icon: '🧷', tier: 1, hpBonus: 2, value: 10, desc: '+2 max HP. Holds your pants up, emotionally speaking.' }),
   blessed_penny: B({ kind: 'trinket', name: 'Blessed Penny', icon: '🪙', tier: 2, value: 25, desc: '+5% gold found. It has a tiny saint on it. The saint looks hungover too.' }),

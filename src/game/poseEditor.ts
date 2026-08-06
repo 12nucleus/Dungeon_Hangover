@@ -60,6 +60,16 @@ export const POSE_PRESETS: { name: string; label: string; joints: PoseJoints }[]
     joints: { ...blankPose(), armL: j(-0.282, 0, -0.152), armR: j(-0.692, 0, 0.148), foreL: j(0.608, 0, 1.468), foreR: j(-0.082, 0, -1.232), legL: j(-1.532), legR: j(-1.442), shinL: j(1.258), shinR: j(0.648) },
   },
   {
+    name: 'myPose', label: 'myPose — criss-cross legs on the ground (hermit)',
+    joints: {
+      ...blankPose(),
+      armL: j(-0.492, 0, -0.152), armR: j(-0.692, 0, 0.148),
+      foreL: j(0.608, 0, 1.468), foreR: j(-0.082, 0, -1.232),
+      legL: j(-2.002, -1.062, 0), legR: j(-1.652, 1.638, 0),
+      shinL: j(1.258, 0, 0.308), shinR: j(1.288, 0, 0),
+    },
+  },
+  {
     name: 'sleep', label: 'sleep — lying on ground',
     joints: { ...blankPose(), torso: j(-1.442, 1.188, 0), head: j(-1.274, 1.338, 0), hip: j(0.178, 0.048, -1.642), armL: j(-1.614, 0.278, -0.042), armR: j(1.586, 0, -0.102), foreL: j(-0.242, 0, 0.328), foreR: j(0.428, 0, -0.452), legL: j(-1.732, -0.562, 0), legR: j(-1.662, 0, 0), shinL: j(1.278, -0.172, 0), shinR: j(0.308, 0, 0) },
   },

@@ -42,15 +42,13 @@ export function addUnit(engine: GameEngine, u: Unit) {
 }
 
 /** Convert a grid tile to world position — delegates to the world's canonical
- *  tile mapping (VoxelWorld.tileToWorld, offset by half a tile in Y so a rig's
- *  feet rest on the floor surface). MUST stay identical to engine.unitWorld,
- *  which uses WORLD_SIZE / 2 — the old hardcoded `-60` (half of a 120-wide
- *  grid) put every walker target / rig offset 15 tiles up-right, so clicking
- *  a floor tile sent Greg bolting through the wall. */
+ *  tile mapping (VoxelWorld.tileToWorld). Returns the FLOOR-SURFACE height:
+ *  rigs are feet-anchored (group origin = voxel soles) and props are
+ *  bottom-anchored, so the plain tile height is where both stand. MUST stay
+ *  identical to engine.unitWorld. The old `+0.5` (a half-tile lift meant for
+ *  center-anchored models) floated every rig and prop above the floor. */
 export function unitWorld(engine: GameEngine, p: GridPos): THREE.Vector3 {
-  const wp = engine.world.tileToWorld(p.x, p.z, new THREE.Vector3());
-  wp.y += 0.5;
-  return wp;
+  return engine.world.tileToWorld(p.x, p.z, new THREE.Vector3());
 }
 
 /** Detach a dying unit's held weapon and let it tumble to the floor */

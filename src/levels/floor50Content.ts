@@ -246,14 +246,6 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         void e.narrate('f50_mat', "You lie on the straw mat. It smells like straw. It smells like a barn. It smells like HOME. You sleep for five minutes. It's the best five minutes of your life.", 4200);
       },
     });
-    once('take_candle', r.x0, r.z0 + 1, '[R] Take the candle', (e) => {
-      // give the actual candle item (appears in the inventory) + a little torch fuel
-      grant(e, ['candle']);
-      e.torchFuel = Math.min(100, e.torchFuel + 20);
-      e.pushLog('🕯️ You take the candle — it is now in your inventory.', 'system');
-      void e.narrate('f50_candle', "You take the candle. The Hermit doesn't mind. The Hermit has been in the dark for centuries. He's used to it.", 3600);
-      e.emitSnapshot();
-    });
     out.push({
       id: 'chest_r2', pos: { x: r.x1, z: r.z1 }, radius: 2,
       label: '[R] Open the small chest',
@@ -637,10 +629,9 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     out.push({
       id: 'burn_bones', pos: { x: r.x1, z: r.z0 + 1 }, radius: 2,
       label: '[R] Burn the bones',
-      visibleIf: (e) => e.torchFuel > 0 && !e.hasFlag('bones_burned'),
+      visibleIf: (e) => !e.hasFlag('bones_burned'),
       run: (e) => {
         e.setFlag('bones_burned');
-        e.torchFuel = Math.max(0, e.torchFuel - 10);
         const boneRat = e.combat!.units.find((u: any) => u.name === 'Bone Rat') as any;
         if (boneRat) boneRat.burnPrevented = true;
         e.pushLog('You torch the bone pile. The Bone Rat will NOT be coming back. Fire solves everything.', 'system');

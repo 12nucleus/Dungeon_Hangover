@@ -235,6 +235,14 @@ button:focus-visible, [tabindex]:focus-visible {
 .initiative-slot {
   position: relative; flex-shrink: 0; pointer-events: auto;
 }
+/* phase break inside the tracker — party block vs enemy block */
+.initiative-divider {
+  align-self: stretch; display: flex; align-items: center;
+  font-size: 8.5px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase;
+  color: var(--gold-hi); padding: 0 9px; border-left: 1px solid rgba(201, 162, 39, 0.35);
+  border-right: 1px solid rgba(201, 162, 39, 0.35); margin: 0 2px;
+  text-shadow: 0 0 8px var(--gold-glow); white-space: nowrap;
+}
 /* hover info card shown over an initiative portrait (mob/player stats) */
 .initiative-slot .init-hover {
   position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
@@ -456,12 +464,7 @@ button:focus-visible, [tabindex]:focus-visible {
   transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
 .torch-indicator:hover { border-color: #ffb545; box-shadow: inset 0 0 0 1px #0a0602, 0 0 14px rgba(255, 154, 40, 0.35); }
-.torch-fuel {
-  width: 76px; height: 5px; background: rgba(0,0,0,0.55); border-radius: 3px; overflow: hidden;
-  border: 1px solid rgba(255, 180, 69, 0.3);
-}
 .torch-hint { display: block; font-size: 9.5px; color: rgba(255, 181, 69, 0.6); margin-top: 2px; }
-.torch-fuel-fill { height: 100%; background: linear-gradient(90deg, #ff7a1f, #ffb545); box-shadow: 0 0 6px rgba(255,154,40,0.7); }
 
 /* BG3-style bottom hotbar */
 .hotbar-bg3 {
@@ -559,7 +562,12 @@ button:focus-visible, [tabindex]:focus-visible {
   transition: transform var(--t-fast), box-shadow var(--t-fast);
 }
 .end-turn:hover { transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255,180,140,0.2), 0 0 18px rgba(220, 80, 50, 0.45); }
-.turn-ring { display: flex; align-items: center; gap: 5px; margin-left: 9px; }
+.turn-ring { display: flex; align-items: center; gap: 5px; margin-left: 9px; transition: opacity var(--t-fast); }
+/* enemy phase: the whole bar dims and refuses input */
+.turn-ring.locked { opacity: 0.45; pointer-events: none; }
+.end-turn.disabled { opacity: 0.45; pointer-events: none; }
+.hotbar-stack.enemy-phase .hotbar-bg3,
+.hotbar-stack.enemy-phase .item-bar { opacity: 0.55; filter: saturate(0.55); transition: opacity var(--t-fast), filter var(--t-fast); }
 .turn-mode {
   font-family: inherit; font-size: 15px; cursor: pointer;
   width: 38px; height: 38px; border-radius: 9px;
@@ -575,13 +583,57 @@ button:focus-visible, [tabindex]:focus-visible {
   background: linear-gradient(180deg, #3a3040, #241a28);
 }
 
-.enemy-turn-banner, .explore-hint {
+.explore-hint {
   align-self: center; color: var(--text); font-size: 14px; font-style: italic;
   background: linear-gradient(180deg, rgba(16, 18, 28, 0.85), rgba(9, 11, 17, 0.8));
   border-radius: 8px; padding: 8px 18px; border: 1px solid var(--edge);
   pointer-events: none; max-width: 460px; text-align: center; margin-bottom: 8px;
 }
-.enemy-turn-banner { border-color: #7a3a28; color: #ffc4a8; }
+
+/* 3-phase combat: persistent "what can I do right now" chip */
+.combat-phase-chip {
+  align-self: center; font-size: 13.5px; font-weight: 700; letter-spacing: 0.3px;
+  border-radius: 9px; padding: 8px 16px; white-space: nowrap;
+  pointer-events: none; max-width: 460px; text-align: center; margin-bottom: 8px;
+  box-shadow: inset 0 0 0 1px #04050a, 0 6px 18px rgba(0,0,0,0.55);
+  animation: chip-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes chip-pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.combat-phase-chip.party {
+  color: #d9f0c8; background: linear-gradient(180deg, rgba(28, 58, 24, 0.92), rgba(14, 30, 12, 0.92));
+  border: 1px solid rgba(140, 200, 110, 0.5);
+  text-shadow: 0 0 10px rgba(150, 220, 110, 0.45);
+}
+.combat-phase-chip.enemy {
+  color: #ffd0b0; background: linear-gradient(180deg, rgba(74, 24, 16, 0.92), rgba(38, 12, 8, 0.92));
+  border: 1px solid rgba(255, 120, 70, 0.55);
+  text-shadow: 0 0 10px rgba(255, 110, 60, 0.5);
+  animation: chip-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1), enemy-pulse 1.6s ease-in-out infinite;
+}
+@keyframes enemy-pulse { 0%, 100% { box-shadow: inset 0 0 0 1px #04050a, 0 0 0 0 rgba(255, 110, 60, 0); } 50% { box-shadow: inset 0 0 0 1px #04050a, 0 0 18px rgba(255, 110, 60, 0.35); } }
+
+/* big center flash at every phase change */
+.phase-banner {
+  position: absolute; top: 32%; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  pointer-events: none; z-index: 40; text-align: center;
+  animation: phase-banner-fx 2.6s ease-out forwards;
+}
+.phase-banner span {
+  font-family: var(--font-display); font-size: 44px; letter-spacing: 4px; text-transform: uppercase;
+  text-shadow: 0 2px 0 #000, 0 0 22px rgba(0,0,0,0.9);
+}
+.phase-banner small { font-size: 13.5px; letter-spacing: 1.5px; opacity: 0.9; text-shadow: 0 1px 0 #000; }
+.phase-banner.party span { color: #dff3c4; }
+.phase-banner.party small { color: #c4e6a0; }
+.phase-banner.enemy span { color: #ffb08a; }
+.phase-banner.enemy small { color: #ffc9a8; }
+@keyframes phase-banner-fx {
+  0% { opacity: 0; transform: translateX(-50%) scale(1.18); }
+  10% { opacity: 1; transform: translateX(-50%) scale(1); }
+  72% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) scale(0.98); }
+}
 
 .hud-right { display: flex; flex-direction: column; gap: 7px; pointer-events: auto; padding-bottom: 8px; }
 .hud-btn {

@@ -38,7 +38,7 @@ const ROOM_SPECS: RoomSpec[] = [
   { id: 'r2', name: "Hermit's Cell", x0: 24, z0: 35, w: 3, h: 3, floor: 'stone' },
   { id: 'r3', name: 'Sewer Tunnel', x0: 8, z0: 36, w: 8, h: 2, floor: 'water_shallow' },
   { id: 'r4', name: 'Rat Nursery', x0: 8, z0: 44, w: 5, h: 5, floor: 'bone' },
-  { id: 'r5', name: "Boss Rat's Lair", x0: 8, z0: 52, w: 6, h: 6, floor: 'bone' },
+  { id: 'r5', name: "Boss Rat's Lair", x0: 8, z0: 52, w: 6, h: 6, floor: 'sludge' },   // dark wet muck — reads as Gnaw's den, NOT the nursery (r4 stays bone)
   { id: 'r6', name: 'Collapsed Wine Cellar', x0: 16, z0: 53, w: 7, h: 4, floor: 'stone' },
   { id: 'r7', name: 'Flooded Passage', x0: 25, z0: 53, w: 10, h: 2, floor: 'water_deep' },
   { id: 'r8', name: 'Pipe Junction', x0: 24, z0: 20, w: 4, h: 4, floor: 'stone' },
@@ -91,7 +91,7 @@ const CORRIDOR_SPECS: CorridorSpec[] = [
   { pts: [{ x: 16, z: 36 }, { x: 17, z: 36 }], width: 2 },                    // 3→1
   { pts: [{ x: 22, z: 36 }, { x: 23, z: 36 }], width: 2 },                    // 1→2
   { pts: [{ x: 10, z: 38 }, { x: 10, z: 43 }], width: 2 },                    // 3→4
-  { pts: [{ x: 10, z: 49 }, { x: 10, z: 51 }], width: 2 },                    // 4→5
+  { pts: [{ x: 10, z: 49 }, { x: 10, z: 51 }], width: 1 },                    // 4→5 (single-lane door — the nursery and Gnaw's lair are separate rooms; a wide mouth read as ONE big room and let rats pour into the lair mid-fight)
   { pts: [{ x: 14, z: 54 }, { x: 15, z: 54 }], width: 1 },                    // 5→6 (debris gate — single lane so the rubble seals it)
   { pts: [{ x: 23, z: 53 }, { x: 24, z: 53 }], width: 1 },                    // 6→7 (trapdoor — single lane)
   { pts: [{ x: 35, z: 53 }, { x: 59, z: 53 }], width: 2 },                    // 7→24
@@ -428,6 +428,14 @@ put('mushroom', sc(28), sc(7), 0.6);
 put('bones', sc(8), sc(44), 0.2); put('bones', sc(12), sc(48), 0.8);
 put('bones', sc(9), sc(53), 0.3); put('bones', sc(13), sc(56), 0.9); put('bones', sc(8), sc(57), 0.5);
 put('bones', sc(52), sc(4), 0.4); put('bones', sc(57), sc(9), 0.6); put('bones', sc(54), sc(6), 0.2);
+// r4 rat nursery nests — the rats raise their young here: bedrolls repurposed
+// as shredded bedding, a crate of stolen scraps, gnawed bones in the corners
+put('bedroll', sc(9), sc(45), 0.4); put('bedroll', sc(12), sc(47), 0.7); put('bedroll', sc(9), sc(48), 0.6);
+put('crate', sc(10), sc(46), 0.5); put('bones', sc(12), sc(44), 0.3); put('bones', sc(12), sc(45), 0.8);
+// r5 Gnaw's lair — a filthy den: gnawed bones piled mid-room (the "bone
+// pedestal" the narrator mentions), webs in the corners, no nesting
+put('bones', sc(10), sc(55), 0.4); put('bones', sc(11), sc(54), 0.8); put('bones', sc(11), sc(56), 0.6);
+put('webpile', sc(9), sc(56), 0.5); put('webpile', sc(13), sc(56), 0.9); put('bones', sc(12), sc(53), 0.2);
 // webpiles: corridor corners of 3 / 11
 put('webpile', sc(9), sc(36), 0.5); put('webpile', sc(15), sc(37), 0.9);
 put('webpile', sc(24), sc(12), 0.4); put('webpile', sc(29), sc(13), 0.8);

@@ -205,7 +205,6 @@ export function saveGame(engine: any, slotId?: string, label?: string) {
     selectedId: engine.selectedId,
     phase: engine.phase,
     flags: engine.flags ? [...engine.flags] : [],
-    torchFuel: engine.torchFuel,
     runSeed: engine.runSeed,
     runStats: engine.runStats ? { ...engine.runStats } : undefined,
   };
@@ -238,7 +237,6 @@ export function loadGame(engine: any, slotId: string): boolean {
   engine.defeatedSpecialMobs = new Set(data.defeatedSpecialMobs);
   engine.explored = data.explored.map((r: any) => [...r]);
   if (data.flags) engine.flags = new Set(data.flags);
-  if (typeof data.torchFuel === 'number') engine.torchFuel = data.torchFuel;
   if (data.runSeed) engine.runSeed = data.runSeed;
   if (data.runStats) engine.runStats = { ...engine.runStats, ...data.runStats };
   if (data.floor) engine.floorNumber = data.floor;

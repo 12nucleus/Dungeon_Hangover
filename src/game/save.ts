@@ -61,8 +61,6 @@ export interface SaveData {
   // ── floor-50 run state (save v2) ──
   /** per-run string flags (doors, quests, one-shot interactables) */
   flags?: string[];
-  /** remaining torch fuel in seconds */
-  torchFuel?: number;
   /** seeded run — replays the same trap tiles / poison bottles on load */
   runSeed?: number;
   /** victory-screen recap counters */

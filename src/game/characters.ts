@@ -30,7 +30,7 @@ export interface Rig {
   group: THREE.Group;
   parts: Record<string, THREE.Object3D>;
   anim: {
-    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'passout' | 'drink' | 'drink_anim' | 'crack' | 'cross' | 'getup' | 'sit_cross' | 'sleep' | 'point' | 'wipe';
+    mode: 'idle' | 'walk' | 'dead' | 'sit' | 'floor' | 'lie' | 'passout' | 'drink' | 'drink_anim' | 'crack' | 'cross' | 'getup' | 'sit_cross' | 'myPose' | 'sleep' | 'point' | 'wipe';
     t: number;
     lunge: number;
     flinch: number;
@@ -1775,6 +1775,17 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
       armLX = -0.282; armLZ = -0.152; armRX = -0.692; armRZ = 0.148;
       elbowL = 0.608; elbowLZ = 1.468; elbowR = -0.082; elbowRZ = -1.232;
       legLX = -1.532; legRX = -1.442; kneeL = 1.258; kneeR = 0.648;
+      hipY = HIP - 0.22;
+    } else if (a.mode === 'myPose') {                      // criss-cross legs on the ground (hermit)
+      // deep hip sink (0.85 vs sit_cross's 0.20): the thighs pitch UP-forward
+      // (~115°) with the shins folded back, so the pelvis must sit at floor
+      // level or the figure hovers. Verified: hips at 0.85 → belt bottom
+      // 0.10 off the floor, boots touching (no clip).
+      DROP += 0.85; legScaleY = Math.max(0.5, 1 - DROP / HIP);
+      armLX = -0.492; armLZ = -0.152; armRX = -0.692; armRZ = 0.148;
+      elbowL = 0.608; elbowLZ = 1.468; elbowR = -0.082; elbowRZ = -1.232;
+      legLX = -2.002; legLY = -1.062; legRX = -1.652; legRY = 1.638;
+      kneeL = 1.258; kneeLZ = 0.308; kneeR = 1.288;
       hipY = HIP - 0.22;
     } else if (a.mode === 'sleep') {                       // sleeping / lying on the ground
       DROP += 0.10; legScaleY = Math.max(0.5, 1 - DROP / HIP);

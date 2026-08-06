@@ -13,7 +13,7 @@
 import type { GridPos } from '../../game/types';
 import type { Rect } from '../levelTypes';
 
-export type FloorMat = 'stone' | 'dirt' | 'water_shallow' | 'water_deep' | 'marble' | 'bone' | 'fungal';
+export type FloorMat = 'stone' | 'dirt' | 'water_shallow' | 'water_deep' | 'marble' | 'bone' | 'fungal' | 'sludge';
 
 export interface RoomSpec {
   id: string;
@@ -46,11 +46,12 @@ export interface AuthoredMap {
 const FLOOR_TO_MAT: Record<FloorMat, string> = {
   stone: 'cave_floor',
   dirt: 'gravel',
-  bone: 'cave_stone',
+  bone: 'bone',
   fungal: 'moss',
   water_shallow: 'cave_floor',
   water_deep: 'cave_floor',
   marble: 'marble',
+  sludge: 'sludge',
 };
 
 export function buildAuthoredMap(

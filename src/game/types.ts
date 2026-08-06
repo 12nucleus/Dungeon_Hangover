@@ -196,6 +196,9 @@ export interface Unit {
   restedAtBonfire?: boolean;
   /** AI flees (full-move away) once HP drops to this value or below */
   fleesAtHp?: number;
+  /** room leash: enemy AI movement (chase AND flee) never leaves this world
+   *  rect — dungeon groups can't leak into neighbouring rooms mid-fight */
+  leash?: { x0: number; z0: number; x1: number; z1: number };
   /** guaranteed item/gold drop on death (items via makeItem ids); `random`
    *  draws `count` random ids from each pool at kill time */
   deathDrops?: { itemIds?: string[]; gold?: number; random?: { pool: string[]; count?: number }[] };
@@ -269,10 +272,10 @@ export interface UISnapshot {
   talkTarget?: string | null;
   /** active interactable prompt, e.g. "[E] Drink from the puddle" */
   interactPrompt?: string | null;
-  /** remaining torch fuel (seconds) */
-  torchFuel?: number;
   /** quest log entries for the J panel */
   quests?: { id: string; name: string; stage: string; desc: string }[];
+  /** big center-screen combat phase flash (keyed by id — re-mounts on change) */
+  phaseBanner?: { text: string; cls: string; id: number } | null;
   /** run recap counters (victory screen) */
   runStats?: { kills: number; deaths: number; questsDone: number; secretsFound: number; startedAt: number };
   showDialogue?: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null;

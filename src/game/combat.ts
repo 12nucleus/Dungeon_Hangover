@@ -35,6 +35,10 @@ export class Combat {
   godMode = false;
 
   private world: VoxelWorld;
+  /** provided by the engine: world rect (usually the unit's spawn room +
+   *  margin) that enemy AI movement may not leave. Assigned at start() so
+   *  every enemy carries its leash for the whole fight. */
+  leashFor: ((u: Unit) => { x0: number; z0: number; x1: number; z1: number } | null) | null = null;
   constructor(world: VoxelWorld) { this.world = world; }
 
   get active(): Unit | null {
@@ -191,7 +195,22 @@ export class Combat {
       ev.push({ type: 'log', text: `${u.name} rolls initiative ${r.roll}${fmtMod(abilityMod(u.abilities.dex))} = ${r.total}`, kind: 'roll' });
       if (u.team === 'party' && !partyIni) partyIni = r;
     }
-    this.turnOrder = this.units.filter((u) => u.alive && !u.dormant).sort((a, b) => b.initiative - a.initiative).map((u) => u.id);
+    // BG3-style GROUPED phases: the whole party acts first (in initiative
+    // order), then every enemy. The rotation wraps once per full round — the
+    // only index wrap is enemy→party, so endTurn's `idx <= activeIdx` round
+    // counter already ticks exactly once per phase cycle.
+    const fighters = this.units.filter((u) => u.alive && !u.dormant);
+    const byIni = (a: Unit, b: Unit) => b.initiative - a.initiative;
+    // leash every enemy to its home room before the rotation starts: chase
+    // and flee candidates in aiStep are filtered against it, so a mob group
+    // can never pour into another room while a fight is live.
+    for (const u of fighters) {
+      if (u.team === 'enemy' && !u.leash) u.leash = this.leashFor?.(u) ?? undefined;
+    }
+    this.turnOrder = [
+      ...fighters.filter((u) => u.team === 'party').sort(byIni),
+      ...fighters.filter((u) => u.team === 'enemy').sort(byIni),
+    ].map((u) => u.id);
     this.activeIdx = 0;
     ev.push({ type: 'log', text: '— ⚔ COMBAT BEGINS —', kind: 'system' });
     ev.push({ type: 'phase', phase: 'combat' });
@@ -1141,6 +1160,11 @@ export class Combat {
     // ── 1. flee: below 30% HP (or a unit's fleesAtHp), back off. Fleeing is
     //    bounded so wounded enemies are catchable: only flee while a foe is
     //    close, and never cover more than FLEE_CAP tiles in one step.
+    // room leash: movement (chase AND flee) stays inside the unit's rect.
+    // Leashed units may step into their room's doorway but never across it,
+    // so a fight in one room can't drag its mobs into a neighbouring one.
+    const inLeash = (x: number, z: number) =>
+      !u.leash || (x >= u.leash.x0 && x <= u.leash.x1 && z >= u.leash.z0 && z <= u.leash.z1);
     const hpPct = u.hp / effMaxHp(u);
     const shouldFlee = u.fleesAtHp !== undefined ? u.hp <= u.fleesAtHp : hpPct < 0.3;
     if (shouldFlee && u.movementLeft > 0) {
@@ -1153,6 +1177,7 @@ export class Combat {
         for (const [k, path] of reach) {
           if (!path.length) continue;
           const [x, z] = k.split(',').map(Number);
+          if (!inLeash(x, z)) continue;
           const d = Combat.dist({ x, z }, nearestFoe.pos);
           if (d > bestD) { bestD = d; best = path; }
         }
@@ -1245,6 +1270,7 @@ export class Combat {
       for (const [k, path] of reach) {
         if (!path.length) continue;
         const [x, z] = k.split(',').map(Number);
+        if (!inLeash(x, z)) continue;
         const d = Combat.dist({ x, z }, nearest.pos);
         // melee: get as close as possible; ranged: hold at maxRange
         const ideal = wantsRange ? Math.max(2, maxRange - 1) : 1;

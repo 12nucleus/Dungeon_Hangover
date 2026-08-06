@@ -326,32 +326,46 @@ export function HUD({ snap, engine }: Props) {
         </div>
       )}
 
-      {/* ══ INITIATIVE TRACKER ══ */}
+      {/* ══ INITIATIVE TRACKER — grouped: the whole party block first, then
+          every enemy (BG3-style two-phase rotation) ══ */}
       {phase === 'combat' && (
         <div className="initiative">
           <div className="initiative-round">ROUND {snap.round}</div>
-          {snap.turnOrder.map((id) => {
+          {snap.turnOrder.map((id, i) => {
             const u = snap.units.find((x) => x.id === id)!;
+            const prev = i > 0 ? snap.units.find((x) => x.id === snap.turnOrder[i - 1]) : null;
             const teamColor = TEAM_COLOR[u.team] ?? '#aaa';
             return (
-              <div
-                key={id}
-                className="initiative-slot"
-                title={`${u.name} — ${u.hp}/${u.maxHp} HP`}
-                onMouseEnter={() => setInitHover(id)}
-                onMouseLeave={() => setInitHover((cur) => (cur === id ? null : cur))}
-              >
-                <Portrait u={u} size={40} active={id === snap.activeId} />
-                {initHover === id && (
-                  <div className="init-hover">
-                    <div className="init-hover-name" style={{ color: teamColor }}>{u.name}</div>
-                    <div className="init-hover-hp">❤ {u.hp}/{u.maxHp} HP</div>
-                    <div className="init-hover-team" style={{ background: `${teamColor}22`, color: teamColor, border: `1px solid ${teamColor}55` }}>{u.team}</div>
-                  </div>
+              <div key={id} style={{ display: 'contents' }}>
+                {prev && prev.team !== u.team && (
+                  <div className="initiative-divider">{u.team === 'enemy' ? '▼ ENEMY PHASE' : '▲ YOUR PHASE'}</div>
                 )}
+                <div
+                  className="initiative-slot"
+                  title={`${u.name} — ${u.hp}/${u.maxHp} HP`}
+                  onMouseEnter={() => setInitHover(id)}
+                  onMouseLeave={() => setInitHover((cur) => (cur === id ? null : cur))}
+                >
+                  <Portrait u={u} size={40} active={id === snap.activeId} />
+                  {initHover === id && (
+                    <div className="init-hover">
+                      <div className="init-hover-name" style={{ color: teamColor }}>{u.name}</div>
+                      <div className="init-hover-hp">❤ {u.hp}/{u.maxHp} HP</div>
+                      <div className="init-hover-team" style={{ background: `${teamColor}22`, color: teamColor, border: `1px solid ${teamColor}55` }}>{u.team}</div>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ══ COMBAT PHASE FLASH — big center banner at every phase change ══ */}
+      {snap.phaseBanner && phase === 'combat' && (
+        <div key={snap.phaseBanner.id} className={`phase-banner ${snap.phaseBanner.cls}`}>
+          <span>{snap.phaseBanner.text}</span>
+          <small>{snap.phaseBanner.cls === 'party' ? 'All heroes act — then the enemy.' : 'The enemy acts. Hold your ground.'}</small>
         </div>
       )}
 
@@ -503,8 +517,13 @@ export function HUD({ snap, engine }: Props) {
 
           {/* BG3-style bottom hotbar (default actions + 12 skill slots) */}
           {phase !== 'creation' && party.length > 0 && <Hotbar snap={snap} engine={engine!} />}
-          {phase === 'combat' && activeUnit && activeUnit.team === 'enemy' && (
-            <div className="enemy-turn-banner">⚔ {activeUnit.name} is acting…</div>
+          {/* persistent phase chip — what you can do RIGHT NOW */}
+          {phase === 'combat' && (
+            <div className={`combat-phase-chip ${activeUnit?.team === 'party' ? 'party' : 'enemy'}`}>
+              {activeUnit?.team === 'party'
+                ? <>⚔ YOUR TURN — move, act, then <b>End Turn</b></>
+                : <>🐀 ENEMY PHASE — {activeUnit?.name ?? 'the enemy'} is acting…</>}
+            </div>
           )}
           {phase === 'explore' && (
             <div className="explore-hint">🧭 Click ground to move · I Inventory · K Skills · U Stats · C Sneak · T Torch · P First-person · Q/E Rotate</div>

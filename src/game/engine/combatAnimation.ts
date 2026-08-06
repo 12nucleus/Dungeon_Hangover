@@ -125,6 +125,18 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (u) {
         engine.iso.focus(unitWorld(engine, u.pos));
         clearHighlights(engine);
+        // 3-phase combat: flash a big banner whenever the rotation crosses
+        // from one team's phase to the other (party → enemy → party …).
+        if (engine.lastTurnTeam !== u.team) {
+          engine.lastTurnTeam = u.team;
+          engine.phaseBanner = {
+            text: u.team === 'party' ? '⚔ YOUR TURN' : '🐀 ENEMY PHASE',
+            cls: u.team,
+            id: (engine.phaseBannerId = (engine.phaseBannerId ?? 0) + 1),
+            at: performance.now(),
+          };
+          engine.emitSnapshot();
+        }
         if (u.team === 'party' && engine.phase === 'combat') showMoveTiles(engine);
         // M8: enemy turns are driven by the AI — resolve the full turn
         // (skills + movement, then advance initiative) right here so the
@@ -160,6 +172,9 @@ export async function animate(engine: any, ev: CombatEvent) {
       }
       engine.phase = ev.phase;
       if (ev.phase === 'combat') {
+        // fresh fight: the first party turn must re-fire the phase banner
+        engine.lastTurnTeam = null;
+        engine.phaseBanner = null;
         engine.audio.setMusicDucked(true);
         // the encounter theme takes over from the ambient loop
         engine.audio.playMusic('music_combat');
@@ -171,6 +186,7 @@ export async function animate(engine: any, ev: CombatEvent) {
         }
       }
       if (ev.phase === 'explore') {
+        engine.phaseBanner = null;    // fight over — no stale phase flash
         engine.hazardUsed?.clear();   // hazards reset per fight
         engine.audio.setMusicDucked(false);
         if (engine.phase === 'explore') engine.audio.playMusic('music_ambient');  // back to the cellar

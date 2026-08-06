@@ -66,7 +66,12 @@ export function setupDungeon(engine: any, L: LevelDef) {
   // promises at the wake, painted as REAL voxel props so they're visible.
   {
     const mk = (b: () => any) => voxelMeshC(b().voxels, b().cube) as unknown as THREE.Group;
-    const r1 = (st as any).rooms?.r1;
+    // `structures.rooms` is an ARRAY of {id, rect} — the old `rooms?.r1`
+    // looked up a property that never exists, so this whole block (and the
+    // R3 skeleton below) silently never ran. The skeleton was invisible
+    // because it was never placed, not because of the water.
+    const roomRect = (id: string) => st.rooms?.find((r) => r.id === id)?.rect;
+    const r1 = roomRect('r1');
     if (r1 && engine.world) {
       const spots: { tile: GridPos; b: () => any; off: number }[] = [
         { tile: { x: r1.x0 + 1, z: r1.z0 }, b: propPuddle, off: 0.01 },
@@ -80,7 +85,7 @@ export function setupDungeon(engine: any, L: LevelDef) {
       }
     }
     // R3 — the skeleton the narrator mentions, floating in the shallow water.
-    const r3 = (st as any).rooms?.r3;
+    const r3 = roomRect('r3');
     if (r3 && engine.world) {
       const t = { x: r3.x1, z: r3.z0 };   // matches the search_skeleton_r3 interactable
       if (engine.world.inBounds(t.x, t.z)) place(engine, mk(propSkeleton), t, 0);
@@ -154,8 +159,8 @@ export function setupDungeon(engine: any, L: LevelDef) {
     rig.group.position.set(wp.x, wp.y, wp.z);
     rig.group.rotation.y = 0;
     rig.group.userData.baseY = wp.y;
-    // the Hermits sit on the ground (cross-legged); everyone else idles
-    rig.anim.mode = (n.npcId === 'hermit' || n.npcId === 'other_hermit') ? 'sit_cross' : 'idle';
+    // the Hermits sit on the ground (criss-cross); everyone else idles
+    rig.anim.mode = (n.npcId === 'hermit' || n.npcId === 'other_hermit') ? 'myPose' : 'idle';
     engine.scene.add(rig.group);
 
     const bb = new THREE.Box3().setFromObject(rig.group);
@@ -410,7 +415,7 @@ function maybeAmbush(engine: any, roomId: string, pos: GridPos) {
   if (engine.combat.inCombat || engine.busy || engine.gameWon) return;
   const seed = (engine.runSeed ?? 0) ^ roomId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const roll = ((seed * 1103515245 + 12345) >>> 16) % 100;
-  const torchOff = !engine.torchLit || engine.torchFuel <= 0;
+  const torchOff = !engine.torchLit;
   const darkRooms = ['r3', 'r7', 'r11', 'r12'];
   if (darkRooms.includes(roomId) && torchOff && roll < 50) {
     engine.pushLog('Something moves in the dark. Something with too many teeth.', 'system');

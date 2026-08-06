@@ -124,10 +124,14 @@ export class GameEngine {
   public runSeed = Math.floor(Date.now() / 1000) ^ 0x5eed;
   /** string flags: quest progress, doors opened, one-shot interactables */
   public flags = new Set<string>();
-  /** torch fuel in seconds (bonfire refills to 100; 0 → torch off) */
-  public torchFuel = 100;
   /** hand-authored interactables (proximity prompts) */
   public interactables: Interactable[] = [];
+  /** 3-phase combat: team of the last processed turn (banner fires on change) */
+  public lastTurnTeam: string | null = null;
+  /** big center-screen phase flash — set on party→enemy / enemy→party */
+  public phaseBanner: { text: string; cls: string; id: number; at: number } | null = null;
+  /** monotonically increasing phase-banner id (React re-mounts on change) */
+  public phaseBannerId = 0;
   public activeInteractable: Interactable | null = null;
   /** environmental hazard tiles (shove targets): key = wine_press | bath */
   public hazardTiles = new Set<string>();
@@ -567,6 +571,10 @@ export class GameEngine {
 
     // combat + units
     this.combat = new Combat(this.world);
+    // room leashes: every enemy's AI movement stays inside its spawn room
+    // (+ margin) for the whole fight, so mob groups can't leak into a
+    // neighbouring room mid-combat and trigger another room's cutscene/aggro.
+    this.combat.leashFor = (u) => this.combatLeashFor(u);
     this.onBossParley = (outcome) => this.handleGribnabParley(outcome);
     this.spawnUnits();
     this.setupDungeon(levelForFloor(this.floorNumber));
@@ -987,6 +995,19 @@ export class GameEngine {
   public winGame() { winGameModule(this); }
 
   // -- dungeon aggro & boss cutscene -------------------------
+  /** world rect an enemy may fight inside: its spawn room inflated by a
+   *   doorway margin. Enemies in corridors/rooms without a rect (null from
+   *   roomOf) are unleashed — they have no home to stay in. */
+  private combatLeashFor(u: Unit): { x0: number; z0: number; x1: number; z1: number } | null {
+    if (!this.structures || !this.roomOf) return null;
+    const roomId = this.roomOf(u.pos.x, u.pos.z);
+    if (!roomId) return null;
+    const r = this.structures.rooms?.find((x) => x.id === roomId)?.rect;
+    if (!r) return null;
+    const M = 3;
+    return { x0: r.x0 - M, z0: r.z0 - M, x1: r.x1 + M, z1: r.z1 + M };
+  }
+
   public checkDungeonAggro() {
     if (!this.structures || this.phase !== 'explore' || this.combat.inCombat || this.busy || this.gameWon) return;
     // aggro is disabled by default ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ the player explores freely.
@@ -1261,11 +1282,14 @@ export class GameEngine {
    *  VoxelWorld.tileToWorld); every other converter (visuals.unitWorld,
    *  traps tileWorld) must delegate here so they can't drift into a
    *  different offset (the old hardcoded `-60`/`-23` sent Greg running
-   *  15 tiles up-right on the first floor click). */
+   *  15 tiles up-right on the first floor click).
+   *
+   *  Returns the FLOOR-SURFACE height: rigs are feet-anchored (the group
+   *  origin sits at the voxel soles) and props are bottom-anchored, so
+   *  tileToWorld's height is where both stand. The old `+0.5` made every
+   *  rig and every piece of dressing hover half a tile above the floor. */
   unitWorld(p: GridPos): THREE.Vector3 {
-    const wp = this.world.tileToWorld(p.x, p.z, new THREE.Vector3());
-    wp.y += 0.5;
-    return wp;
+    return this.world.tileToWorld(p.x, p.z, new THREE.Vector3());
   }
 
   // Detach a dying unit's held weapon from its rig and let it tumble to the
@@ -1522,6 +1546,10 @@ export class GameEngine {
     // trust combat.inCombat (authoritative) over engine.phase — a stray
     // phase mirror can desync while a fight is live (intro tail, endEarly)
     if (!this.combat?.inCombat || this.busy) return;
+    // 3-phase combat: END TURN only advances the party's own phase. During
+    // the enemy phase the rotation is AI-driven — pressing it must never
+    // skip an enemy's turn.
+    if (this.combat.active?.team !== 'party') return;
     const a = this.combat.active;
     if (!a || a.team !== 'party') return;
     this.audio.play('ui_click', 0.7);
@@ -1595,7 +1623,6 @@ export class GameEngine {
     // fresh run seed → fresh trap tiles / poison bottles / spawn jitter
     this.runSeed = (Math.floor(Date.now() / 1000) ^ 0x5eed ^ Math.floor(Math.random() * 0xffff)) >>> 0;
     this.flags = new Set();
-    this.torchFuel = 100;
     this.gold = 0;
     this.inventory = [];
     this.questLog = new QuestLog();
@@ -1709,7 +1736,6 @@ export class GameEngine {
       phase: this.phase,
       // floor-50 run state
       flags: [...this.flags],
-      torchFuel: this.torchFuel,
       runSeed: this.runSeed,
       runStats: { ...this.runStats },
     };
@@ -1744,7 +1770,6 @@ export class GameEngine {
     this.defeatedSpecialMobs = new Set(data.defeatedSpecialMobs);
     // floor-50 run state
     if (data.flags) this.flags = new Set(data.flags);
-    if (typeof data.torchFuel === 'number') this.torchFuel = data.torchFuel;
     if (data.runSeed) this.runSeed = data.runSeed;
     if (data.runStats) this.runStats = { ...this.runStats, ...data.runStats };
     this.floorNumber = data.floor ?? START_FLOOR;
@@ -1933,6 +1958,7 @@ export class GameEngine {
 
   /** BG3-style turn phase ring (walk → action → bonus → end turn) */
   setTurnMode(m: 'walk' | 'action' | 'bonus') {
+    if (!this.combat?.active || this.combat.active.team !== 'party') return;  // enemy phase — no ring edits
     if (this.combat.turnMode !== m) {
       this.combat.turnMode = m;
       this.audio.play('ui_click', 0.5);
@@ -3162,6 +3188,12 @@ export class GameEngine {
     this.hlMats.aoe.opacity = 0.42 * pulse;
     this.hlMats.hover.opacity = 0.35 * pulse;
 
+    // combat phase banner auto-expires after its flash
+    if (this.phaseBanner && performance.now() - this.phaseBanner.at > 2600) {
+      this.phaseBanner = null;
+      this.emitSnapshot();
+    }
+
     // floaters
     const w = this.container.clientWidth, h = this.container.clientHeight;
     for (let i = this.floaters.length - 1; i >= 0; i--) {
@@ -3227,6 +3259,7 @@ export class GameEngine {
       floorName: FLOORS[this.floorNumber]?.name ?? 'The Sewer Cellar',
       units: this.combat.units.map((u) => ({ ...u, conditions: [...u.conditions], abilities: { ...u.abilities }, cooldowns: { ...u.cooldowns }, pos: { ...u.pos }, equipment: { ...u.equipment }, knownSkills: [...u.knownSkills], equippedSkills: [...u.equippedSkills], unlockedNodes: [...u.unlockedNodes] })),
       activeId: this.combat.inCombat ? this.combat.active?.id ?? null : null,
+      phaseBanner: this.phaseBanner ? { text: this.phaseBanner.text, cls: this.phaseBanner.cls, id: this.phaseBanner.id } : null,
       turnOrder: this.combat.inCombat ? this.combat.turnOrder.filter((id) => this.byId(id)?.alive) : [],
       selectedSkill: this.targeting,
       targeting: !!this.targeting,
@@ -3256,7 +3289,6 @@ export class GameEngine {
       showFullMap: this.showFullMap,
       talkTarget: this.activeTalkTarget(),
       interactPrompt: this.activeInteractable?.label ?? null,
-      torchFuel: this.torchFuel,
       showQuestLog: this.showQuestLog,
       quests: this.questLog.all().map((q) => ({
         id: q.id,

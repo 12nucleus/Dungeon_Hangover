@@ -44,7 +44,6 @@ export function lightBonfire(engine: any) {
     ? { ...engine.structures.checkpoint }
     : { x: 10, z: 10 };
   spawnBonfireFlame(engine);
-  if (typeof engine.torchFuel === 'number') engine.torchFuel = 100;   // bonfire refills the torch
   void engine.narrate('f50_bonfire', "The bonfire catches. The warmth is immediate. The warmth is the first good thing that has happened to you since you woke up. The warmth is the first good thing that has happened to you in WEEKS.", 4600);
   engine.pushLog('The bonfire roars to life. This place feels safer now...', 'system');
   engine.audio.play('ui_click', 0.6);
@@ -95,7 +94,6 @@ export function restAtBonfire(engine: any) {
 
   engine.props.resetAll();
 
-  if (typeof engine.torchFuel === 'number') engine.torchFuel = 100;
   // per-rest-cycle interactables refresh (straw mat, bunk)
   if (engine.flags) {
     engine.flags.delete('rest_mat_used');
@@ -318,14 +316,10 @@ export function equipItem(engine: any, unitId: string, itemId: string) {
     u.weapon = item.weaponKind;
     const rig = engine.visuals.get(u.id)?.rig;
     if (rig) setWeapon(rig, item.weaponKind, u.scheme.accent);
-    // a freshly equipped torch is a FRESH torch — refill fuel and light it,
-    // otherwise it gutters instantly when the old flame already burned out
-    if (item.weaponKind === 'torch') {
-      engine.torchFuel = 100;
-      if (!engine.torchLit) {
-        engine.torchLit = true;
-        engine.pushLog('🔦 The fresh torch flares to life.', 'system');
-      }
+    // the torch never burns out — equipping one just lights it if it was stowed
+    if (item.weaponKind === 'torch' && !engine.torchLit) {
+      engine.torchLit = true;
+      engine.pushLog('🔦 The fresh torch flares to life.', 'system');
     }
   }
   engine.audio.play('ui_click', 0.7);

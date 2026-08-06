@@ -52,8 +52,6 @@ export interface GameEngineLike {
   runStats: { kills: number; deaths: number; questsDone: number; secretsFound: number; startedAt: number };
   /** current gold (dice table wagers) */
   gold: number;
-  /** remaining torch fuel in seconds (burn-bones check) */
-  torchFuel: number;
   questLog: { fail(questId: string): void };
   readonly flags: Set<string>;
   /** minimal combat surface used by content hooks */
