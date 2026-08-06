@@ -4,7 +4,11 @@
 import type { GridPos, Unit } from '../game/types';
 import type { Interactable } from '../game/engine/interactables';
 
-export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'crystal_blue' | 'crystal_green' | 'boulder' | 'bones' | 'torch' | 'brazier' | 'mushroom' | 'bonfire' | 'webpile' | 'rubble' | 'tent' | 'campfire' | 'bedroll' | 'crate';
+export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'crystal_blue' | 'crystal_green' | 'boulder' | 'bones' | 'torch' | 'brazier' | 'mushroom' | 'bonfire' | 'webpile' | 'rubble' | 'tent' | 'campfire' | 'bedroll' | 'crate'
+  | 'puddle' | 'bucket' | 'scratches' | 'skeleton' | 'body' | 'mat' | 'wine_press' | 'wine_bottle' | 'broken_bottle'
+  | 'valve' | 'pipe' | 'sign' | 'bunk' | 'footlocker' | 'dice_table' | 'nest' | 'drain' | 'wrench' | 'plunger'
+  | 'pipe_fitting' | 'toolbox' | 'chest' | 'mirror' | 'compass' | 'fountain' | 'well' | 'cauldron' | 'weapon_rack'
+  | 'altar' | 'throne' | 'banner' | 'duck' | 'towel';
 
 export interface PropPlacement {
   kind: PropKind;
@@ -32,6 +36,8 @@ export interface LevelLayout {
 export interface LevelStructures {
   partySpawn: GridPos;
   checkpoint?: GridPos;     // starter-room bonfire — light it to set the respawn point
+  /** every bonfire on the floor, checkpoint first — kindling moves the active checkpoint */
+  bonfires?: GridPos[];
   bossDoor: GridPos;        // locked door tile (blocked until the iron key opens it)
   bossBath: GridPos;        // boss starts here, sitting in its bath
   bossRoom: Rect;           // entering this rect triggers the boss cutscene

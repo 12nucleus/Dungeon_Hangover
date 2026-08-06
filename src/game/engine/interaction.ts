@@ -185,6 +185,8 @@ export interface InteractPick {
   kind: 'unit' | 'prop' | 'npc' | 'bonfire' | 'active';
   unitId?: string;
   propId?: string;
+  /** which bonfire spot (index into engine.bonfireSpots) */
+  idx?: number;
   npcId?: string;
   /** screen-space distance in px (0 = direct ray hit) */
   dist: number;
@@ -219,10 +221,11 @@ export function pickInteractable(engine: any): InteractPick | null {
     const d = Math.hypot(sx - cx, sy - cy);
     if (d <= bestD) { bestD = d; best = { ...pick, dist: d }; }
   };
-  if (engine.bonfirePos) {
-    const wp = engine.world.tileToWorld(engine.bonfirePos.x, engine.bonfirePos.z, new THREE.Vector3());
+  for (let bi = 0; bi < (engine.bonfireSpots?.length ?? 0); bi++) {
+    const bp = engine.bonfireSpots[bi];
+    const wp = engine.world.tileToWorld(bp.x, bp.z, new THREE.Vector3());
     wp.y += 0.6;
-    consider(wp, { kind: 'bonfire' });
+    consider(wp, { kind: 'bonfire', idx: bi });
   }
   const it = engine.activeInteractable;
   if (it) {
@@ -318,7 +321,11 @@ export function updateHover(engine: any) {
     const p = engine.props.byId(pick.propId);
     if (p) info = `${p.def.icon} ${p.def.name} — destructible`;
   } else if (pick?.kind === 'bonfire') {
-    info = engine.bonfireLit ? '🔥 Bonfire — click to walk over and rest' : '🔥 Unlit bonfire — click to walk over and kindle it';
+    const bp = engine.bonfireSpots?.[pick.idx ?? 0];
+    const active = !!bp && engine.bonfirePos?.x === bp.x && engine.bonfirePos?.z === bp.z;
+    info = active && engine.bonfireLit
+      ? '🔥 Bonfire — click to walk over and rest'
+      : '🔥 Unlit bonfire — click to walk over and kindle it';
   } else if (pick?.kind === 'active' && engine.activeInteractable) {
     info = engine.activeInteractable.label;
   }
@@ -383,22 +390,56 @@ const PROP_HOVER: Record<string, string> = {
   stalactite: '⬇ Stalactites above',
   crate: '📦 Supply crate',
   boulder: '🪨 Boulder',
+  puddle: '💧 A murky puddle',
+  bucket: '🪣 A wooden bucket',
+  scratches: '🪨 Carved scratches in the stone',
+  skeleton: '💀 A skeleton in the water',
+  body: '💀 A floating body',
+  mat: '🟫 A straw sleeping mat',
+  wine_press: '🍇 A heavy wine press',
+  wine_bottle: '🍾 A wine bottle',
+  broken_bottle: '🍾 Broken glass',
+  valve: '⚙ A pipe valve',
+  pipe: '🛢 A large sewer pipe',
+  sign: '🪧 A wooden sign',
+  bunk: '🛏 A wooden bunk',
+  footlocker: '🧰 A small footlocker',
+  dice_table: '🎲 A low table',
+  nest: '🪺 A shredded nest',
+  drain: '🚰 An iron drain grate',
+  wrench: '🔧 A heavy wrench',
+  plunger: '🪠 A plunger',
+  pipe_fitting: '🔩 A threaded pipe fitting',
+  toolbox: '🧰 A metal toolbox',
+  chest: '🧰 A chest',
+  mirror: '🪞 A standing mirror',
+  compass: '🧭 A compass rose in the floor',
+  fountain: '⛲ A stone fountain',
+  well: '🕳 An old well',
+  cauldron: '🍲 A bubbling stew pot',
+  weapon_rack: '🗡 A weapon rack',
+  altar: '🪨 A stone altar',
+  throne: '👑 A goblin throne',
+  banner: '🚩 A hanging banner',
+  duck: '🦆 A rubber duck',
+  towel: '🧻 A rolled towel',
 };
 
 // ══ click logic ════════════════════════════════════════════
 /** bonfire: forgiving click — walk up and kindle/rest automatically on arrival */
-function bonfireClick(engine: any, leader: Unit | null) {
-  const bp = engine.bonfirePos!;
-  if (!leader) return;
+function bonfireClick(engine: any, leader: Unit | null, idx = 0) {
+  const bp = engine.bonfireSpots?.[idx] ?? engine.bonfirePos;
+  if (!bp || !leader) return;
+  const active = engine.bonfirePos?.x === bp.x && engine.bonfirePos?.z === bp.z;
   if (Combat.dist(leader.pos, bp) <= 1.5) {
-    if (engine.bonfireLit) engine.restAtBonfire(); else engine.lightBonfire();
+    if (active && engine.bonfireLit) engine.restAtBonfire(idx); else engine.lightBonfire(idx);
     return;
   }
   const adj = closestWalkableAdjacent(engine, bp, leader);
   if (adj) {
     const path = engine.combat.pathTo(leader, adj.x, adj.z);
     if (path && path.length) {
-      engine.pendingBonfire = engine.bonfireLit ? 'rest' : 'light';
+      engine.pendingBonfire = { action: active && engine.bonfireLit ? 'rest' : 'light', idx };
       engine.audio.play('ui_click', 0.5);
       pingAt(engine, adj);
       moveUnitAlong(engine, leader, path);
@@ -507,7 +548,7 @@ export function clickExplore(engine: any, pick: InteractPick | null, tile: GridP
   const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat.living('party')[0];
 
   // ── bonfire: forgiving click — walk up and kindle/rest automatically ──
-  if (pick?.kind === 'bonfire' && engine.bonfirePos) { bonfireClick(engine, leader); return; }
+  if (pick?.kind === 'bonfire') { bonfireClick(engine, leader, pick.idx ?? 0); return; }
 
   // ── active proximity prompt ([E] …): click on/near it triggers it ──
   const it = engine.activeInteractable;
@@ -651,13 +692,23 @@ export function clickCombat(engine: any, pick: InteractPick | null, tile: GridPo
   if (unitId) {
     const t = engine.byId(unitId);
     if (t && t.alive && t.team === 'enemy') {
+      // 3-phase combat: strikes are phase-gated — basic attack in ⚔️ phase 2,
+      // targeted skills in 🔸 phase 3
+      if (engine.combat.turnMode === 'walk') {
+        setHoverInfoOnce(engine, 'Attacking is the ⚔️ second phase — switch or Skip there.');
+        return;
+      }
+      if (engine.combat.turnMode !== 'action') {
+        setHoverInfoOnce(engine, 'Pick a 🔸 skill — or switch to the ⚔️ Attack phase for a basic attack.');
+        return;
+      }
       if (!engine.hasLineOfSight?.(active.pos, t.pos)) {
         engine.setHoverInfoOnce(`No line of sight to ${t.name}.`);
         return;
       }
-      // the universal 'attack' is always in the pool — utility-only builds
-      // (velvet rope + id check, say) can still swing their weapon
-      const pool = [...active.equippedSkills, 'attack'];
+      // phase 2 = the BASIC attack: the universal weapon swing (weapon dice
+      // resolve in useSkill). Equipped skills belong to 🔸 phase 3.
+      const pool = ['attack'];
       const basic = pool.map((id: string) => skillById(id))
         .find((s: SkillDef | undefined): s is SkillDef => !!s && !!s.damageDice && !s.targetsAllies && !s.selfCentered && s.aoeRadius === 0 &&
           Combat.dist(active.pos, t.pos) <= Math.max(1, s.range) && !engine.combat.canUse(active, s));
@@ -670,6 +721,11 @@ export function clickCombat(engine: any, pick: InteractPick | null, tile: GridPo
   }
   if (propId) { trySmashInCombat(engine, active, propId); return; }
   if (tile && engine.moveTiles.has(`${tile.x},${tile.z}`)) {
+    // movement is a 🚶 phase-1 action — other phases refuse ground clicks
+    if (engine.combat.turnMode !== 'walk') {
+      setHoverInfoOnce(engine, 'Movement happens in the 🚶 Walk phase — switch or Skip there.');
+      return;
+    }
     engine.enqueue(engine.combat.moveActiveTo(tile));
   }
 }
@@ -713,7 +769,10 @@ function runActions(engine: any, actions: DialogueAction[] | undefined, npc: NPC
 /** current dialogue node id (persists across clicks so trees can branch) */
 function nodeIdFor(engine: any, npc: NPCDef): string {
   const questNode = engine.questLog.nodeFor(npc.id, hasItemInInventory(engine, 'severed_finger'));
-  return engine.dialogueNodeId ?? questNode ?? npc.entryNode;
+  const target = engine.dialogueNodeId ?? questNode ?? npc.entryNode;
+  // a quest node that doesn't exist in the tree (authoring gap — e.g. Scrag's
+  // missing 'done') must never brick the NPC: fall back to the entry node
+  return npc.dialogue[target] ? target : npc.entryNode;
 }
 
 function presentNode(engine: any, npc: NPCDef, nodeId: string) {

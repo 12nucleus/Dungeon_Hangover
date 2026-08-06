@@ -1,0 +1,319 @@
+═══════════════════════════════════════════════════════════════════
+DUNGEON HANGOVER — FLOOR 50 TTS LINES
+id = the .mp3 base name the game looks for.
+  Narrator lines : public/audio/narration/<id>.mp3
+  NPC lines      : public/audio/npc/<npcId>_<nodeId>.mp3
+Edit the TEXT, regenerate the audio under the SAME id, and the game
+picks it up. (A missing mp3 simply shows the line as a caption.)
+Source file is listed so you can find the line in code.
+═══════════════════════════════════════════════════════════════════
+
+───────────────────────────────────────────────────────────────
+── NARRATOR LINES (41)
+───────────────────────────────────────────────────────────────
+
+[f50_altar]   (src/levels/floor50Content.ts)
+The altar drinks the soap. The water drains away with a wet, disappointed sigh. The deep is shallow now. (You used your soap on the altar — the gate will need another way.)
+
+[f50_ambush]   (src/game/engine/dungeonSetup.ts)
+Something moves in the dark. Something with too many legs. Something with too many TEETH.
+
+[f50_body]   (src/levels/floor50Content.ts)
+A body. Floating. It's been here a while. It's wearing armor. Good armor. You take the armor. The body doesn't mind. The body is DEAD.
+
+[f50_bone]   (src/levels/floor50Content.ts)
+The rats devolve into a squeaking, fur-flying brawl over the bone. Two of them do not get up. The nursery judges you.
+
+[f50_bonfire]   (src/game/engine/camping.ts)
+The bonfire catches. The warmth is immediate. The warmth is the first good thing that has happened to you since you woke up. The warmth is the first good thing that has happened to you in WEEKS.
+
+[f50_cheese]   (src/levels/floor50Content.ts)
+The Boss Rat considers the cheese. The Boss Rat accepts the cheese. The Boss Rat gives you the finger — the Hermit's finger — and the rusty key, as tribute. A fair trade. A quiet beat.
+
+[f50_circle]   (src/levels/floor50Content.ts)
+You sit in the mushroom circle. The world SPINS. The world CHANGES. You see things. You see a DOOR. A door that's ALWAYS been there. A door that's WAITING.
+
+[f50_compass]   (src/levels/floor50Content.ts)
+The compass rose shimmers. It points to the exit — past Scrag, past the King, past the bath. Now you know the way.
+
+[f50_corpse]   (src/levels/floor50Content.ts)
+A note: 'The Hermit lies. Trust no one. Especially not the one who smiles.' The Hermit smiles. The Hermit is ALWAYS smiling.
+
+[f50_crack]   (src/levels/floor50Content.ts)
+Through the crack: a flooded room. Rats. A large one with opinions. You now have the drop on them — they'll be Surprised when you fight.
+
+[f50_departure]   (src/levels/floor50Content.ts)
+The staircase is cold. The staircase is stone. The staircase goes UP. You climb away from the bath. You climb away from the soap. You climb toward Floor 49. You climb toward the LIGHT.
+
+[f50_forced]   (src/levels/floor50Content.ts)
+The iron door shrieks and gives. Somewhere inside, a goblin king is going to be VERY upset about this.
+
+[f50_fountain]   (src/levels/floor50Content.ts)
+The fountain burbles to life. The water is... clean? That's new. +10 HP.
+
+[f50_letter]   (src/levels/floor50Content.ts)
+A love letter. It's addressed to Scrag. It's from someone named 'Bliss.' It's... it's very romantic. It's very GRAPHIC. You put it back. You put it back and you NEVER speak of it.
+
+[f50_look_up]   (src/levels/floor50Content.ts)
+Through the crack in the ceiling: stars. Or crystals. Or a very large eye. You decide it's stars.
+
+[f50_mat]   (src/levels/floor50Content.ts)
+You lie on the straw mat. It smells like straw. It smells like a barn. It smells like HOME. You sleep for five minutes. It's the best five minutes of your life.
+
+[f50_mirror]   (src/levels/floor50Content.ts)
+You look in the mirror. You see yourself, but cleaner. The mirror is a liar. You respect the hustle.
+
+[f50_note13]   (src/levels/floor50Content.ts)
+The wall note reads: "The Hermit was here before the dungeon. The dungeon grew around him."
+
+[f50_note22]   (src/levels/floor50Content.ts)
+The note reads: "The King is in the bath. He is always in the bath. Do not disturb him. Unless you have soap. Then disturb him."
+
+[f50_patrol]   (src/game/engine/dungeonSetup.ts)
+You hear footsteps. You hear GOBLIN footsteps. They're looking for something. They're looking for YOU.
+
+[f50_pedestal]   (src/levels/floor50Content.ts)
+The bones go quiet. The Bone Rat bows its skull — an ally for this fight. You feel blessed. The narrator is quiet. Some moments are too important for jokes.
+
+[f50_poison_mush]   (src/levels/floor50Content.ts)
+That one was NOT glowing. Why was it not glowing. The dungeon laughs. Poisoned.
+
+[f50_press]   (src/levels/floor50Content.ts)
+A wine press. Big, rusty, and hungry. If only you could shove someone into it. (Shove them in combat!)
+
+[f50_puddle]   (src/levels/floor50Content.ts)
+You drink. It's cold, it's brown, and it tastes like a decision. You feel... better? The puddle had one job.
+
+[f50_puddle_bad]   (src/levels/floor50Content.ts)
+You drink. It's cold, it's brown, and it tastes like a decision. Your stomach files an immediate protest. Nauseated.
+
+[f50_sack]   (src/game/engine/combatAnimation.ts)
+A sack. It contains a dagger that's seen better centuries, a potion of questionable provenance, and a torch. This is your inheritance. Spend it wisely.
+
+[f50_scratches]   (src/levels/floor50Content.ts)
+You don't remember writing this. You don't remember ANYTHING. This is either amnesia or a really good night.
+
+[f50_shortcut]   (src/levels/floor50Content.ts)
+The rubble grinds apart. A tunnel — a SHORTCUT — winds away into the dark. Somewhere up there, soap waits.
+
+[f50_sign]   (src/levels/floor50Content.ts)
+The sign reads: "GRIBNAB'S BATH — KNOCK FIRST — SOAP REQUIRED". Someone has written "please" in smaller letters underneath. Someone has crossed out "please".
+
+[f50_skeleton]   (src/levels/floor50Content.ts)
+A skeleton. In the water. It's been here a while. It's wearing the same underwear as you. This is either a coincidence or a dress code.
+
+[f50_skeleton19]   (src/levels/floor50Content.ts)
+A skeleton near the gap. Its note: 'I almost made it back. The bonfire was right there.' You take the 3 gold. The skeleton doesn't mind.
+
+[f50_soap]   (src/levels/floor50Content.ts)
+You found soap. It's pink. It smells like strawberries. Something in the pipe bit you for your trouble — you're Bleeding. This is somehow the most disturbing thing you've found today, and you found a finger.
+
+[f50_soap_clean]   (src/levels/floor50Content.ts)
+You found soap. It's pink. It smells like strawberries. This is somehow the most disturbing thing you've found today, and you found a finger.
+
+[f50_throne]   (src/levels/floor50Content.ts)
+You sit on the goblin throne. It is exactly goblin-sized, which is to say deeply uncomfortable. But the goblins SEE. You have their respect. They will not attack unless provoked.
+
+[f50_trapdoor]   (src/levels/floor50Content.ts)
+The trapdoor groans open. Water glints below — the flooded passage, Room 7.
+
+[f50_valve]   (src/levels/floor50Content.ts)
+The valve turns with a groan that echoes like a dying whale. Somewhere, the water level drops. Room 7 just got friendlier.
+
+[f50_vault]   (src/levels/floor50Content.ts)
+The gold glows with an oily light. The moment your hand touches it, the glow crawls up your arm. CURSED. Your loot will be worse until you break it. A note inside: 'Gribnab's soap is his crown. Without it, he is nothing. With it, he is a very clean nothing.'
+
+[f50_well]   (src/levels/floor50Content.ts)
+Down you go. The well is a throat. The throat swallows. You land in waist-deep water — Room 7, the flooded passage.
+
+[f50_well_finger]   (src/levels/floor50Content.ts)
+The finger drops. The ring flashes once, twice, and is gone. You feel blessed. The Hermit does not. The quest is failed.
+
+[f50_wine]   (src/levels/floor50Content.ts)
+You take the wine. It's been fermenting for centuries. It's basically vinegar. You'll drink it anyway.
+
+[f50_wrench]   (src/levels/floor50Content.ts)
+You pick up a wrench. It feels right. This is the first time anything has felt right today.
+
+───────────────────────────────────────────────────────────────
+── ROOM NARRATION (first entry per room) (25)
+───────────────────────────────────────────────────────────────
+
+[f50_room_r1]   (floor50Content.ts ROOM_NARRATION)
+You wake up. You are lying on cold stone. You are wearing underwear. This is not how you thought today would go, and you once thought you'd marry a chandelier.
+
+[f50_room_r10]   (floor50Content.ts ROOM_NARRATION)
+The guard's antechamber. It smells like goblin. Which is to say, it smells like someone tried to cover up a smell with a worse smell.
+
+[f50_room_r11]   (floor50Content.ts ROOM_NARRATION)
+The upper sewer. It's drier up here. The rats are smaller. The rats are always smaller when you're looking down at them.
+
+[f50_room_r12]   (floor50Content.ts ROOM_NARRATION)
+The water is brown. You tell yourself it's the sewer. You know it's not just the sewer.
+
+[f50_room_r13]   (floor50Content.ts ROOM_NARRATION)
+Mushrooms. Glowing mushrooms. In a dungeon. This is fine. Everything is fine. Eat the mushroom, Greg.
+
+[f50_room_r14]   (floor50Content.ts ROOM_NARRATION)
+A maintenance room. Tools. You don't know what most of them are for. You pick up a wrench. It feels right. This is the first time anything has felt right today.
+
+[f50_room_r15]   (floor50Content.ts ROOM_NARRATION)
+Bones. So many bones. You try not to think about where they came from. You fail.
+
+[f50_room_r16]   (floor50Content.ts ROOM_NARRATION)
+A hidden room. Another old man. Also missing a finger. This is getting weird.
+
+[f50_room_r17]   (floor50Content.ts ROOM_NARRATION)
+A vault. Gold. Potions. Cheese. This is the most beautiful room you've ever seen. You are very easily pleased.
+
+[f50_room_r18]   (floor50Content.ts ROOM_NARRATION)
+An intersection. You can go four ways. Three of them are bad. One of them is worse. Choose.
+
+[f50_room_r19]   (floor50Content.ts ROOM_NARRATION)
+A collapsed tunnel. You can see the bonfire room through the gap. You can also see a skeleton. The skeleton is not moving. This is the preferred state for skeletons.
+
+[f50_room_r2]   (floor50Content.ts ROOM_NARRATION)
+There is an old man in the next cell. He is missing a finger. He is smiling. This is not reassuring.
+
+[f50_room_r20]   (floor50Content.ts ROOM_NARRATION)
+A well. It's deep. You drop a pebble. You don't hear it land. This is either very deep or very soft. You don't want to find out which.
+
+[f50_room_r21]   (floor50Content.ts ROOM_NARRATION)
+Goblin barracks. They have bunk beds. They have a cooking pot. They have a life. You have underwear. Perspective is important.
+
+[f50_room_r22]   (floor50Content.ts ROOM_NARRATION)
+An armory. Weapons. Armor. You are still in your underwear. This seems like an oversight.
+
+[f50_room_r23]   (floor50Content.ts ROOM_NARRATION)
+The water is deep. Something is moving under the surface. Something is always moving under the surface. You are not welcome here.
+
+[f50_room_r24]   (floor50Content.ts ROOM_NARRATION)
+You are close. You can hear water. You can hear humming. The humming is off-key. The humming is always off-key.
+
+[f50_room_r25]   (floor50Content.ts ROOM_NARRATION)
+The Goblin King is in his bath. He is wearing a bath cap. He is surrounded by rubber ducks. He is singing. He is a goblin king and he is singing and you are in your underwear and this is your life now.
+
+[f50_room_r3]   (floor50Content.ts ROOM_NARRATION)
+The sewer tunnel stretches into darkness. Something squeaks. Something always squeaks.
+
+[f50_room_r4]   (floor50Content.ts ROOM_NARRATION)
+This is where the rats raise their young. It is disgusting. It is also kind of impressive. The nursery has better structure than your last apartment.
+
+[f50_room_r5]   (floor50Content.ts ROOM_NARRATION)
+The room smells like rat. Specifically, it smells like a rat that has never once considered bathing. In the center, on a little bone pedestal, is a finger. It has a ring on it. The rat is watching you. The rat is always watching.
+
+[f50_room_r6]   (floor50Content.ts ROOM_NARRATION)
+A wine cellar. Most of the bottles are broken. The ones that aren't are probably poisoned. This is the best room you've seen so far.
+
+[f50_room_r7]   (floor50Content.ts ROOM_NARRATION)
+The water is waist-deep and warm. You do not want to know why it's warm. Something brushes your leg. It's not a friend.
+
+[f50_room_r8]   (floor50Content.ts ROOM_NARRATION)
+Pipes. Everywhere. One of them has soap in it. You don't know why. The dungeon doesn't explain itself. The dungeon is not your friend.
+
+[f50_room_r9]   (floor50Content.ts ROOM_NARRATION)
+A goblin stands in front of a large iron door. He looks bored. He looks like he's been standing here for years. He looks like he will stand here for years more.
+
+───────────────────────────────────────────────────────────────
+── SOBERING-UP LINES (bonfire level-ups) (5)
+───────────────────────────────────────────────────────────────
+[sober_2]   (camping.ts SOBER_LINES)
+Your head clears. Slightly. The ringing is now a hum.
+[sober_3]   (camping.ts SOBER_LINES)
+You remember your name. It's Greg. Probably.
+[sober_4]   (camping.ts SOBER_LINES)
+Your hands stop shaking. You miss them already.
+[sober_5]   (camping.ts SOBER_LINES)
+Sober-ish. You can see the dungeon for what it is. It's worse.
+[sober_6]   (camping.ts SOBER_LINES)
+Stone cold sober. This is the worst thing that has ever happened to you.
+
+── NPC DIALOGUE (29)
+───────────────────────────────────────────────────────────────
+
+[gribnab/final_taunt]   (npc.ts)
+You fight well for someone in underwear! I am almost proud! Almost! But the bath demands a sacrifice! And you are IT!
+
+[gribnab/parley]   (npc.ts)
+Wait. Wait. You're not going to kill me? You're... you're offering me a truce? A... a partnership? You want to rule the bath together? ...I've never had a partner. I've only had subjects. And rubber ducks. This is... this is nice.
+
+[gribnab/pre_fight_door]   (npc.ts)
+You BROKE my door! That was a good door! That was an IRON door! Do you know how hard it is to get iron down here?! I am going to BATH you! I am going to bath you to DEATH!
+
+[gribnab/pre_fight_soap]   (npc.ts)
+Enter! You have soap? You do! Wonderful! Come in, come in! Don't mind the bubbles. Don't mind the ducks. Don't mind me. I am Gribnab, King of the Goblins, Lord of the Bath, Sovereign of Suds! And you are... in your underwear. Bold choice. I respect it.
+
+[hermit/accept]   (npc.ts)
+I want you to fight a giant rat for my finger. Yes. I'll make it worth your while. I have things. Equipment. Knowledge. I know what's going on here. I know why you're at the bottom. I know why you're in your underwear. Well — I have theories about the underwear.
+
+[hermit/bye]   (npc.ts)
+Off you go. Mind the dark, the damp, and the things that squeak. Especially the things that squeak.
+
+[hermit/done]   (npc.ts)
+The finger's home. The ring's home. I'm home. Go on, then — the soap is in the pipes. Don't ask why.
+
+[hermit/failed]   (npc.ts)
+The well. You dropped it in the well. Centuries I kept that ring safe, and you fed it to a hole. …No. No, it's fine. The moss forgives you. I am not the moss.
+
+[hermit/finger_story]   (npc.ts)
+I need a favor. A rat took my finger. The big one, down the tunnel. It has a little bone pedestal — very tasteful, for a rat. The finger has my wedding ring on it. I want it back. I was married once. She left me. But the ring stays.
+
+[hermit/has_finger]   (npc.ts)
+You did it! You beautiful, half-naked idiot. Here — take this.
+
+[hermit/intro]   (npc.ts)
+Ah! You're awake! I was starting to think you'd sleep through the apocalypse. Again.
+
+[hermit/refuse]   (npc.ts)
+Fine. Walk around fingerless, see if I care. I don't. The moss doesn't judge.
+
+[hermit/spire_lore]   (npc.ts)
+Now listen. This place — the Spire — it's alive. It grows around regret. You're at the bottom because your regrets are the freshest. The higher you go, the older the regrets. The worse they get. At the top — Floor 1 — there's something that's been trying to be good for a very long time. And failing. Every day. For ten thousand years.
+
+[hermit/waiting]   (npc.ts)
+No finger yet, then? The rat's a slippery beast. It's been a century since anything slipped past it, but you've got the look of a man who's slipped past worse.
+
+[hermit/what_is_it]   (npc.ts)
+I'll tell you when you get back down. If you get back down. Now go. And Greg? The goblin at the door? He wants soap. Find the soap. It's in the pipes. Don't ask why.
+
+[hermit/where]   (npc.ts)
+You're in the Spire of Regret. Floor 50. The bottom. As for the underwear — that's between you and whatever you did last night. I don't judge. I can't. I have no eyebrows.
+
+[other_hermit/compliment]   (npc.ts)
+It's an observation. Take this.
+
+[other_hermit/done]   (npc.ts)
+You're still here. Good. Or bad. The ring works either way.
+
+[other_hermit/intro]   (npc.ts)
+You found me. Good. Or bad. Depends on which Hermit you've been talking to.
+
+[other_hermit/regret]   (npc.ts)
+I trusted him. My brother. The other me. He said we could leave. He said there was a way. There wasn't. There isn't. But you — you might actually make it. You're too stupid to know you can't.
+
+[other_hermit/truth]   (npc.ts)
+There are always two of everything down here. I'm the one who tells the truth. He's the one who tells the story. Both are useful. Both are dangerous.
+
+[other_hermit/warning]   (npc.ts)
+And Greg? When you get to the top — don't trust the Paragon. Don't trust me. Don't trust yourself. Trust the chandelier.
+
+[other_hermit/which]   (npc.ts)
+I'm the one who's still missing his finger. He got his back, didn't he? Did he tell you where it came from? Did he tell you it was HIS rat? It wasn't his rat. It was the dungeon's rat. The dungeon gave it to him. The dungeon gives everyone what they regret.
+
+[scrag/attack]   (npc.ts)
+You what? …RIGHT! GUARD! WE'VE GOT A LIVE ONE!
+
+[scrag/break_done]   (npc.ts)
+No soap? Then no door. Unless you can break it. It's iron. You're in your underwear. I like your chances. I don't, actually. But it'll be funny to watch.
+
+[scrag/charm_done]   (npc.ts)
+Well. Well, well. Fine. You can go through. But knock first. The King hates being surprised.
+
+[scrag/done]   (npc.ts)
+Soap. Delivered. Door. Open. King. Happy — or at least less angry. You did good work, stranger. Don't let the bath get you. The bath gets everyone eventually.
+
+[scrag/intro]   (npc.ts)
+Halt. State your business. …Soap. The King wants soap. I want soap. Everyone wants soap. You bring me soap, you go through. No soap, no go. Those are the rules. I didn't make them. I just enforce them. Badly.
+
+[scrag/soap_done]   (npc.ts)
+Is that... is that soap? That's soap! That's beautiful soap! Give it here! Give it! ...Okay. You can go through. But knock first. The King hates being surprised.

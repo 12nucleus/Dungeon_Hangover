@@ -240,6 +240,11 @@ export const SCRAG: NPCDef = {
       text: "Well. Well, well. Fine. You can go through. But knock first. The King hates being surprised.",
       choices: [{ label: '[Leave]', action: { type: 'endConvo' } }],
     },
+    done: {
+      caption: 'Scrag leans on his spear. He looks almost content.',
+      text: "Soap. Delivered. Door. Open. King. Happy — or at least less angry. You did good work, stranger. Don't let the bath get you. The bath gets everyone eventually.",
+      choices: [{ label: '[Leave]', action: { type: 'endConvo' } }],
+    },
     attack: {
       text: "You what? …RIGHT! GUARD! WE'VE GOT A LIVE ONE!",
       choices: [{ label: '[Fight]', action: { type: 'endConvo' } }],

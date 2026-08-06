@@ -375,14 +375,31 @@ button:focus-visible, [tabindex]:focus-visible {
   pointer-events: auto;
 }
 .minimap-viewport {
-  position: relative; overflow: hidden; border-radius: 9px;
+  position: relative; overflow: hidden; border-radius: 50%;
   background: #12100b;
   box-shadow:
-    inset 0 0 0 1px rgba(201, 162, 39, 0.3),
-    inset 0 0 22px rgba(0, 0, 0, 0.75);
+    inset 0 0 0 2px rgba(201, 162, 39, 0.25),
+    inset 0 0 18px rgba(0, 0, 0, 0.8);
 }
 .minimap-viewport canvas { display: block; image-rendering: pixelated; }
 .minimap-pan { will-change: transform; }
+/* you-are-here marker: bright yellow dot + facing wedge (the map rotates so
+   the wedge always points the way the hero is looking) */
+.minimap-player {
+  position: absolute; left: 50%; top: 50%; z-index: 2;
+  width: 11px; height: 11px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background: radial-gradient(circle at 35% 30%, #fff9d0, #ffe14d 55%, #c9a227);
+  box-shadow: 0 0 0 2px rgba(12, 9, 2, 0.95), 0 0 12px rgba(255, 225, 77, 0.95);
+}
+.minimap-player::after {
+  content: ''; position: absolute; left: 50%; bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-bottom: 7px solid #ffe14d;
+  filter: drop-shadow(0 0 3px rgba(255, 225, 77, 0.95));
+}
 /* zoom coins */
 .minimap-zoom {
   position: absolute; right: -11px; top: 50%; transform: translateY(-50%);

@@ -198,20 +198,29 @@ export function Hotbar({ snap, engine }: Props) {
           <button
             className={`turn-mode ${snap.turnMode === 'walk' ? 'on' : ''}`}
             onClick={() => !enemyTurn && engine.setTurnMode('walk')}
-            title="Movement phase — click a tile to walk">
+            title="Phase 1 — Movement: click a tile to walk, jump to hop">
             🚶
           </button>
           <button
             className={`turn-mode ${snap.turnMode === 'action' ? 'on' : ''}`}
             onClick={() => !enemyTurn && engine.setTurnMode('action')}
-            title="Action phase — click an enemy to attack, pick a skill">
+            title="Phase 2 — Basic attack with your equipped weapon">
             ⚔️
           </button>
           <button
             className={`turn-mode ${snap.turnMode === 'bonus' ? 'on' : ''}`}
             onClick={() => !enemyTurn && engine.setTurnMode('bonus')}
-            title="Bonus phase — bonus-cost skills">
+            title="Phase 3 — Skills (and potions / throws / defend)">
             🔸
+          </button>
+          <button className="turn-mode skip" onClick={() => !enemyTurn && engine.skipPhase()} title="Skip to the next phase — walk → attack → skills → end turn">
+            ⏭
+          </button>
+          <button
+            className={`turn-mode defend ${active.conditions.some((c) => c.id === 'defending') ? 'on' : ''}`}
+            onClick={() => !enemyTurn && engine.defaultAction('defend')}
+            title="Defensive posture — +1 AC until your next turn (free)">
+            🛡️
           </button>
           <button className={`end-turn ${enemyTurn ? 'disabled' : ''}`} onClick={() => !enemyTurn && engine.endTurn()} title="End turn [Space]">
             END<br />TURN

@@ -16,7 +16,7 @@
 // terrain gets raised mezzanine shelves (r24/r25/r6) plus a sunken
 // oubliette (r20).
 // ─────────────────────────────────────────────────────────────
-import type { LevelDef, LevelStructures, PropPlacement, Rect } from './levelTypes';
+import type { LevelDef, LevelStructures, PropKind, PropPlacement, Rect } from './levelTypes';
 import type { GridPos } from '../game/types';
 import { WORLD_SIZE } from '../game/world';
 import { buildTerrain } from './gen/dungeonGen';
@@ -213,6 +213,7 @@ const lane = (x0: number, z0: number, x1: number, z1: number): GridPos[] => {
 const structures: LevelStructures = {
   partySpawn,
   checkpoint,
+  bonfires: [checkpoint, { x: 120, z: 66 }],   // spawn fire + Scrag's fire (r9, next to the guard)
   bossDoor,
   bossBath,
   bossRoom: roomRectOf('r25')!,
@@ -445,6 +446,102 @@ put('rubble', sc(66), sc(13), 0.5); put('rubble', sc(69), sc(14), 0.9);
 // crystal in the hidden room (16)
 put('crystal_green', sc(11), sc(28), 0.4);
 put('crystal_green', sc(10), sc(30), 0.6);
+
+// ── interactable visuals — every lootable / prompt has a visible model ──
+// positions mirror floor50Content.ts exactly; the room rects are WORLD coords,
+// so convert back to map-local for put() (which re-adds OFFSET)
+const putW = (kind: PropKind, wx: number, wz: number, s = 0.5) => put(kind, wx - OFFSET.x, wz - OFFSET.z, s);
+const R1 = map.rooms.r1, R2 = map.rooms.r2, R3 = map.rooms.r3, R6 = map.rooms.r6, R7 = map.rooms.r7;
+const R8 = map.rooms.r8, R9 = map.rooms.r9, R10 = map.rooms.r10, R11 = map.rooms.r11, R12 = map.rooms.r12;
+const R13 = map.rooms.r13, R14 = map.rooms.r14, R15 = map.rooms.r15, R16 = map.rooms.r16, R17 = map.rooms.r17;
+const R18 = map.rooms.r18, R19 = map.rooms.r19, R20 = map.rooms.r20, R21 = map.rooms.r21, R22 = map.rooms.r22;
+const R23 = map.rooms.r23, R24 = map.rooms.r24, R25 = map.rooms.r25;
+const mid = (r: { x0: number; x1: number }) => (r.x0 + r.x1) >> 1;
+// r1 — puddle, bucket, wall scratches
+putW('puddle', R1.x0 + 1, R1.z0, 0.5);
+putW('bucket', R1.x0, R1.z0 + 2, 0.5);
+putW('scratches', R1.x0 + 2, R1.z0 + 2, 0.5);
+// r2 — the hermit's straw mat
+putW('mat', R2.x1, R2.z0, 0.5);
+// r3 — skeleton in the water
+putW('skeleton', R3.x1, R3.z0, 0.5);
+// r6 — wine press + 12 bottles (every other spot is a broken bottle, mirroring the interactables)
+putW('wine_press', R6.x0 + 1, R6.z0, 0.5);
+{
+  const spots: [number, number][] = [
+    [R6.x0, R6.z0 + 2], [R6.x0 + 2, R6.z1], [R6.x0 + 3, R6.z0 + 1],
+    [R6.x1 - 1, R6.z1], [R6.x1, R6.z0], [R6.x0 + 4, R6.z1 - 1],
+    [R6.x0 + 1, R6.z1], [R6.x1 - 1, R6.z0 + 1], [R6.x0 + 5, R6.z0],
+    [R6.x1, R6.z1 - 1], [R6.x0 + 2, R6.z0], [R6.x0 + 4, R6.z0 + 2],
+  ];
+  spots.forEach(([x, z], i) => putW(i % 2 === 0 ? 'wine_bottle' : 'broken_bottle', x, z, 0.5));
+}
+// r7 — floating body + submerged chest
+putW('body', R7.x0, R7.z0, 0.5);
+putW('chest', R7.x1, R7.z0 + 1, 0.5);
+// r8 — pipes + valve
+putW('pipe', R8.x1 - 1, R8.z0 + 1, 0.3);
+putW('pipe', R8.x0 + 1, R8.z1, 0.6);
+putW('pipe', R8.x0 + 1, R8.z0 - 1, 0.8);
+putW('valve', R8.x0, R8.z0 + 2, 0.5);
+// r9 — door sign
+putW('sign', R9.x0, R9.z0, 0.5);
+// r10 — bunk, footlocker, dice table
+putW('bunk', R10.x1, R10.z0, 0.5);
+putW('footlocker', R10.x0, R10.z0 + 1, 0.5);
+putW('dice_table', mid(R10), R10.z1, 0.5);
+// r11 — nest
+putW('nest', R11.x0, R11.z1, 0.5);
+// r12 — floating corpse + drain
+putW('body', R12.x0, R12.z0, 0.4);
+putW('drain', R12.x1, R12.z1, 0.5);
+// r13 — note sign (mushrooms already placed)
+putW('sign', R13.x0, mid(R13), 0.5);
+// r14 — wrench, plunger, pipe fitting, toolbox
+putW('wrench', R14.x0, R14.z0, 0.5);
+putW('plunger', R14.x1, R14.z0, 0.5);
+putW('pipe_fitting', R14.x0, R14.z1, 0.5);
+putW('toolbox', mid(R14), R14.z1, 0.5);
+// r15 — the searchable skeleton (bones already piled)
+putW('skeleton', R15.x0, R15.z0, 0.5);
+// r16 — chest, mirror, bed
+putW('chest', R16.x1, R16.z1, 0.5);
+putW('mirror', R16.x0, R16.z0, 0.5);
+putW('bunk', mid(R16), R16.z1, 0.6);
+// r17 — vault chest
+putW('chest', mid(R17), mid(R17), 0.5);
+// r18 — compass rose + fountain
+putW('compass', mid(R18), R18.z0, 0.5);
+putW('fountain', mid(R18), R18.z1, 0.5);
+// r19 — the shortcut-entry skeleton
+putW('skeleton', R19.x0, R19.z0, 0.5);
+// r20 — well + well bucket
+putW('well', mid(R20), mid(R20), 0.5);
+putW('bucket', R20.x0, mid(R20), 0.5);
+// r21 — map table, footlocker, stew pot
+putW('dice_table', R21.x0, R21.z1, 0.5);
+putW('footlocker', R21.x1, R21.z0, 0.5);
+putW('cauldron', mid(R21), R21.z0, 0.5);
+// r22 — weapon racks + note sign
+putW('weapon_rack', R22.x0, R22.z0, 0.5);
+putW('weapon_rack', R22.x0, R22.z1, 0.6);
+putW('sign', R22.x1, mid(R22), 0.5);
+// r23 — altar + submerged chest
+putW('altar', R23.x0, R23.z0, 0.5);
+putW('chest', R23.x1, R23.z1, 0.5);
+// r24 — throne + banner
+putW('throne', mid(R24), R24.z0, 0.5);
+putW('banner', R24.x0, R24.z1, 0.5);
+// r25 — towel, bubble bath bottle, rubber ducks
+putW('towel', R25.x0, R25.z0, 0.5);
+putW('wine_bottle', mid(R25), R25.z0 + 1, 0.5);
+putW('duck', R25.x0 + 2, R25.z0 + 3, 0.5); putW('duck', R25.x0 + 4, R25.z0 + 5, 0.6);
+putW('duck', R25.x1 - 2, R25.z0 + 2, 0.7); putW('duck', R25.x1 - 1, R25.z0 + 6, 0.8);
+// shortcut debris at r1's south edge (clear_debris_19)
+putW('rubble', R1.x0 + 2, R1.z1 + 1, 0.5);
+// Scrag's bonfire (r9 — the guarded door, next to the guard) — the second
+// savepoint; kindling it moves the respawn checkpoint here
+putW('bonfire', 120, 66, 0.5);
 // stalagmites sparse in water rooms
 put('stalagmite', sc(12), sc(36), 0.5);
 put('stalagmite', sc(28), sc(53), 0.7);

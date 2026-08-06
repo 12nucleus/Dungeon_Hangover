@@ -656,6 +656,411 @@ export function propScratches(seed = 0.5) {
   return { name: 'scratches', voxels: v.list(), cube, blocks: false };
 }
 
+// ── interactable visuals ── every lootable / prompt has a visible model ──
+
+// BODY — a drowned armored corpse floating face-up (r7 floating body, r12 corpse)
+export function propBody(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 71);
+  const v = new Vox();
+  const cube = 0.055;
+  const SKIN = 0xc9b094, SKIN_D = 0xa88f74, ARMOR = 0x6a4a30, ARMOR_D = 0x4c3422, BOOT = 0x3a2a1a, CLOTH = 0x5a6a7a;
+  // legs floating slightly apart
+  for (let z = 4; z <= 8; z++) { v.add(1, 0, z, R() < 0.3 ? CLOTH : ARMOR_D); v.add(-1, 0, z, R() < 0.3 ? CLOTH : ARMOR_D); }
+  v.add(1, 0, 9, BOOT); v.add(-1, 0, 9, BOOT);
+  // armored torso
+  for (let x = -2; x <= 2; x++) for (let z = 0; z <= 4; z++) v.add(x, 0, z, R() < 0.25 ? ARMOR_D : ARMOR);
+  v.add(-2, 1, 1, ARMOR_D); v.add(2, 1, 1, ARMOR_D);
+  // splayed arms
+  for (let x = 3; x <= 6; x++) v.add(x, 0, 1, R() < 0.4 ? SKIN : ARMOR_D);
+  for (let x = -3; x >= -6; x--) v.add(x, 0, 1, R() < 0.4 ? SKIN : ARMOR_D);
+  v.add(6, 0, 0, SKIN_D); v.add(-6, 0, 0, SKIN_D);
+  // head
+  v.ellipsoid(0, 1, -1, 1.8, 1.4, 1.6, SKIN);
+  v.add(0, 0, -3, SKIN_D); v.add(-1, 1, -2, 0x2a2420); v.add(1, 1, -2, 0x2a2420);
+  return { name: 'body', voxels: v.list(), cube, blocks: false };
+}
+
+// MAT — a straw sleeping mat (r2 rest mat)
+export function propMat(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 73);
+  const v = new Vox();
+  const cube = 0.055;
+  const STRAW = 0xb09a58, STRAW_D = 0x8a7840, STRAW_HI = 0xcab274;
+  for (let x = -4; x <= 4; x++) for (let z = -3; z <= 3; z++) {
+    if (Math.abs(x) > 3.6 || Math.abs(z) > 2.6) continue;
+    v.add(x, 0, z, R() < 0.2 ? STRAW_HI : R() < 0.45 ? STRAW_D : STRAW);
+  }
+  for (let x = -4; x <= 4; x++) { v.add(x, 0, -3, STRAW_D); v.add(x, 0, 3, STRAW_D); }
+  return { name: 'mat', voxels: v.list(), cube, blocks: false };
+}
+
+// WINE PRESS — heavy wooden press frame (r6)
+export function propWinePress(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 75);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x7a5230, W_D = 0x54391d, IRON = 0x4c4f58;
+  v.box(-4, 0, 0, -4, 5, 1, W_D); v.box(4, 0, 0, 4, 5, 1, W_D);
+  v.box(-4, 5, -1, 4, 5, 2, W);
+  v.box(-3, 0, -2, 3, 0, 2, W_D);
+  v.box(-3, 0, -2, -3, 1, 2, W); v.box(3, 0, -2, 3, 1, 2, W);
+  v.box(-3, 0, -2, 3, 1, -2, W); v.box(-3, 0, 2, 3, 1, 2, W);
+  v.add(0, 3, 0, IRON); v.add(0, 4, 0, IRON); v.add(0, 6, 0, IRON); v.add(0, 6, 1, W); v.add(0, 6, -1, W);
+  return { name: 'wine_press', voxels: v.list(), cube, blocks: false };
+}
+
+// WINE BOTTLE — standing bottle (r6 wine, r25 bubble bath)
+export function propWineBottle(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 77);
+  const v = new Vox();
+  const cube = 0.055;
+  const G = 0x2f6f3a, G_D = 0x235028, CORK = 0x6b4a2a;
+  v.col(0, 0, 0, 1, 1.2, 1.2, G);
+  v.col(0, 0, 1, 3, 0.55, 0.55, G_D);
+  v.add(0, 3, 0, CORK);
+  return { name: 'wine_bottle', voxels: v.list(), cube, blocks: false };
+}
+
+// BROKEN BOTTLE — jagged glass shards (r6)
+export function propBrokenBottle(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 79);
+  const v = new Vox();
+  const cube = 0.055;
+  const G = 0x2f6f3a, G_HI = 0x4a9a58;
+  const shards = [[-2, 0, 0], [-1, 0, 1], [0, 0, 0], [1, 0, -1], [2, 0, 1], [-1, 1, 0], [1, 1, 0], [0, 1, 1], [0, 2, 0]];
+  for (const [x, y, z] of shards) v.add(x, y, z, R() < 0.35 ? G_HI : G);
+  return { name: 'broken_bottle', voxels: v.list(), cube, blocks: false };
+}
+
+// VALVE — pipe valve wheel (r8)
+export function propValve(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 81);
+  const v = new Vox();
+  const cube = 0.055;
+  const IRON = 0x4a4d55, IRON_D = 0x33353c, IRON_HI = 0x767a86;
+  v.box(-1, 0, 0, 1, 2, 1, IRON_D);
+  v.ring(0, 0, 2, 2, 2.2, 2.2, IRON, 1.4);
+  v.add(0, 2, 0, IRON_HI);
+  return { name: 'valve', voxels: v.list(), cube, blocks: false };
+}
+
+// PIPE — a large horizontal sewer pipe (r8)
+export function propPipe(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 83);
+  const v = new Vox();
+  const cube = 0.06;
+  const IRON = 0x4a4d55, IRON_D = 0x33353c, IRON_HI = 0x767a86, RUST = 0x6a4a30;
+  const oct = [[3, 1], [2, 2], [1, 3], [-1, 3], [-2, 2], [-3, 1], [-3, -1], [-2, -2], [-1, -3], [1, -3], [2, -2], [3, -1]];
+  for (let z = -4; z <= 4; z++) {
+    for (const [x, y] of oct) {
+      const c = R() < 0.12 ? RUST : (R() < 0.3 ? IRON_D : IRON);
+      v.add(x, y + 3, z, c);
+      v.add(x, y + 4, z, IRON_D);
+    }
+  }
+  for (let a = 0; a < 360; a += 45) {
+    const rad = (a * Math.PI) / 180;
+    v.add(Math.round(4.2 * Math.cos(rad)), 3 + Math.round(4.2 * Math.sin(rad)), -4, IRON_HI);
+    v.add(Math.round(4.2 * Math.cos(rad)), 3 + Math.round(4.2 * Math.sin(rad)), 4, IRON_HI);
+  }
+  return { name: 'pipe', voxels: v.list(), cube, blocks: false };
+}
+
+// SIGN — wooden sign board on a post (r9 door sign, r13 note, r22 note)
+export function propSign(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 85);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x7a5230, W_D = 0x54391d, W_HI = 0x966f40;
+  v.box(0, 0, 0, 0, 3, 0, W_D);
+  v.box(-3, 3, -1, 3, 4, 1, W);
+  v.box(-3, 3, 0, 3, 4, 0, W_HI);
+  v.add(0, 4, 0, W_D);
+  return { name: 'sign', voxels: v.list(), cube, blocks: false };
+}
+
+// BUNK — wooden bunk bed (r10 rest bunk, r16 bed)
+export function propBunk(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 87);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x6b451f, W_D = 0x4a2f14, BLANKET = 0x5a3a4a, PILLOW = 0xe8e2d0;
+  v.box(-4, 0, -3, -4, 3, 3, W_D); v.box(4, 0, -3, 4, 3, 3, W_D);
+  v.box(-4, 0, -3, 4, 0, 3, W);
+  v.box(-4, 1, -3, 4, 1, 3, BLANKET);
+  v.box(-3, 1, 2, 3, 1, 2, PILLOW);
+  v.box(-4, 2, -3, 4, 2, 3, W);
+  v.box(-1, 3, -3, 1, 3, -3, W_D);
+  return { name: 'bunk', voxels: v.list(), cube, blocks: false };
+}
+
+// FOOTLOCKER — small banded box (r10, r21)
+export function propFootlocker(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 89);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x6b451f, W_D = 0x4a2f14, IRON = 0x4a4d55, IRON_HI = 0x767a86;
+  v.box(-2, 0, -2, 2, 1, 2, W);
+  v.box(-2, 1, -2, 2, 1, 2, W_D);
+  v.box(-2, 0, 0, 2, 1, 0, IRON);
+  v.add(0, 1, 2, IRON_HI);
+  v.add(0, 2, 0, W_D);
+  return { name: 'footlocker', voxels: v.list(), cube, blocks: false };
+}
+
+// DICE TABLE — low gambling table with dice (r10); reused for the map (r21)
+export function propDiceTable(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 91);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x7a5230, W_D = 0x54391d, DICE = 0xe8e2cc, DICE_D = 0xcfc5aa;
+  v.box(-3, 0, -2, -3, 2, 2, W_D); v.box(3, 0, -2, 3, 2, 2, W_D);
+  v.box(-3, 0, -2, 3, 2, -2, W_D); v.box(-3, 0, 2, 3, 2, 2, W_D);
+  v.box(-3, 2, -2, 3, 2, 2, W);
+  v.add(-1, 3, 0, DICE); v.add(0, 3, 0, DICE_D); v.add(1, 3, 0, DICE);
+  v.add(-1, 3, 1, DICE_D); v.add(1, 3, 1, DICE);
+  return { name: 'dice_table', voxels: v.list(), cube, blocks: false };
+}
+
+// NEST — shredded bedding pile (r11)
+export function propNest(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 93);
+  const v = new Vox();
+  const cube = 0.055;
+  const STRAW = 0xb09a58, STRAW_D = 0x8a7840, CLOTH = 0x8a7a6a;
+  for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) {
+    const d = Math.max(Math.abs(x) / 3.2, Math.abs(z) / 3.2);
+    if (d > 1) continue;
+    const h = Math.round(Math.max(0, (1 - d) * 2.2 + R() * 0.8));
+    for (let y = 0; y <= h; y++) v.add(x, y, z, R() < 0.2 ? CLOTH : (R() < 0.5 ? STRAW : STRAW_D));
+  }
+  return { name: 'nest', voxels: v.list(), cube, blocks: false };
+}
+
+// DRAIN — iron floor grate (r12)
+export function propDrain(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 95);
+  const v = new Vox();
+  const cube = 0.055;
+  const IRON = 0x4a4d55, IRON_D = 0x33353c;
+  v.box(-3, 0, -3, 3, 0, 3, IRON_D);
+  for (let x = -2; x <= 2; x++) v.add(x, 0, 0, IRON);
+  for (let x = -2; x <= 2; x++) { v.add(x, 0, -2, IRON); v.add(x, 0, 2, IRON); }
+  v.add(0, 0, -1, IRON_D); v.add(0, 0, 1, IRON_D);
+  return { name: 'drain', voxels: v.list(), cube, blocks: false };
+}
+
+// WRENCH — heavy pipe wrench (r14)
+export function propWrench(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 97);
+  const v = new Vox();
+  const cube = 0.055;
+  const IRON = 0x5a5e68, IRON_D = 0x3d4048, IRON_HI = 0x8a8f9c;
+  v.box(-1, 0, 0, 1, 0, 4, IRON);
+  v.box(-1, 1, 0, 1, 1, 4, IRON_D);
+  v.box(-2, 0, 4, -1, 0, 6, IRON_HI); v.box(1, 0, 4, 2, 0, 6, IRON_HI);
+  v.box(-2, 1, 4, -1, 1, 6, IRON); v.box(1, 1, 4, 2, 1, 6, IRON);
+  v.add(0, 0, -1, IRON_D);
+  return { name: 'wrench', voxels: v.list(), cube, blocks: false };
+}
+
+// PLUNGER — stick + rubber cup (r14)
+export function propPlunger(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 99);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x7a5230, RUB = 0x5a2a2a, RUB_D = 0x3d1c1c;
+  v.box(0, 1, 0, 0, 4, 0, W);
+  v.col(0, 0, 0, 1, 2.0, 2.0, RUB);
+  v.ring(0, 0, 0, 0, 2.4, 2.4, RUB_D, 1.2);
+  return { name: 'plunger', voxels: v.list(), cube, blocks: false };
+}
+
+// PIPE FITTING — threaded ring, the helmet (r14)
+export function propPipeFitting(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 101);
+  const v = new Vox();
+  const cube = 0.055;
+  const IRON = 0x5a5e68, IRON_D = 0x3d4048, IRON_HI = 0x8a8f9c;
+  v.ring(0, 0, 0, 2, 2.8, 2.8, IRON, 1.3);
+  v.ring(0, 0, 0, 2, 3.6, 3.6, IRON_D, 1.5);
+  for (let a = 0; a < 360; a += 90) {
+    const rad = (a * Math.PI) / 180;
+    v.add(Math.round(4.4 * Math.cos(rad)), 1, Math.round(4.4 * Math.sin(rad)), IRON_HI);
+  }
+  return { name: 'pipe_fitting', voxels: v.list(), cube, blocks: false };
+}
+
+// TOOLBOX — metal box with handle (r14)
+export function propToolbox(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 103);
+  const v = new Vox();
+  const cube = 0.055;
+  const IRON = 0x5a5e68, IRON_D = 0x3d4048, IRON_HI = 0x8a8f9c;
+  v.box(-2, 0, -2, 2, 1, 2, IRON);
+  v.box(-2, 1, -2, 2, 1, 2, IRON_D);
+  v.box(-2, 1, 0, 2, 1, 0, IRON_HI);
+  v.box(-1, 2, 0, 1, 2, 0, IRON_D);
+  return { name: 'toolbox', voxels: v.list(), cube, blocks: false };
+}
+
+// CHEST — plain chest prop (reuses the destructible chest model)
+export function propChest(seed = 0.5) {
+  const m = destrChest(seed);
+  return { name: 'chest', voxels: m.voxels, cube: m.cube, blocks: false };
+}
+
+// MIRROR — standing mirror (r16)
+export function propMirror(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 105);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x6b451f, W_D = 0x4a2f14, GLASS = 0x9fc4d8, GLASS_HI = 0xd8ecf5;
+  v.box(-2, 0, 0, -2, 4, 0, W_D); v.box(2, 0, 0, 2, 4, 0, W_D);
+  v.box(-2, 4, -1, 2, 4, 1, W);
+  v.box(-1, 1, 0, 1, 4, 0, GLASS);
+  v.add(0, 2, 0, GLASS_HI);
+  return { name: 'mirror', voxels: v.list(), cube, blocks: false };
+}
+
+// COMPASS — floor mosaic compass rose (r18)
+export function propCompass(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 107);
+  const v = new Vox();
+  const cube = 0.055;
+  const STONE = 0x595e66, STONE_D = 0x3d4148, GOLD = 0xc9a227, GOLD_D = 0x8a6d14;
+  v.box(-4, 0, -4, 4, 0, 4, STONE);
+  for (let i = -3; i <= 3; i++) {
+    v.add(i, 0, 0, R() < 0.5 ? GOLD : GOLD_D);
+    v.add(0, 0, i, R() < 0.5 ? GOLD : GOLD_D);
+  }
+  v.add(0, 0, 0, GOLD);
+  v.add(1, 0, 1, STONE_D); v.add(-1, 0, 1, STONE_D); v.add(1, 0, -1, STONE_D); v.add(-1, 0, -1, STONE_D);
+  return { name: 'compass', voxels: v.list(), cube, blocks: false };
+}
+
+// FOUNTAIN — stone basin with murky water (r18)
+export function propFountain(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 109);
+  const v = new Vox();
+  const cube = 0.055;
+  const STONE = 0x6a6e75, STONE_D = 0x4c5057, WAT = 0x2f5346, WAT_HI = 0x4a7a68;
+  v.ring(0, 0, 0, 2, 3.2, 3.2, STONE, 1.6);
+  v.ring(0, 0, 0, 0, 4.2, 4.2, STONE_D, 1.8);
+  v.col(0, 0, 0, 0, 1.9, 1.9, WAT);
+  v.add(0, 0, 0, WAT_HI); v.add(1, 0, 1, WAT_HI); v.add(-1, 0, -1, WAT_HI);
+  return { name: 'fountain', voxels: v.list(), cube, blocks: false };
+}
+
+// WELL — stone well with winch frame (r20)
+export function propWell(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 111);
+  const v = new Vox();
+  const cube = 0.07;
+  const STONE = 0x6a6e75, STONE_D = 0x4c5057, WOOD = 0x6b451f;
+  v.ring(0, 0, 0, 3, 3.6, 3.6, R() < 0.2 ? STONE_D : STONE, 1.8);
+  v.ring(0, 0, 3, 3, 4.0, 4.0, STONE_D, 1.6);
+  v.box(-3, 3, 0, -3, 6, 0, WOOD); v.box(3, 3, 0, 3, 6, 0, WOOD);
+  v.box(-3, 6, -1, 3, 6, 1, WOOD);
+  v.box(-1, 4, -1, 1, 5, 1, WOOD);
+  return { name: 'well', voxels: v.list(), cube, blocks: false };
+}
+
+// CAULDRON — stew pot (r21)
+export function propCauldron(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 113);
+  const v = new Vox();
+  const cube = 0.055;
+  const IRON = 0x4a4d55, IRON_D = 0x33353c, STEW = 0x6a4a2a, STEW_HI = 0x8a5c34;
+  v.col(0, 0, 0, 2, 2.4, 2.4, IRON);
+  v.ring(0, 0, 0, 0, 2.8, 2.8, IRON_D, 1.4);
+  v.col(0, 0, 0, 0, 1.2, 1.2, STEW);
+  v.add(0, 2, 0, STEW_HI);
+  return { name: 'cauldron', voxels: v.list(), cube, blocks: false };
+}
+
+// WEAPON RACK — posts with axe / spear / mace (r22)
+export function propWeaponRack(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 115);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x6b451f, W_D = 0x4a2f14, STEEL = 0x767a86, STEEL_D = 0x4a4d55, RUST = 0x7a4a2a, WOOD = 0x8a5c2e;
+  v.box(-4, 0, 0, -4, 4, 1, W_D); v.box(4, 0, 0, 4, 4, 1, W_D);
+  v.box(-4, 3, 0, 4, 3, 1, W);
+  v.box(-4, 1, 0, 4, 1, 1, W);
+  v.box(-3, 2, 0, -2, 4, 0, WOOD); v.box(-3, 2, 0, -3, 3, 0, STEEL);
+  v.box(0, 1, 1, 0, 4, 1, WOOD); v.add(0, 4, 1, STEEL);
+  v.box(2, 2, 0, 3, 4, 0, WOOD); v.box(2, 2, 0, 3, 2, 0, RUST);
+  return { name: 'weapon_rack', voxels: v.list(), cube, blocks: false };
+}
+
+// ALTAR — stone block with a soap dish (r23)
+export function propAltar(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 117);
+  const v = new Vox();
+  const cube = 0.055;
+  const STONE = 0x6a6e75, STONE_D = 0x4c5057, STONE_HI = 0x8a8f96, SOAP = 0xf0a8c0;
+  v.box(-3, 0, -2, 3, 2, 2, STONE);
+  v.box(-3, 2, -2, 3, 2, 2, STONE_D);
+  v.box(-3, 3, -2, 3, 3, 2, STONE_HI);
+  v.add(0, 4, 0, SOAP); v.add(0, 4, 1, SOAP);
+  return { name: 'altar', voxels: v.list(), cube, blocks: false };
+}
+
+// THRONE — goblin throne (r24)
+export function propThrone(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 119);
+  const v = new Vox();
+  const cube = 0.06;
+  const W = 0x5a3a1e, W_D = 0x3e2814, W_HI = 0x7a5230, BONE = 0xe8e2cc;
+  v.box(-3, 0, -2, 3, 1, 2, W_D);
+  v.box(-3, 1, -2, 3, 3, -2, W);
+  v.box(-3, 1, -2, -3, 4, 2, W); v.box(3, 1, -2, 3, 4, 2, W);
+  v.box(-4, 4, -2, -3, 4, 2, W_HI); v.box(3, 4, -2, 4, 4, 2, W_HI);
+  v.add(0, 4, -2, BONE); v.add(-2, 4, -2, BONE); v.add(2, 4, -2, BONE);
+  return { name: 'throne', voxels: v.list(), cube, blocks: false };
+}
+
+// BANNER — hanging goblin banner (r24)
+export function propBanner(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 121);
+  const v = new Vox();
+  const cube = 0.055;
+  const CLOTH = 0x8a2a2a, CLOTH_D = 0x5c1c1c, CLOTH_HI = 0xb04040, GOLD = 0xc9a227, W_D = 0x4a2f14;
+  v.box(-2, 0, 0, 2, 3, 0, CLOTH);
+  v.box(-2, 3, 0, 2, 3, 0, CLOTH_D);
+  v.box(-3, 3, -1, 3, 4, 1, W_D);
+  v.add(0, 1, 0, GOLD); v.add(-1, 2, 0, GOLD); v.add(1, 2, 0, GOLD); v.add(0, 2, 0, CLOTH_HI);
+  return { name: 'banner', voxels: v.list(), cube, blocks: false };
+}
+
+// DUCK — rubber duck (r25)
+export function propDuck(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 123);
+  const v = new Vox();
+  const cube = 0.05;
+  const Y = 0xf0c040, Y_D = 0xc99a28, BEAK = 0xe07830, EYE = 0x1a1a1a;
+  v.ellipsoid(0, 0, 0, 1.6, 1.2, 2.0, Y);
+  v.ellipsoid(0, 1.2, -1.0, 1.0, 1.0, 1.0, Y);
+  v.add(0, 1.2, -2.0, BEAK);
+  v.add(-0.7, 1.5, -1.6, EYE); v.add(0.7, 1.5, -1.6, EYE);
+  v.add(0, 0.6, 2.2, Y_D);
+  return { name: 'duck', voxels: v.list(), cube, blocks: false };
+}
+
+// TOWEL — rolled towel on a rack bar (r25)
+export function propTowel(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 125);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x6b451f, CLOTH = 0xe8e2d0, CLOTH_D = 0xcfc5aa;
+  v.box(-3, 0, 0, 3, 0, 0, W);
+  v.box(-3, 1, -1, 3, 1, 1, CLOTH);
+  v.box(-3, 1, 0, 3, 1, 0, CLOTH_D);
+  v.add(-3, 1, 0, CLOTH_D); v.add(3, 1, 0, CLOTH_D);
+  return { name: 'towel', voxels: v.list(), cube, blocks: false };
+}
+
 export const PROP_BUILDERS = {
   stalagmite: propStalagmite,
   stalactite: propStalactite,
@@ -678,6 +1083,36 @@ export const PROP_BUILDERS = {
   bucket: propBucket,
   scratches: propScratches,
   skeleton: propSkeleton,
+  // interactable visuals — every lootable / prompt has a visible model
+  body: propBody,
+  mat: propMat,
+  wine_press: propWinePress,
+  wine_bottle: propWineBottle,
+  broken_bottle: propBrokenBottle,
+  valve: propValve,
+  pipe: propPipe,
+  sign: propSign,
+  bunk: propBunk,
+  footlocker: propFootlocker,
+  dice_table: propDiceTable,
+  nest: propNest,
+  drain: propDrain,
+  wrench: propWrench,
+  plunger: propPlunger,
+  pipe_fitting: propPipeFitting,
+  toolbox: propToolbox,
+  chest: propChest,
+  mirror: propMirror,
+  compass: propCompass,
+  fountain: propFountain,
+  well: propWell,
+  cauldron: propCauldron,
+  weapon_rack: propWeaponRack,
+  altar: propAltar,
+  throne: propThrone,
+  banner: propBanner,
+  duck: propDuck,
+  towel: propTowel,
 };
 
 // ══════════════════════════════════════════════════════════════

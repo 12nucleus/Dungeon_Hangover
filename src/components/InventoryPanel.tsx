@@ -15,16 +15,16 @@ const RARITY_COLOR: Record<Rarity, string> = {
 };
 
 const SLOT_ICON: Record<string, string> = {
-  head: '⛑️', chest: '🦺', legs: '👖', boots: '👢', gloves: '🧤', arms: '💪', cloak: '🧥',
+  head: '⛑️', chest: '🦺', legs: '👖', boots: '👢', gloves: '🧤', arms: '💪', cloak: '🧥', trinket: '🧿',
   weapon: '⚔️', offHand: '🛡️', amulet: '📿', ring1: '💍', ring2: '💍',
 };
 
 const SLOT_LABEL: Record<string, string> = {
-  head: 'Head', chest: 'Chest', legs: 'Legs', boots: 'Boots', gloves: 'Gloves', arms: 'Arms', cloak: 'Cloak',
+  head: 'Head', chest: 'Chest', legs: 'Legs', boots: 'Boots', gloves: 'Gloves', arms: 'Arms', cloak: 'Cloak', trinket: 'Trinket',
   weapon: 'Weapon', offHand: 'Off-Hand', amulet: 'Amulet', ring1: 'Ring 1', ring2: 'Ring 2',
 };
 
-const PAPER_DOLL_SLOTS = ['head', 'chest', 'legs', 'boots', 'gloves', 'arms', 'cloak', 'weapon', 'offHand', 'amulet', 'ring1', 'ring2'] as const;
+const PAPER_DOLL_SLOTS = ['head', 'chest', 'legs', 'boots', 'gloves', 'arms', 'cloak', 'trinket', 'weapon', 'offHand', 'amulet', 'ring1', 'ring2'] as const;
 
 function ItemIcon({ item, size = 40, selected = false, onClick, title }: {
   item: Item; size?: number; selected?: boolean; onClick?: () => void; title?: string;

@@ -37,12 +37,12 @@ export function closeDialogue(engine: any) {
 }
 
 // ══ bonfire ═════════════════════════════════════════════════
-export function lightBonfire(engine: any) {
-  if (!engine.bonfireGroup || engine.bonfireLit) return;
+export function lightBonfire(engine: any, idx = 0) {
+  const spot = engine.bonfireSpots?.[idx] ?? engine.structures?.checkpoint ?? { x: 10, z: 10 };
+  if (engine.bonfireLit && engine.bonfirePos?.x === spot.x && engine.bonfirePos?.z === spot.z) return;
   engine.bonfireLit = true;
-  engine.bonfirePos = engine.structures?.checkpoint
-    ? { ...engine.structures.checkpoint }
-    : { x: 10, z: 10 };
+  // kindling a fire moves the checkpoint (respawn + save) to THAT fire
+  engine.bonfirePos = { ...spot };
   spawnBonfireFlame(engine);
   void engine.narrate('f50_bonfire', "The bonfire catches. The warmth is immediate. The warmth is the first good thing that has happened to you since you woke up. The warmth is the first good thing that has happened to you in WEEKS.", 4600);
   engine.pushLog('The bonfire roars to life. This place feels safer now...', 'system');
@@ -58,8 +58,11 @@ export function lightBonfire(engine: any) {
   engine.saveGame(engine.currentSlotId ?? undefined, 'Bonfire Lit');
 }
 
-export function restAtBonfire(engine: any) {
+export function restAtBonfire(engine: any, idx = 0) {
   if (!engine.bonfireLit || !engine.bonfirePos) return;
+  // the checkpoint follows the fire you actually rest at
+  const spot = engine.bonfireSpots?.[idx];
+  if (spot) engine.bonfirePos = { ...spot };
   engine.audio.play('heal', 0.9);
   engine.restingAtBonfire = true;
 
@@ -225,8 +228,10 @@ export function respawn(engine: any) {
   // short aggro suppression right after a respawn so the party isn't re-swarmed
   // the instant they stand up at the bonfire (same grace the intro uses).
   engine.aggroGraceUntil = performance.now() / 1000 + 3;
-  engine.bossRatCutscenePlayed = false;
-  engine.gribnabCutscenePlayed = false;
+  // re-arm the boss reveal cutscenes ONLY while their boss is still alive — a
+  // dead Baron/Gribnab must not replay the reveal VO on the next visit
+  engine.bossRatCutscenePlayed = !engine.combat.units.some((u: any) => u.team === 'enemy' && u.name === 'Baron Gnaw' && u.alive);
+  engine.gribnabCutscenePlayed = !engine.combat.units.some((u: any) => u.team === 'enemy' && u.name === 'Gribnab' && u.alive);
   engine.selectedId = engine.combat.units.find((u: any) => u.team === 'party')?.id ?? null;
   // the party TELPORTED to the bonfire — the tactical camera only re-centers on
   // movement clicks, so snap it to the leader here or it stays staring at the
@@ -266,8 +271,14 @@ export function equipItem(engine: any, unitId: string, itemId: string, slotHint?
   // legacy saves: items made before `slot` was persisted lack it — recover
   // the intended slot from the base template so boots stay boots instead of
   // falling through to the armor→'chest' default.
-  const nativeSlot: string | null = item.slot ?? (item._baseId ? ITEM_BASES[item._baseId]?.slot ?? null : null)
+  let nativeSlot: string | null = item.slot ?? (item._baseId ? ITEM_BASES[item._baseId]?.slot ?? null : null)
     ?? (item.kind === 'weapon' ? 'weapon' : item.kind === 'armor' ? 'chest' : null);
+  if (!nativeSlot) {
+    // legacy saves: ring/amulet trinkets predate explicit slots — infer from the name
+    const n = item.name.toLowerCase();
+    if (n.includes('ring')) nativeSlot = 'ring';
+    else if (n.includes('amulet')) nativeSlot = 'amulet';
+  }
   if (!nativeSlot) {
     engine.setHoverInfoOnce('No valid slot for this item.');
     return;

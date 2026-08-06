@@ -390,7 +390,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r7');
     once('search_body_r7', r.x0, r.z0, '[R] Search the floating body', (e) => {
       void e.narrate('f50_body', "A body. Floating. It's been here a while. It's wearing armor. Good armor. You take the armor. The body doesn't mind. The body is DEAD.", 4200);
-      grant(e, ['leather_boot'], 5);
+      grant(e, ['chain_shirt', 'leather_boot'], 5);
       e.pushLog('A note pinned to the boot: "The soap is in the pipes. Don\'t ask why."', 'system');
     });
     out.push({

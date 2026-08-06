@@ -178,25 +178,44 @@ function Minimap({ snap }: { snap: UISnapshot }) {
       ctx.restore();
     }
 
-    // the player — a burning gilded diamond
+    // the player — a burning gilded diamond + a facing wedge so the
+    // north-up overview still shows where the hero is looking
     if (player) {
       const cx = player.z * zoom + zoom / 2;
       const cy = player.x * zoom + zoom / 2;
-      const s = Math.max(3.2, zoom * 1.05);
+      const s = Math.max(4, zoom * 1.4);
+      const fy = snap.heroYaw ?? 0;
+      const ang = Math.atan2(Math.cos(fy), -Math.sin(fy));
       ctx.save();
       ctx.translate(cx, cy);
-      ctx.rotate(Math.PI / 4);
-      ctx.shadowColor = 'rgba(232, 196, 102, 0.95)';
-      ctx.shadowBlur = 7;
-      ctx.fillStyle = '#fff3c8';
-      ctx.fillRect(-s / 2, -s / 2, s, s);
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = '#8a6d14';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(-s / 2, -s / 2, s, s);
+      // facing wedge
+      ctx.rotate(ang);
+      ctx.fillStyle = '#ffe14d';
+      ctx.shadowColor = 'rgba(255, 225, 77, 0.9)';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(0, -s * 1.9);
+      ctx.lineTo(-s * 0.75, 0);
+      ctx.lineTo(s * 0.75, 0);
+      ctx.closePath();
+      ctx.fill();
       ctx.restore();
+      // bright yellow dot with a dark ring
+      ctx.save();
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = 'rgba(255, 225, 77, 0.95)';
+      ctx.fillStyle = '#ffe14d';
+      ctx.beginPath();
+      ctx.arc(cx, cy, s * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = '#1a1404';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, s * 0.55, 0, Math.PI * 2);
+      ctx.stroke();
     }
-  }, [snap.minimapTiles, zoom]);
+  }, [snap.minimapTiles, zoom, snap.heroYaw]);
 
   // centre the cartographer's viewport on the player when it (re)opens
   const ppz = snap.minimapTiles?.units.find((u) => u.team === 'party')?.z ?? 0;
@@ -212,6 +231,10 @@ function Minimap({ snap }: { snap: UISnapshot }) {
   const S = snap.minimapTiles.walk.length;
   const player = snap.minimapTiles.units.find((u) => u.team === 'party');
   const px = player?.x ?? 0, pz = player?.z ?? 0;
+  // rotating map: "up" = the hero's facing. rotate the pan around the player
+  // tile (the transform-origin) so the wedge marker always points at the top.
+  const yaw = snap.heroYaw ?? 0;
+  const rot = Math.atan2(Math.cos(yaw), Math.sin(yaw)) + Math.PI;
 
   if (fullMap) {
     return (
@@ -239,10 +262,17 @@ function Minimap({ snap }: { snap: UISnapshot }) {
       <div className="minimap-viewport" style={{ width: SIZE, height: SIZE }}>
         <div
           className="minimap-pan"
-          style={{ transform: `translate(${SIZE / 2 - pz * zoom - zoom / 2}px, ${SIZE / 2 - px * zoom - zoom / 2}px)`, width: S * zoom, height: S * zoom }}
+          style={{
+            transform: `translate(${SIZE / 2 - pz * zoom - zoom / 2}px, ${SIZE / 2 - px * zoom - zoom / 2}px) rotate(${rot}rad)`,
+            transformOrigin: `${pz * zoom + zoom / 2}px ${px * zoom + zoom / 2}px`,
+            width: S * zoom, height: S * zoom,
+          }}
         >
           <canvas ref={canvasRef} style={{ width: S * zoom, height: S * zoom }} />
         </div>
+        {/* you are here — a bright dot with a facing wedge (the map rotates so
+            the wedge always points the way the hero is looking) */}
+        <div className="minimap-player" title="You are here" />
       </div>
       <div className="minimap-zoom">
         <button className="mm-coin" onClick={() => setZoom((z) => Math.max(1, z - 1))} title="Zoom out">−</button>
@@ -265,7 +295,9 @@ export function HUD({ snap, engine }: Props) {
   const phase = snap.phase;
   // Strict resolution from activeId only (used for enemy-turn banner / initiative).
   const activeUnit = snap.units.find((u) => u.id === snap.activeId) ?? null;
-  const party = snap.units.filter((u) => u.team === 'party');
+  // party strip: dead SUMMONS drop out of the sidebar (their boxes are cleaned
+  // up when they die) — core members stay visible in their dead state
+  const party = snap.units.filter((u) => u.team === 'party' && (u.alive || !u.id.startsWith('summon_')));
   const playerTurn = phase === 'combat' && activeUnit?.team === 'party';
 
   return (

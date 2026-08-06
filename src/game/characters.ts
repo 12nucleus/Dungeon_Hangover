@@ -931,6 +931,88 @@ function buildBatRig(scheme: CharacterScheme): Rig {
   };
 }
 
+function buildLeechRig(scheme: CharacterScheme): Rig {
+  const C = 0.075;
+  const SUB = 3;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+  const skin = scheme.skin, skinD = shade(skin, 0.8), skinD2 = shade(skin, 0.62), belly = scheme.cloth, sucker = scheme.accent, eye = scheme.hair;
+  const part = (name: string, x: number, y: number, z: number, build: Build) => {
+    const v = new Vox(C, SUB); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+  };
+
+  // long segmented body, low to the ground — reads clearly as a worm, not a rat
+  part('torso', 0, 0.12, 0, (v) => {
+    v.ellip(0, 0, 0, 1.3, 0.95, 4.2, skin);            // the worm
+    v.ellip(0, -0.6, 0.7, 1.0, 0.4, 3.3, belly);       // pale underbelly
+    for (let z = -3; z <= 3; z++) v.fill(-1, 0.45, z, 1, 0.85, z, skinD);   // segment rings
+    v.add(0, -0.3, -4.6, skinD2); v.add(0, -0.5, -4.9, skinD2); v.add(0, -0.6, -5.1, skinD2);  // tail taper
+  });
+  // blunt head with a sucker mouth + tiny eyes on top
+  part('head', 0, 0.14, 0.34, (v) => {
+    v.ellip(0, 0, 0, 1.0, 0.9, 1.1, skin);
+    v.fill(-0.7, -0.5, 0.6, 0.7, 0.1, 1.2, sucker);   // mouth sucker
+    v.add(-0.5, 0.6, 0.5, eye); v.add(0.5, 0.6, 0.5, eye);
+    v.add(-0.7, -0.6, 0.8, skinD); v.add(0.7, -0.6, 0.8, skinD);
+  });
+  // stubby waddle feet + tiny side nubs (anim contract needs the full set)
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.14, 0.1, -0.1, (v) => {
+    v.fill(0, -1, 0, 0, 0, 1, skinD); v.add(0, -2, 1, skinD2);
+  });
+  for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.12, 0.12, 0.3, (v) => {
+    v.fill(0, -1, 0, 0, 0, 0, skinD); v.add(0, -2, 1, skinD2);
+  });
+  for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.12, 0.05, 0.34, (v) => { v.add(0, 0, 0, skinD); });
+
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: Math.random() * 3, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: 0.1, torso: 0.12, head: 0.14, eye: 0.16, hair: 0.12, arm: 0.1, hand: 0.05, weapon: 0.14 },
+  };
+}
+
+function buildBlobRig(scheme: CharacterScheme): Rig {
+  const C = 0.075;
+  const SUB = 3;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+  const skin = scheme.skin, skinHI = shade(skin, 1.22), skinD = shade(skin, 0.8), spot = scheme.accent, eye = scheme.hair;
+  const part = (name: string, x: number, y: number, z: number, build: Build) => {
+    const v = new Vox(C, SUB); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+  };
+
+  // a wide, wobbly dome — mold green with spotty mottling
+  part('torso', 0, 0.12, 0, (v) => {
+    v.ellip(0, 0, 0, 2.6, 1.7, 2.6, skin);
+    v.ellip(0, 0.9, -0.3, 1.7, 0.9, 1.7, skinHI);     // shiny cap
+    v.add(-1.6, 0.4, 0.4, spot); v.add(1.4, 0.2, -0.8, spot); v.add(-0.6, -0.2, 1.7, spot); v.add(1.0, 0.8, 1.2, spot);
+    v.add(0.2, -0.5, -1.8, spot); v.add(-1.8, -0.4, -0.6, spot);   // mold spots
+    v.fill(-2.0, -1.2, -2.0, 2.0, -1.0, 2.0, skinD);  // slump ring at the base
+  });
+  // googly-eye lump on the front-top
+  part('head', 0, 0.16, 0.4, (v) => {
+    v.ellip(0, 0, 0, 1.2, 1.0, 1.2, skin);
+    v.add(-0.7, 0.5, 1.2, eye); v.add(0.7, 0.5, 1.2, eye);
+    v.add(-0.7, 0.7, 1.2, 0xffffff); v.add(0.7, 0.7, 1.2, 0xffffff);  // highlights
+  });
+  // tiny foot nubs + side nubs (anim contract needs the full part set)
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.3, 0.1, 0.1, (v) => {
+    v.fill(0, -1, 0, 0, 0, 1, skinD); v.add(0, -2, 1, skinD);
+  });
+  for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.34, 0.1, 0.2, (v) => {
+    v.fill(0, -1, 0, 0, 0, 1, skinD); v.add(0, -2, 1, skinD);
+  });
+  for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.34, 0.04, 0.24, (v) => { v.add(0, 0, 0, skinD); });
+
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: Math.random() * 3, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: 0.1, torso: 0.12, head: 0.16, eye: 0.2, hair: 0.14, arm: 0.1, hand: 0.05, weapon: 0.16 },
+  };
+}
+
 function buildSkeletonRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
   const C = 0.1;
   const SUB = 4;
@@ -1279,6 +1361,8 @@ export function buildCharacter(scheme: CharacterScheme, weapon?: WeaponKind): Ri
   if (scheme.monster === 'rat') return buildRatRig(scheme);
   if (scheme.monster === 'bat') return buildBatRig(scheme);
   if (scheme.monster === 'skeleton') return buildSkeletonRig(scheme, weapon);
+  if (scheme.monster === 'leech') return buildLeechRig(scheme);
+  if (scheme.monster === 'blob') return buildBlobRig(scheme);
   if (scheme.kind === 'wizard') return buildHumanoidRig(scheme, weapon, { robe: true, beard: true, hat: true, stars: true, leftHand: true });
   if (scheme.kind === 'barmaid') return buildHumanoidRig(scheme, weapon, { dress: true, apron: true, bun: true, tray: true });
   if (scheme.kind === 'bouncer') return buildHumanoidRig(scheme, weapon, { bald: true, vest: true });
@@ -2088,9 +2172,18 @@ function buildCloak(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
 
 function buildHead(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
   if (def.style === 'bucket') {
-    // the wooden bucket, worn as a hat: wide shallow cylinder with a lip
-    ringShell(v, piv, -7, 68, -7, 7, 74, 7, 3, def.color);
-    ringShell(v, piv, -8, 72, -8, 8, 73, 8, 2, shade(def.color, 0.8));
+    // the wooden bucket, worn as a full helm: square walls clear of the head
+    // (head max half-width is 6 — walls sit at 7..9 so nothing z-fights), an
+    // eye slit for Greg, and rim rings top & bottom. The crown shows through
+    // the open top — exactly how a bucket sits on a head, and nothing overlaps.
+    const C = def.color;
+    const dark = shade(C, 0.75);
+    // walls (ring at r≈7..9 encloses the head's r≈6 dome)
+    ringShell(v, piv, -9, 59, -9, 9, 70, 9, 2, C, (x, y, z) => z >= 6 && y >= 61 && y <= 63 && Math.abs(x) <= 2);
+    // upper lip (the bucket's open rim — rings the crown)
+    ringShell(v, piv, -10, 71, -10, 10, 72, 10, 2, dark);
+    // lower rim (sits at the neck like a helm brim)
+    ringShell(v, piv, -10, 57, -10, 10, 58, 10, 2, dark);
     return;
   }
   const topY = def.style === 'cap' ? 71 : 73;
@@ -2101,6 +2194,13 @@ function buildHead(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
 function buildAmulet(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
   v.add(0 - piv.cx, 42 - piv.cy, 6, def.color, 0.02);
   v.add(0 - piv.cx, 43 - piv.cy, 6, shade(def.color, 0.8), 0.02);
+}
+
+function buildTrinket(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  // a small charm hanging at the belt line
+  v.add(2 - piv.cx, 40 - piv.cy, 6, def.color, 0.02);
+  v.add(2 - piv.cx, 39 - piv.cy, 6, shade(def.color, 0.8), 0.02);
+  v.add(2 - piv.cx, 41 - piv.cy, 6, def.color, 0.02);
 }
 
 function buildRing(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
@@ -2134,6 +2234,7 @@ function buildPiece(def: EquipVisual): { part: string; mesh: THREE.Mesh }[] {
     case 'cloak': mk('torso', (v, p) => buildCloak(v, p, def)); break;
     case 'head': mk('head', (v, p) => buildHead(v, p, def)); break;
     case 'amulet': mk('torso', (v, p) => buildAmulet(v, p, def)); break;
+    case 'trinket': mk('torso', (v, p) => buildTrinket(v, p, def)); break;
     case 'ring': for (const s of ['L', 'R']) mk('hand' + s, (v, p) => buildRing(v, p, def)); break;
     case 'offHand': mk('foreL', (v, p) => buildShield(v, p, def)); break;
     default: break;
@@ -2142,7 +2243,7 @@ function buildPiece(def: EquipVisual): { part: string; mesh: THREE.Mesh }[] {
 }
 
 /**
- * Find the body Mesh a rig part points at.
+/** Find the body Mesh a rig part points at.
  *
  * For FLAT rigs (chibi/bat/skeleton/…) `rig.parts[name]` IS the body mesh, so
  * it's returned as-is. For the hierarchical humanoid rig, `rig.parts[name]`
@@ -2162,9 +2263,18 @@ function bodyMeshOf(part: THREE.Object3D): THREE.Object3D {
   return found ?? part;
 }
 
+/** show/hide the rig's hair mesh — headgear covers it (bucket helm, caps…) */
+function setHairVisible(rig: Rig, visible: boolean) {
+  const p = rig.parts?.hair;
+  if (!p) return;
+  bodyMeshOf(p).visible = visible;
+}
+
 /** Equip a piece onto a rig (replacing any existing piece in the same slot). */
 export function equip(rig: Rig, def: EquipVisual): void {
   unequip(rig, def.slot);
+  // headgear hides the hair so it doesn't poke through the helmet
+  if (def.slot === 'head') setHairVisible(rig, false);
   const pieces = buildPiece(def);
   const stored: THREE.Object3D[] = [];
   for (const { part, mesh } of pieces) {
@@ -2191,6 +2301,8 @@ export function unequip(rig: Rig, slot: EquipSlot): void {
     o.traverse((c: THREE.Object3D) => { const m = c as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
   }
   if (rig.equipped) delete rig.equipped[slot];
+  // restore the hair once no headgear is left
+  if (slot === 'head' && !rig.equipped?.head?.length) setHairVisible(rig, true);
 }
 
 /** Strip every equipped piece from a rig. */
@@ -2233,6 +2345,13 @@ export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisua
   else if (s === 'boots') { color = 0x4a3b2a; style = 'boots'; }
   else if (s === 'gloves') { color = 0x6b4423; style = 'leather'; }
   else if (s === 'arms') { color = 0x6b4423; style = 'bracers'; }
+  else if (s === 'trinket') {
+    if (n.includes('penny')) color = 0xd8b13a;
+    else if (n.includes('whisker')) color = 0xe8e0cc;
+    else if (n.includes('belt')) color = 0x4a3520;
+    else color = 0x9a7b4f;
+    style = 'shirt';
+  }
   else if (s === 'amulet' || s === 'ring') { color = 0xffd700; style = 'shirt'; }
   return { slot: s, color, style };
 }

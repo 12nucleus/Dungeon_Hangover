@@ -325,6 +325,7 @@ export const SKILLS: Record<string, SkillDef> = {
 
 export const CONDITIONS: Record<string, { name: string; desc: string }> = {
   blessed: { name: 'Blessed', desc: '+1d4 to attack rolls' },
+  defending: { name: 'Defending', desc: '+1 AC until your next turn' },
   slowed: { name: 'Slowed', desc: 'Movement halved' },
   burning: { name: 'Burning', desc: 'Takes 1d6 fire damage each round' },
   shielded: { name: 'Shielded', desc: '+2 AC' },
@@ -663,9 +664,9 @@ function mkSummon(partial: Partial<Unit> & Pick<Unit, 'name' | 'title' | 'team' 
 }
 
 const ratSmallScheme = { skin: 0x6b4a2f, cloth: 0x9a7a55, accent: 0xc79a9a, hair: 0x140f0f, hood: false, monster: 'rat' as const };
-const leechScheme = { skin: 0x5a2a3a, cloth: 0x3a1a28, accent: 0x9a4a5a, hair: 0x1a0a12, hood: false, monster: 'rat' as const };
-const giantLeechScheme = { skin: 0x7a3a4a, cloth: 0x4a2230, accent: 0xc06070, hair: 0x2a0f18, hood: false, monster: 'rat' as const, bulk: 1.2 };
-const moldScheme = { skin: 0x6a8a4a, cloth: 0x4a5a3a, accent: 0x9ac070, hair: 0x2a3a1a, hood: false, style: 'chibi' as const };
+const leechScheme = { skin: 0x5a2a3a, cloth: 0x3a1a28, accent: 0x9a4a5a, hair: 0x1a0a12, hood: false, monster: 'leech' as const };
+const giantLeechScheme = { skin: 0x7a3a4a, cloth: 0x4a2230, accent: 0xc06070, hair: 0x2a0f18, hood: false, monster: 'leech' as const, bulk: 1.2 };
+const moldScheme = { skin: 0x6a8a4a, cloth: 0x4a5a3a, accent: 0x9ac070, hair: 0x2a3a1a, hood: false, monster: 'blob' as const };
 const boneRatScheme = { skin: 0xd8d2be, cloth: 0x4a3a2a, accent: 0x9a9a9a, hair: 0x8fe3ff, hood: false, monster: 'rat' as const, bulk: 1.05 };
 const goblinGuardScheme = { skin: 0x6f9c3f, cloth: 0x4a3a28, accent: 0x2e2418, hair: 0x1c1c1c, hood: false, orc: true, bulk: 0.9 };
 const gribnabScheme = { skin: 0x7a9c4a, cloth: 0x4a6a8a, accent: 0xff9ac0, hair: 0x101010, hood: false, orc: true, bulk: 1.2 };

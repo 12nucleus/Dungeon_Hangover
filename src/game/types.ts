@@ -22,7 +22,7 @@ export type DamageType =
   | 'fire' | 'cold' | 'radiant' | 'force' | 'poison';
 export type SkillCost = 'action' | 'bonus' | 'free';
 export type SkillKind = 'melee' | 'ranged' | 'aoe' | 'heal' | 'buff';
-export type EquipSlot = 'head' | 'chest' | 'legs' | 'boots' | 'gloves' | 'arms' | 'cloak' | 'weapon' | 'offHand' | 'amulet' | 'ring';
+export type EquipSlot = 'head' | 'chest' | 'legs' | 'boots' | 'gloves' | 'arms' | 'cloak' | 'trinket' | 'weapon' | 'offHand' | 'amulet' | 'ring';
 
 export interface GridPos { x: number; z: number; }
 
@@ -36,7 +36,7 @@ export interface CharacterScheme {
   bulk?: number;        // group scale (goblins ~0.85, bosses ~1.15)
   orc?: boolean;        // green-skin features: pointed ears, tusks, brow
   style?: 'normal' | 'chibi';  // normal proportions or chibi stubby
-  monster?: 'rat' | 'bat' | 'skeleton';  // beast/undead rigs (characters.ts)
+  monster?: 'rat' | 'bat' | 'skeleton' | 'leech' | 'blob';  // beast/undead rigs (characters.ts)
   kind?: 'wizard' | 'barmaid' | 'bouncer' | 'barkeep';  // distinct tavern NPC silhouettes
   /**
    * "naked" rebuilds the rig as underwear only — no shirt, no pants, no boots,
@@ -156,7 +156,7 @@ export interface Unit {
   level: number;
   xp: number;             // accumulated experience
   skillPoints: number;    // unspent (used by a later chunk)
-  equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; arms?: import('./items').Item; cloak?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item };
+  equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; arms?: import('./items').Item; cloak?: import('./items').Item; trinket?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item };
   maxHp: number;
   hp: number;
   ac: number;
@@ -262,7 +262,9 @@ export interface UISnapshot {
   busy?: boolean;
   /** true while the in-game pause menu is open (simulation frozen) */
   paused?: boolean;
-  minimapTiles?: { walk: boolean[][]; heights: number[][]; units: { x: number; z: number; team: 'party' | 'enemy'; }[] };
+  minimapTiles?: { walk: boolean[][]; heights: number[][]; units: { x: number; z: number; team: 'party' | 'enemy' }[] };
+  /** party leader's facing (radians, THREE rotation.y) — drives the rotating minimap */
+  heroYaw?: number;
   showBonfireUI?: boolean;
   showBonfireLoadout?: boolean;
   showFullMap?: boolean;

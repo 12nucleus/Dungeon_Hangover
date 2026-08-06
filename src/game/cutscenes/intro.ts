@@ -460,6 +460,9 @@ export async function playIntroCutscene(h: CutsceneHost) {
     hv.rig = introGameplayRig;
     hv.rig.group.visible = true;
     h.scene.add(hv.rig.group);
+    // the swap is done — clear the stash so the final finishIntro() does not
+    // re-enter this block and dispose the GAMEPLAY rig's geometry
+    (hv as unknown as { introGameplayRig?: typeof gameplayRig }).introGameplayRig = undefined;
   }
   hv.rig.group.position.copy(floorWp);
   hv.rig.group.userData.baseY = floorWp.y;
@@ -557,13 +560,20 @@ export function finishIntro(h: CutsceneHost) {
       const state = hv as unknown as { introGameplayRig?: typeof hv.rig };
       if (state.introGameplayRig) {
         const tavernRig = hv.rig;
-        hv.rig = state.introGameplayRig;
-        state.introGameplayRig = undefined;
+        // remove the tavern Greg from the SCENE (it was added at intro start)
+        // — disposing geometry alone leaves the group rendering stale buffers
+        tavernRig.group.parent?.remove(tavernRig.group);
         tavernRig.group.traverse((o) => {
           const m = o as THREE.Mesh;
           if (m.geometry) m.geometry.dispose();
           if (m.material) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
         });
+        hv.rig = state.introGameplayRig;
+        state.introGameplayRig = undefined;
+        hv.rig.group.visible = true;
+        // the gameplay rig was detached at intro start — put it back in the
+        // scene or Greg is invisible after an ESC-skip
+        h.scene.add(hv.rig.group);
       }
       hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 0; hv.rig.group.rotation.set(0, Math.PI, 0);
       // skip-safety: if the intro was skipped while Greg was "plain", restore pads

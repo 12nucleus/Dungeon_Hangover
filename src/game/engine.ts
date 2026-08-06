@@ -8,7 +8,7 @@ import { FLOORS, START_FLOOR, levelForFloor } from '../levels';
 import { registerInteractables as registerInteractablesModule, updateInteractables as updateInteractablesModule, triggerActiveInteractable as triggerActiveInteractableModule, type Interactable } from './engine/interactables';
 import { setCursedLoot } from './items';
 import { ParticleSystem, FX } from './particles';
-import { updateRig, setWeapon, equip, unequip, itemToEquipVisual, type Rig } from './characters';
+import { updateRig, setWeapon, equip, unequip, unequipAll, itemToEquipVisual, type Rig } from './characters';
 import { Combat } from './combat';
 import { SKILLS, CONDITIONS, createRoster } from './skills';
 import { ALL_CLASS_SKILLS, classPoolSkillIdsForLevel, classPoolSkillIds } from './classSkills';
@@ -93,8 +93,8 @@ export class GameEngine {
   public pathDestRing: THREE.Mesh | null = null;
   /** tile key the current hover preview was computed for ('' = none) */
   public hoverPathKey = '';
-  /** queued once the leader finishes walking: kindle/rest at the bonfire */
-  public pendingBonfire: 'light' | 'rest' | null = null;
+  /** queued once the leader finishes walking: kindle/rest at a bonfire */
+  public pendingBonfire: { action: 'light' | 'rest'; idx: number } | null = null;
   /** queued once the leader finishes walking: talk to this npc */
   public pendingTalk: string | null = null;
 
@@ -190,6 +190,8 @@ export class GameEngine {
   public torchLight: THREE.PointLight | null = null;
   public bonfireGroup: THREE.Group | null = null;
   public bonfirePos: GridPos | null = null;
+  /** every bonfire spot on the floor (checkpoint first) — the ACTIVE checkpoint is bonfirePos */
+  public bonfireSpots: GridPos[] = [];
   public bonfireLit = false;
   public defeatedSpecialMobs = new Set<string>();
   /** ids of destroyed props — persisted so rests/loads keep them gone */
@@ -625,6 +627,17 @@ export class GameEngine {
     this.composer.addPass(new OutputPass());
 
     this.bindInput();
+    // GPU resilience: a lost WebGL context (common on virtualized GPUs) blanks
+    // the canvas white until the browser restores it. three.js auto-recovers;
+    // we re-assert sizing + let the player know what happened.
+    this.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      this.pushLog('⚠ Graphics hiccup — the canvas is re-initializing…', 'system');
+    });
+    this.renderer.domElement.addEventListener('webglcontextrestored', () => {
+      this.applyDisplaySettings();
+      this.pushLog('✅ Graphics recovered.', 'system');
+    });
     // honor the saved display settings (resolution + best-effort fullscreen)
     this.applyDisplaySettings();
     this.lastT = performance.now();
@@ -640,7 +653,14 @@ export class GameEngine {
         console.error('[engine.update]', err);
         this.pushLog(`⚠ engine error: ${err instanceof Error ? err.message : String(err)}`, 'system');
       }
-      this.composer.render();
+      try {
+        this.composer.render();
+      } catch (err) {
+        // a throwing frame (stale disposed mesh, driver hiccup) must not kill
+        // the loop either — the next frame usually renders fine
+        // eslint-disable-next-line no-console
+        console.error('[engine.render]', err);
+      }
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);
@@ -1033,12 +1053,28 @@ export class GameEngine {
     const arena = st.arenaRect;
     const inArena = !!arena && party.some((p) => GameEngine.inRect(p.pos, arena));
     const inBath = party.some((p) => GameEngine.inRect(p.pos, st.bossRoom));
-    if (inArena && !this.flags.has('boss_pacified') && !this.bossRatCutscenePlayed) {
+    // the reveal cutscenes only fire while their boss is actually alive — a
+    // dead Baron/Gribnab must never re-trigger the VO on re-entry, even if a
+    // respawn re-armed the flag
+    const gnawAlive = this.combat.units.some((u) => u.team === 'enemy' && u.name === 'Baron Gnaw' && u.alive);
+    const gribAlive = this.combat.units.some((u) => u.team === 'enemy' && u.name === 'Gribnab' && u.alive);
+    if (inArena && gnawAlive && !this.flags.has('boss_pacified') && !this.bossRatCutscenePlayed) {
       this.bossRatCutscenePlayed = true;
+      // The arena IS Room 5 — consume its first-entry narration NOW so the
+      // voice-over plays at the reveal, not deferred until after the fight
+      // (it used to fire once combat ended and the room check re-triggered).
+      const arenaId = st.arenaRect
+        ? this.roomOf?.((st.arenaRect.x0 + st.arenaRect.x1) >> 1, (st.arenaRect.z0 + st.arenaRect.z1) >> 1)
+        : null;
+      if (arenaId && !this.flags.has(`visited_${arenaId}`)) {
+        this.setFlag(`visited_${arenaId}`);
+        const text = this.roomNarration?.[arenaId];
+        if (text) void this.narrate(`f50_room_${arenaId}`, text, 5200);
+      }
       void this.playBossRatCutscene();
       return;
     }
-    if (inBath && this.flags.has('gribnab_door_open') && !this.gribnabCutscenePlayed) {
+    if (inBath && gribAlive && this.flags.has('gribnab_door_open') && !this.gribnabCutscenePlayed) {
       this.gribnabCutscenePlayed = true;
       void this.playGribnabCutscene();
       return;
@@ -1532,6 +1568,18 @@ export class GameEngine {
     }
     const s = SKILLS[skillId] ?? ALL_CLASS_SKILLS[skillId];
     if (!s) { this.setHoverInfoOnce('Unknown skill.'); return; }
+    // 3-phase combat: the basic attack lives in the ⚔️ Attack phase; every
+    // other skill is a 🔸 third-phase ability
+    if (this.combat.inCombat) {
+      if (skillId === 'attack' && this.combat.turnMode !== 'action') {
+        this.setHoverInfoOnce('The basic attack is the ⚔️ Attack phase — switch or Skip there.');
+        return;
+      }
+      if (skillId !== 'attack' && this.combat.turnMode !== 'bonus') {
+        this.setHoverInfoOnce('Skills are the 🔸 third phase — switch or Skip there.');
+        return;
+      }
+    }
     const deny = this.combat.canUse(active, s);
     if (deny) { this.setHoverInfoOnce(deny); return; }
     this.audio.play('ui_click', 0.6);
@@ -1844,6 +1892,20 @@ export class GameEngine {
     if (this.trapManager?.group) this.trapManager.group.visible = true;
     for (const n of this.npcs) if (n.rig?.group) n.rig.group.visible = true;
     this.repositionAllVisuals();
+    // freshly built rigs start naked — re-layer every equipped item onto them
+    // (also re-hides hair under headgear, matching the saved loadout)
+    for (const u of this.combat.units) {
+      if (u.team !== 'party') continue;
+      const rig = this.visuals.get(u.id)?.rig;
+      if (!rig) continue;
+      unequipAll(rig);
+      for (const [slot, item] of Object.entries(u.equipment ?? {})) {
+        if (!item) continue;
+        const vis = itemToEquipVisual(item, slot);
+        if (vis) equip(rig, vis);
+      }
+      if (u.weapon) setWeapon(rig, u.weapon, u.scheme.accent);
+    }
     if (this.bonfireLit) this.spawnBonfireFlame();
 
     // -- camera / audio / flags --
@@ -2187,7 +2249,7 @@ export class GameEngine {
   }
 
   /** BG3-style default hotbar actions: walk/run/jump/throw/attack + bonus attack. */
-  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack') {
+  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack' | 'defend') {
     this.audio.play('ui_click', 0.5);
     switch (action) {
       case 'walk':
@@ -2202,7 +2264,12 @@ export class GameEngine {
         break;
       case 'jump': {
         // jump-mode: the next tile click is a hop (2 tiles max, costs movement
-        // in combat). In explore it's a free little hop.
+        // in combat). In explore it's a free little hop. Movement (incl. jump)
+        // is a phase-1 action in combat.
+        if (this.phase === 'combat' && this.combat.turnMode !== 'walk') {
+          this.setHoverInfoOnce('Jumping is a 🚶 phase-1 movement action.');
+          return;
+        }
         this.jumpMode = !this.jumpMode;
         this.pushLog(this.jumpMode ? 'Select a tile to jump to (2 tiles max).' : 'Jump cancelled.', 'system');
         this.emitSnapshot();
@@ -2216,18 +2283,23 @@ export class GameEngine {
       case 'attack': {
         const a = this.combat.active;
         if (a && a.team === 'party' && this.phase === 'combat') {
+          // 3-phase combat: the basic attack is the ⚔️ second phase
+          if (this.combat.turnMode === 'walk') {
+            this.setHoverInfoOnce('The basic attack is the ⚔️ second phase — switch or Skip there.');
+            return;
+          }
+          if (this.combat.turnMode !== 'action') {
+            this.setHoverInfoOnce('The basic attack is the ⚔️ Attack phase.');
+            return;
+          }
           // backstab / surprise attack: attacking while sneaking (C mode)
           // is a guaranteed critical — see the sneakCrit path in combat.ts
           if (this.sneaking) {
             a.sneak = true;
             this.setHoverInfoOnce('Backstab! Striking from the shadows — guaranteed critical!');
           }
-          // the universal 'attack' is always an option — utility-only builds
-          // can still swing their weapon
-          const first = [...a.equippedSkills, 'attack'].find((id) => {
-            const s = SKILLS[id]; return s && s.damageDice && !s.targetsAllies && !s.selfCentered && s.aoeRadius === 0;
-          });
-          if (first) { this.selectSkill(first); return; }
+          this.selectSkill('attack');
+          return;
         }
         this.setHoverInfoOnce('No basic attack available.');
         return;
@@ -2245,8 +2317,29 @@ export class GameEngine {
         this.setHoverInfoOnce('Bonus attack unavailable — needs a bonus action in combat.');
         return;
       }
+      case 'defend': {
+        const a = this.combat.active;
+        if (this.phase === 'combat' && a && a.team === 'party') {
+          this.targeting = null;
+          this.clearHighlights();
+          this.enqueue(this.combat.defend(a));
+          return;
+        }
+        this.setHoverInfoOnce('Defend is a combat action.');
+        return;
+      }
     }
     this.emitSnapshot();
+  }
+
+  /** advance to the next combat phase: 🚶 walk → ⚔️ attack → 🔸 skills → end turn */
+  skipPhase() {
+    if (!this.combat?.inCombat || this.busy) return;
+    if (this.combat.active?.team !== 'party') return;
+    const m = this.combat.turnMode;
+    if (m === 'walk') this.setTurnMode('action');
+    else if (m === 'action') this.setTurnMode('bonus');
+    else this.endTurn();
   }
 
   closeDialogue() { this.showDialogue = null; this.stopDialogueVo(); this.emitSnapshot(); }
@@ -2310,10 +2403,12 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
-  lightBonfire() {
-    if (!this.bonfireGroup || this.bonfireLit) return;
+  lightBonfire(idx = 0) {
+    const spot = this.bonfireSpots[idx] ?? this.structures?.checkpoint ?? { x: 10, z: 10 };
+    if (this.bonfireLit && this.bonfirePos?.x === spot.x && this.bonfirePos?.z === spot.z) return;
     this.bonfireLit = true;
-    this.bonfirePos = this.structures?.checkpoint ? { ...this.structures.checkpoint } : { x: 10, z: 10 };
+    // kindling a fire moves the checkpoint (respawn + save) to THAT fire
+    this.bonfirePos = { ...spot };
     this.spawnBonfireFlame();
     this.pushLog('The bonfire roars to life. This place feels safer now...', 'system');
     this.audio.play('ui_click', 0.6);
@@ -2325,8 +2420,11 @@ export class GameEngine {
     this.saveGame(this.currentSlotId ?? undefined, 'Bonfire Lit');
   }
 
-  restAtBonfire() {
+  restAtBonfire(idx = 0) {
     if (!this.bonfireLit || !this.bonfirePos) return;
+    // the checkpoint follows the fire you actually rest at
+    const spot = this.bonfireSpots[idx];
+    if (spot) this.bonfirePos = { ...spot };
     this.audio.play('heal', 0.9);
     this.restingAtBonfire = true;
 
@@ -2339,6 +2437,7 @@ export class GameEngine {
     // NOTE: resting does NOT revive slain enemies or rebuild destroyed props —
     // the dungeon stays cleared (fixed bugs: respawning enemies after a rest,
     // and loot bags / destructibles popping back).
+    this.showBonfireUI = true;
     this.pushLog('?? You rest at the bonfire. Your wounds close. The dungeon stirs...', 'system');
     this.pushLog('Spend your XP here to level up, or change your skill loadout.', 'system');
     this.bigMessage = 'Bonfire Rest';
@@ -2407,8 +2506,14 @@ export class GameEngine {
     // legacy saves: items made before `slot` was persisted lack it — recover
     // the intended slot from the base template so boots stay boots instead of
     // falling through to the armor→'chest' default.
-    const nativeSlot: string | null = item.slot ?? (item._baseId ? ITEM_BASES[item._baseId]?.slot ?? null : null)
+    let nativeSlot: string | null = item.slot ?? (item._baseId ? ITEM_BASES[item._baseId]?.slot ?? null : null)
       ?? (item.kind === 'weapon' ? 'weapon' : item.kind === 'armor' ? 'chest' : null);
+    // legacy saves: ring/amulet trinkets predate explicit slots — infer from the name
+    if (!nativeSlot) {
+      const n = item.name.toLowerCase();
+      if (n.includes('ring')) nativeSlot = 'ring';
+      else if (n.includes('amulet')) nativeSlot = 'amulet';
+    }
     if (!nativeSlot) { this.setHoverInfoOnce('No valid slot for this item.'); return; }
     // paper-doll clicks may override the native slot when the item allows it
     // (the bucket is a weapon that also fits off-hand / head; any one-handed
@@ -3116,10 +3221,11 @@ export class GameEngine {
         }
         // bonfire click from afar — kindle/rest once the leader arrives
         if (this.pendingBonfire && u.team === 'party') {
-          const act = this.pendingBonfire;
+          const pb = this.pendingBonfire;
           this.pendingBonfire = null;
-          if (this.bonfirePos && Combat.dist(u.pos, this.bonfirePos) <= 1.5) {
-            if (act === 'rest') this.restAtBonfire(); else this.lightBonfire();
+          const bp = this.bonfireSpots[pb.idx] ?? this.bonfirePos;
+          if (bp && Combat.dist(u.pos, bp) <= 1.5) {
+            if (pb.action === 'rest') this.restAtBonfire(pb.idx); else this.lightBonfire(pb.idx);
           }
         }
         // NPC click from afar — open the dialogue once the leader arrives
@@ -3357,6 +3463,7 @@ export class GameEngine {
       busy: this.busy,
       paused: this.paused,
       minimapTiles: { walk: minimapWalk, heights: minimapHeights, units: minimapUnits },
+      heroYaw: this.visuals.get(this.combat.living('party')[0]?.id ?? '')?.targetYaw ?? 0,
       showBonfireUI: this.showBonfireUI,
       showBonfireLoadout: this.showBonfireLoadout,
       showFullMap: this.showFullMap,

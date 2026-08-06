@@ -181,6 +181,9 @@ export function setupDungeon(engine: any, L: LevelDef) {
   // authored room lookup + narration (floor 50)
   engine.roomOf = L.roomOf ?? null;
   engine.roomNarration = L.roomNarration ?? null;
+  // all bonfires on the floor — the first is the classic spawn checkpoint;
+  // kindling any fire moves the active checkpoint (respawn + save) to it
+  engine.bonfireSpots = [...(st.bonfires ?? (st.checkpoint ? [st.checkpoint] : []))];
   if (engine.roomOf) engine.setFlag?.('visited_r1');   // arrival narration covers R1
   // register per-run interactables from the level
   if (L.makeInteractables) engine.registerInteractables?.(L.makeInteractables(engine.runSeed ?? 0));
@@ -328,17 +331,23 @@ export function updateDungeon(engine: any, dt: number) {
   // ── interactables: nearest visible prompt ──
   engine.updateInteractables();
 
-  // ── room-entry narration (first entry per room, skip during combat) ──
+  // ── room-entry narration (first entry per room) ──
   const leader = party[0];
-  if (engine.roomOf && engine.roomNarration && leader && !engine.combat.inCombat) {
+  if (engine.roomOf && engine.roomNarration && leader) {
     const roomId = engine.roomOf(leader.pos.x, leader.pos.z);
     if (roomId && !engine.flags.has(`visited_${roomId}`)) {
       engine.setFlag(`visited_${roomId}`);
       if (['r16', 'r17', 'r19'].includes(roomId)) engine.runStats.secretsFound += 1;
-      const text = engine.roomNarration[roomId];
-      if (text) void engine.narrate(`f50_room_${roomId}`, text, 5200);
-      maybeAmbush(engine, roomId, leader.pos);
-      perceptionRoll(engine, roomId, leader);
+      // first entry during a fight still CONSUMES the room — narrating then
+      // would fire the line out of order once combat ends (e.g. the boss
+      // arena entered mid-chase told its pedestal line only after the kill).
+      // The boss arena narrates itself via its cutscene trigger instead.
+      if (!engine.combat.inCombat) {
+        const text = engine.roomNarration[roomId];
+        if (text) void engine.narrate(`f50_room_${roomId}`, text, 5200);
+        maybeAmbush(engine, roomId, leader.pos);
+        perceptionRoll(engine, roomId, leader);
+      }
     }
   }
 
@@ -355,6 +364,43 @@ export function updateDungeon(engine: any, dt: number) {
       engine.pushLog(`✨ You kick something under the muck — ${gold} gold!`, 'system');
     }
   }
+
+  // ── companion tether: a party member (risen skeleton, …) stranded far from
+  //    the leader snaps back to a free tile beside them — no more companions
+  //    stuck in a room you left an hour ago.
+  if (leader && !engine.combat.inCombat && !engine.busy) {
+    const TETHER = 14;
+    for (const u of engine.combat.units) {
+      if (u.team !== 'party' || u.id === leader.id || !u.alive) continue;
+      if (Combat.dist(u.pos, leader.pos) <= TETHER) continue;
+      const spot = nearestFreeTile(engine, leader.pos);
+      if (!spot) continue;
+      u.pos = spot;
+      const v = engine.visuals.get(u.id);
+      if (v) {
+        const wp = unitWorld(engine, spot);
+        v.rig.group.position.copy(wp);
+        v.rig.group.userData.baseY = wp.y;
+      }
+      engine.pushLog(`${u.name} catches up with you.`, 'system');
+      engine.emitSnapshot?.();
+    }
+  }
+}
+
+/** nearest walkable, unblocked, unoccupied tile within 3 of `near` */
+function nearestFreeTile(engine: any, near: GridPos): GridPos | null {
+  for (let r = 1; r <= 3; r++) {
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+      const x = near.x + dx, z = near.z + dz;
+      if (!engine.world.isWalkable(x, z)) continue;
+      if (engine.world.blocked?.[x]?.[z]) continue;
+      if (engine.combat.units.some((o: any) => o.alive && o.pos.x === x && o.pos.z === z)) continue;
+      return { x, z };
+    }
+  }
+  return null;
 }
 
 /**

@@ -361,6 +361,15 @@ export class Combat {
     const party = this.living('party').length, foes = this.activeEnemies().length;
     if (party === 0 || foes === 0) {
       this.inCombat = false;
+      // 3-phase combat: every encounter starts with fresh action points —
+      // action + bonus + full movement for the whole party
+      for (const p of this.units) {
+        if (p.team !== 'party') continue;
+        p.hasAction = true;
+        p.hasBonus = true;
+        p.movementLeft = effMove(p);
+      }
+      this.turnMode = 'walk';
       if (foes === 0) {
         // Encounter cleared. The dungeon is a series of encounters, so we hand
         // control back to exploration; final victory is driven by the engine
@@ -397,6 +406,17 @@ export class Combat {
   }
 
   // ── movement ──────────────────────────────────────────────
+  /** defensive posture — a free action: +1 AC until the unit's next turn */
+  defend(u: Unit): CombatEvent[] {
+    const ev: CombatEvent[] = [];
+    if (!u.conditions.some((c) => c.id === 'defending')) {
+      u.conditions.push({ id: 'defending', name: CONDITIONS.defending?.name ?? 'Defending', roundsLeft: 1 });
+    }
+    ev.push({ type: 'log', text: `${u.name} takes a defensive posture — +1 AC until their next turn.`, kind: 'system' });
+    ev.push({ type: 'float', unitId: u.id, text: '🛡 +1 AC', cls: 'buff' });
+    return ev;
+  }
+
   moveActiveTo(tile: GridPos): CombatEvent[] {
     const u = this.active;
     if (!u || u.team !== 'party') return [];
@@ -491,7 +511,9 @@ export class Combat {
     if (deny) return [{ type: 'log', text: deny, kind: 'info' }];
     // BG3 phase advance: action → bonus (if any left), bonus → back to walk
     if (u.team === 'party' && (s.cost === 'action' || s.cost === 'bonus')) {
-      this.turnMode = s.cost === 'bonus' ? 'walk' : (u.hasBonus ? 'bonus' : 'walk');
+      // 3-phase combat: after any skill, stay in the 🔸 skills phase while the
+      // hero still has points, otherwise fall back to the 🚶 walk phase
+      this.turnMode = (u.hasAction || u.hasBonus) ? 'bonus' : 'walk';
     }
 
     // resolve targets
