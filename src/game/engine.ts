@@ -14,7 +14,7 @@ import { SKILLS, CONDITIONS, createRoster } from './skills';
 import { ALL_CLASS_SKILLS, classPoolSkillIdsForLevel, classPoolSkillIds } from './classSkills';
 import { AudioManager } from './audio';
 import { DestructibleManager, type Destructible } from './destructibles';
-import { makeItem, type Item } from './items';
+import { makeItem, ITEM_BASES, type Item } from './items';
 import type { LevelDef, LevelStructures } from '../levels/levelTypes';
 import { effMaxHp } from './stats';
 import { rollD20, abilityMod, fmtMod } from './dice';
@@ -192,6 +192,10 @@ export class GameEngine {
   public bonfirePos: GridPos | null = null;
   public bonfireLit = false;
   public defeatedSpecialMobs = new Set<string>();
+  /** ids of destroyed props — persisted so rests/loads keep them gone */
+  public destroyedProps = new Set<string>();
+  /** player-curated item-bar keys (baseIds, max 6) — persisted */
+  public itemBarLoadout: string[] = [];
   public showBonfireUI = false;
   public restingAtBonfire = false;
   public pendingSmash: { unitId: string; propId: string } | null = null;
@@ -1724,6 +1728,8 @@ export class GameEngine {
       bonfirePos: this.bonfirePos ? { ...this.bonfirePos } : null,
       bonfireLit: this.bonfireLit,
       defeatedSpecialMobs: [...this.defeatedSpecialMobs],
+      destroyedProps: [...this.destroyedProps],
+      itemBar: [...this.itemBarLoadout],
       explored: this.explored.map((r) => [...r]),
       combat: {
         turnOrder: [...this.combat.turnOrder],
@@ -1768,6 +1774,13 @@ export class GameEngine {
     this.bonfirePos = data.bonfirePos ? { ...data.bonfirePos } : null;
     this.bonfireLit = data.bonfireLit;
     this.defeatedSpecialMobs = new Set(data.defeatedSpecialMobs);
+    // destroyed props + item-bar loadout (additive fields — legacy saves lack them)
+    this.destroyedProps = new Set(data.destroyedProps ?? []);
+    if (Array.isArray(data.itemBar)) {
+      this.itemBarLoadout = data.itemBar.filter((k): k is string => typeof k === 'string').slice(0, 6);
+    } else {
+      this.itemBarLoadout = [];
+    }
     // floor-50 run state
     if (data.flags) this.flags = new Set(data.flags);
     if (data.runSeed) this.runSeed = data.runSeed;
@@ -1785,6 +1798,9 @@ export class GameEngine {
     this.combat.phase = data.combat.phase;
     this.selectedId = data.selectedId;
     this.phase = data.phase;
+
+    // -- re-hide props that were destroyed before the save (no loot, no FX) --
+    for (const id of this.destroyedProps) this.props.removeById(id);
 
     // -- reveal the dungeon + reposition every rig --
     this.world.group.visible = true;
@@ -2285,26 +2301,9 @@ export class GameEngine {
       (u as any).restedAtBonfire = true;
     }
 
-    for (const u of this.combat.units) {
-      if (!u.alive && u.team === 'enemy' && !u.bossGroup && u.name !== 'Baron Gnaw') {
-        if (this.defeatedSpecialMobs.has(u.id)) continue;
-        u.alive = true;
-        u.hp = u.maxHp;
-        (u as any).dormant = true;
-        u.conditions = [];
-        const v = this.visuals.get(u.id);
-        if (v) {
-          v.rig.anim.mode = 'idle';
-          v.rig.anim.t = 0;
-          v.bar.style.display = '';
-          (v as any).dustDone = false;
-        }
-      }
-    }
-
-    this.props.resetAll();
-
-    this.showBonfireUI = true;
+    // NOTE: resting does NOT revive slain enemies or rebuild destroyed props —
+    // the dungeon stays cleared (fixed bugs: respawning enemies after a rest,
+    // and loot bags / destructibles popping back).
     this.pushLog('?? You rest at the bonfire. Your wounds close. The dungeon stirs...', 'system');
     this.pushLog('Spend your XP here to level up, or change your skill loadout.', 'system');
     this.bigMessage = 'Bonfire Rest';
@@ -2364,14 +2363,32 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
-  equipItem(unitId: string, itemId: string) {
+  equipItem(unitId: string, itemId: string, slotHint?: string) {
     const u = this.byId(unitId);
     const idx = this.inventory.findIndex((i) => i.id === itemId);
     if (!u || u.team !== 'party' || idx < 0) return;
     const item = this.inventory[idx];
     if (item.kind === 'consumable') { this.setHoverInfoOnce('Consumables are used, not equipped.'); return; }
-    let slot: string | null = item.slot ?? (item.kind === 'weapon' ? 'weapon' : item.kind === 'armor' ? 'chest' : null);
-    if (!slot) { this.setHoverInfoOnce('No valid slot for this item.'); return; }
+    // legacy saves: items made before `slot` was persisted lack it — recover
+    // the intended slot from the base template so boots stay boots instead of
+    // falling through to the armor→'chest' default.
+    const nativeSlot: string | null = item.slot ?? (item._baseId ? ITEM_BASES[item._baseId]?.slot ?? null : null)
+      ?? (item.kind === 'weapon' ? 'weapon' : item.kind === 'armor' ? 'chest' : null);
+    if (!nativeSlot) { this.setHoverInfoOnce('No valid slot for this item.'); return; }
+    // paper-doll clicks may override the native slot when the item allows it
+    // (the bucket is a weapon that also fits off-hand / head; any one-handed
+    // weapon can be held in the off hand for dual-wielding)
+    let slot: string = nativeSlot;
+    if (slotHint && slotHint !== nativeSlot) {
+      const allowed = (item.altSlots ?? []).includes(slotHint as EquipSlot)
+        || (item.kind === 'weapon' && !item.twoHanded && slotHint === 'offHand');
+      if (allowed) slot = slotHint;
+    }
+    // two-handed main weapon + off-hand item → refuse (both hands busy)
+    if (slot === 'offHand' && u.equipment.weapon?.twoHanded) {
+      this.setHoverInfoOnce(`${u.equipment.weapon.name} needs both hands — put it away first.`);
+      return;
+    }
     let actualSlot: string = slot;
     if (slot === 'ring') {
       if (!u.equipment.ring1) actualSlot = 'ring1';
@@ -2379,6 +2396,14 @@ export class GameEngine {
       else { this.setHoverInfoOnce('Both ring slots are full. Unequip a ring first.'); return; }
     }
     this.inventory.splice(idx, 1);
+    // equipping a two-handed main weapon frees the off hand
+    if (slot === 'weapon' && item.twoHanded && u.equipment.offHand) {
+      this.inventory.push(u.equipment.offHand);
+      const rig = this.visuals.get(u.id)?.rig;
+      if (rig) unequip(rig, 'offHand');
+      u.equipment.offHand = undefined;
+      this.pushLog(`${u.name} stows their off-hand item to wield ${item.name} with both hands.`, 'system');
+    }
     const old = (u.equipment as Record<string, Item | undefined>)[actualSlot];
     if (old) this.inventory.push(old);
     (u.equipment as Record<string, Item | undefined>)[actualSlot] = item;
@@ -2492,9 +2517,9 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
-  /** drink a potion ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ self-target; in combat only on the drinker's turn (bonus action) */
+  /** drink a potion — self-target; in combat only on the drinker's turn (bonus action) */
   useConsumable(itemId: string, unitId: string) {
-    const idx = this.inventory.findIndex((i) => i.id === itemId);
+    const idx = this.inventory.findIndex((i) => i.id === itemId || (i._baseId && i._baseId === itemId));
     const u = this.byId(unitId);
     if (idx < 0 || !u || !u.alive) return;
     const item = this.inventory[idx];
@@ -2524,26 +2549,38 @@ export class GameEngine {
     }
   }
 
+  /** player-curated item bar: pin stack keys (baseIds) into the first 6 slots.
+   *  Keys with no owned stack are dropped; the bar auto-fills the rest. */
+  setItemBarLoadout(keys: string[]) {
+    const clean = keys
+      .map((k) => (typeof k === 'string' && k ? k : null))
+      .filter((k): k is string => !!k)
+      .slice(0, 6);
+    this.itemBarLoadout = clean;
+    this.audio.play('ui_click', 0.5);
+    this.emitSnapshot();
+  }
+
   /** combat bonus action — arm a throw: the next tile/unit click hurls the
-   *  given consumable (range 6). Toggle off by clicking the 🎯 again. */
+   *  given consumable or weapon (range 6). Toggle off by clicking the 🎯 again. */
   startThrow(itemId: string) {
-    const it = this.inventory.find((i) => i.id === itemId);
-    if (!it || it.kind !== 'consumable') return;
+    const it = this.inventory.find((i) => i.id === itemId || (i._baseId && i._baseId === itemId));
+    if (!it || (it.kind !== 'consumable' && it.kind !== 'weapon')) return;
     if (this.targeting === `THROW:${itemId}`) { this.cancelTargeting(); return; }
     this.targeting = `THROW:${itemId}`;
     this.audio.play('ui_click', 0.6);
     this.emitSnapshot();
   }
 
-  /** resolve a thrown consumable — gate the range/bonus here, the effect in
-   *  combat.throwItem (allies take the item's effect at range, enemies take
-   *  glass + condition). Costs the active hero's bonus action. */
+  /** resolve a thrown item — gate the range/bonus here, the effect in
+   *  combat.throwItem (weapons thud with their dice, consumables splash).
+   *  Costs the active hero's bonus action. */
   public throwConsumable(itemId: string, tx: number, tz: number) {
-    const idx = this.inventory.findIndex((i) => i.id === itemId);
+    const idx = this.inventory.findIndex((i) => i.id === itemId || (i._baseId && i._baseId === itemId));
     const u = this.combat.active;
     if (idx < 0 || !u || u.team !== 'party') return;
     const item = this.inventory[idx];
-    if (item.kind !== 'consumable') return;
+    if (item.kind !== 'consumable' && item.kind !== 'weapon') return;
     if (!this.combat.inCombat) { this.setHoverInfoOnce('Throwing is a combat bonus action.'); return; }
     if (!u.hasBonus) { this.setHoverInfoOnce('No bonus action left.'); return; }
     if (Combat.dist(u.pos, { x: tx, z: tz }) > 6) { this.setHoverInfoOnce('Too far to throw (6 tiles).'); return; }
@@ -3261,6 +3298,7 @@ export class GameEngine {
       activeId: this.combat.inCombat ? this.combat.active?.id ?? null : null,
       phaseBanner: this.phaseBanner ? { text: this.phaseBanner.text, cls: this.phaseBanner.cls, id: this.phaseBanner.id } : null,
       turnOrder: this.combat.inCombat ? this.combat.turnOrder.filter((id) => this.byId(id)?.alive) : [],
+      itemBar: [...this.itemBarLoadout],
       selectedSkill: this.targeting,
       targeting: !!this.targeting,
       log: [...this.log],

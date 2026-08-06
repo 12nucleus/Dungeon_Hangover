@@ -5,13 +5,13 @@
 // Engine internals will be made public in step 6 (engine.ts rewrite).
 // ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
-import { setWeapon } from '../characters';
+import { setWeapon, equip, unequip, itemToEquipVisual } from '../characters';
 import { FX } from '../particles';
 import { effMaxHp, MAX_LEVEL, XP_THRESHOLDS } from '../stats';
 import { classPoolSkillIdsForLevel } from '../classSkills';
-import type { GridPos } from '../types';
+import type { GridPos, EquipSlot } from '../types';
 import { canUnlock, treeFor } from '../skilltree';
-import { type Item } from '../items';
+import { ITEM_BASES, type Item } from '../items';
 import { unitWorld } from './visuals';
 import { spawnBonfireFlame } from './gameFlow';
 
@@ -75,24 +75,9 @@ export function restAtBonfire(engine: any) {
     (u as any).restedAtBonfire = true;
   }
 
-  for (const u of engine.combat.units) {
-    if (!u.alive && u.team === 'enemy' && !u.bossGroup && u.name !== 'Baron Gnaw') {
-      if (engine.defeatedSpecialMobs.has(u.id)) continue;
-      u.alive = true;
-      u.hp = u.maxHp;
-      (u as any).dormant = true;
-      u.conditions = [];
-      const v = engine.visuals.get(u.id);
-      if (v) {
-        v.rig.anim.mode = 'idle';
-        v.rig.anim.t = 0;
-        v.bar.style.display = '';
-        (v as any).dustDone = false;
-      }
-    }
-  }
-
-  engine.props.resetAll();
+  // NOTE: resting does NOT revive slain enemies or rebuild destroyed props —
+  // the dungeon stays cleared (fixed bugs: respawning enemies after a rest,
+  // and loot bags / destructibles popping back).
 
   // per-rest-cycle interactables refresh (straw mat, bunk)
   if (engine.flags) {
@@ -217,24 +202,10 @@ export function respawn(engine: any) {
     }
   }
 
-  for (const u of engine.combat.units) {
-    if (!u.alive && u.team === 'enemy' && !u.bossGroup && u.name !== 'Baron Gnaw') {
-      if (engine.defeatedSpecialMobs.has(u.id)) continue;
-      u.alive = true;
-      u.hp = u.maxHp;
-      (u as any).dormant = true;
-      u.conditions = [];
-      const v = engine.visuals.get(u.id);
-      if (v) {
-        v.rig.anim.mode = 'idle';
-        v.rig.anim.t = 0;
-        v.bar.style.display = '';
-        (v as any).dustDone = false;
-        const wp = unitWorld(engine, u.pos);
-        v.rig.group.position.copy(wp);
-      }
-    }
-  }
+  // NOTE: dead enemies are NOT revived here — kills persist across respawns
+  // (bug fix: respawning re-populated the whole dungeon). Alive-but-aggroed
+  // enemies are re-dormant below so the party can stand up in peace;
+  // destroyed props stay destroyed (no resetAll).
   // a boss who survived the TPK mid-fight (e.g. Baron at 11/25) must be
   // re-fightable: re-dormant him and re-arm his cutscene, otherwise he is
   // un-aggroable forever (proximity skips bossGroups and the cutscene flag
@@ -245,9 +216,8 @@ export function respawn(engine: any) {
   }
   // an enemy that SURVIVED the losing fight must not keep aggro on the fresh
   // spawn either — re-dormant every alive non-boss enemy so the party can
-  // actually stand back up at the bonfire. (The dead ones were already
-  // revived+dormant above; this catches living stragglers and any enemy that
-  // was aggroed without ever joining the combat that killed the party.)
+  // actually stand back up at the bonfire. (The dead ones stay dead — only
+  // living stragglers get the dormancy reset.)
   for (const u of engine.combat.units) {
     if (u.team !== 'enemy' || !u.alive || u.bossGroup) continue;
     u.dormant = true;
@@ -257,7 +227,6 @@ export function respawn(engine: any) {
   engine.aggroGraceUntil = performance.now() / 1000 + 3;
   engine.bossRatCutscenePlayed = false;
   engine.gribnabCutscenePlayed = false;
-  engine.props.resetAll();
   engine.selectedId = engine.combat.units.find((u: any) => u.team === 'party')?.id ?? null;
   // the party TELPORTED to the bonfire — the tactical camera only re-centers on
   // movement clicks, so snap it to the leader here or it stays staring at the
@@ -285,18 +254,36 @@ export function toggleInventory(engine: any) {
   engine.emitSnapshot();
 }
 
-export function equipItem(engine: any, unitId: string, itemId: string) {
+export function equipItem(engine: any, unitId: string, itemId: string, slotHint?: string) {
   const u = engine.byId(unitId);
-  const idx = engine.inventory.findIndex((i: Item) => i.id === itemId);
+  const idx = engine.inventory.findIndex((i: Item) => i.id === itemId || (i._baseId && i._baseId === itemId));
   if (!u || u.team !== 'party' || idx < 0) return;
   const item = engine.inventory[idx];
   if (item.kind === 'consumable') {
     engine.setHoverInfoOnce('Consumables are used, not equipped.');
     return;
   }
-  let slot: string | null = item.slot ?? (item.kind === 'weapon' ? 'weapon' : item.kind === 'armor' ? 'chest' : null);
-  if (!slot) {
+  // legacy saves: items made before `slot` was persisted lack it — recover
+  // the intended slot from the base template so boots stay boots instead of
+  // falling through to the armor→'chest' default.
+  const nativeSlot: string | null = item.slot ?? (item._baseId ? ITEM_BASES[item._baseId]?.slot ?? null : null)
+    ?? (item.kind === 'weapon' ? 'weapon' : item.kind === 'armor' ? 'chest' : null);
+  if (!nativeSlot) {
     engine.setHoverInfoOnce('No valid slot for this item.');
+    return;
+  }
+  // paper-doll clicks may override the native slot when the item allows it
+  // (the bucket is a weapon that also fits off-hand / head; any one-handed
+  // weapon can be held in the off hand for dual-wielding)
+  let slot: string = nativeSlot;
+  if (slotHint && slotHint !== nativeSlot) {
+    const allowed = (item.altSlots ?? []).includes(slotHint as EquipSlot)
+      || (item.kind === 'weapon' && !item.twoHanded && slotHint === 'offHand');
+    if (allowed) slot = slotHint;
+  }
+  // two-handed main weapon + off-hand item → refuse (both hands busy)
+  if (slot === 'offHand' && u.equipment.weapon?.twoHanded) {
+    engine.setHoverInfoOnce(`${u.equipment.weapon.name} needs both hands — put it away first.`);
     return;
   }
   let actualSlot: string = slot;
@@ -309,6 +296,14 @@ export function equipItem(engine: any, unitId: string, itemId: string) {
     }
   }
   engine.inventory.splice(idx, 1);
+  // equipping a two-handed main weapon frees the off hand
+  if (slot === 'weapon' && item.twoHanded && u.equipment.offHand) {
+    engine.inventory.push(u.equipment.offHand);
+    const rig = engine.visuals.get(u.id)?.rig;
+    if (rig) unequip(rig, 'offHand');
+    u.equipment.offHand = undefined;
+    engine.pushLog(`${u.name} stows their off-hand item to wield ${item.name} with both hands.`, 'system');
+  }
   const old = (u.equipment as Record<string, Item | undefined>)[actualSlot];
   if (old) engine.inventory.push(old);
   (u.equipment as Record<string, Item | undefined>)[actualSlot] = item;
@@ -320,6 +315,13 @@ export function equipItem(engine: any, unitId: string, itemId: string) {
     if (item.weaponKind === 'torch' && !engine.torchLit) {
       engine.torchLit = true;
       engine.pushLog('🔦 The fresh torch flares to life.', 'system');
+    }
+  } else if (actualSlot !== 'weapon') {
+    // layer the worn piece onto the voxel rig (clothes/armor/hats/…)
+    const rig = engine.visuals.get(u.id)?.rig;
+    if (rig) {
+      const vis = itemToEquipVisual(item, actualSlot);
+      if (vis) equip(rig, vis);
     }
   }
   engine.audio.play('ui_click', 0.7);

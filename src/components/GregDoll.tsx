@@ -66,7 +66,7 @@ export function GregDoll({ unit, width = 130, height = 200 }: Props) {
 
     // weapon
     setWeapon(rig, unit.weapon ?? 'unarmed', unit.scheme.accent);
-    // worn armor / head / legs etc. (weapon + cloak have no equip visual)
+    // worn armor / head / legs etc. (weapon has no equip visual — setWeapon handles it)
     for (const [slot, item] of Object.entries(unit.equipment ?? {})) {
       if (!item) continue;
       const vis = itemToEquipVisual(item, slot);

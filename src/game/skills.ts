@@ -765,7 +765,7 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
     // plus a random sewer trinket/potion
     deathDrops: {
       random: [
-        { pool: ['leather', 'chain_shirt', 'leather_vest', 'ribcage_armor', 'sturdy_boots', 'leather_boot', 'guards_cap', 'pipe_helmet', 'tattered_cloak'], count: 1 },
+        { pool: ['leather', 'chain_shirt', 'leather_vest', 'ribcage_armor', 'sturdy_boots', 'leather_boot', 'guards_cap', 'pipe_helmet', 'tattered_cloak', 'leather_bracers', 'rusty_bracers', 'wooden_shield'], count: 1 },
         { pool: ['potion', 'rat_whisker', 'lockpick', 'leather_belt', 'blessed_penny', 'rat_bone', 'towel', 'broken_bottle'], count: 1 },
       ],
     },

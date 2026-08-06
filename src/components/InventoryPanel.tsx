@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot } from '@/game/types';
 import type { Item, Rarity } from '@/game/items';
-import { ENCHANTS } from '@/game/items';
+import { ENCHANTS, ITEM_BASES } from '@/game/items';
+import type { EquipSlot } from '@/game/types';
 import { effAC, effMaxHp, xpProgress } from '@/game/stats';
 import { comboTitleFor } from '@/game/classes';
 import { GregDoll } from './GregDoll';
@@ -14,16 +15,16 @@ const RARITY_COLOR: Record<Rarity, string> = {
 };
 
 const SLOT_ICON: Record<string, string> = {
-  head: '⛑️', chest: '🦺', legs: '👖', boots: '👢', gloves: '🧤',
+  head: '⛑️', chest: '🦺', legs: '👖', boots: '👢', gloves: '🧤', arms: '💪', cloak: '🧥',
   weapon: '⚔️', offHand: '🛡️', amulet: '📿', ring1: '💍', ring2: '💍',
 };
 
 const SLOT_LABEL: Record<string, string> = {
-  head: 'Head', chest: 'Chest', legs: 'Legs', boots: 'Boots', gloves: 'Gloves',
+  head: 'Head', chest: 'Chest', legs: 'Legs', boots: 'Boots', gloves: 'Gloves', arms: 'Arms', cloak: 'Cloak',
   weapon: 'Weapon', offHand: 'Off-Hand', amulet: 'Amulet', ring1: 'Ring 1', ring2: 'Ring 2',
 };
 
-const PAPER_DOLL_SLOTS = ['head', 'chest', 'legs', 'boots', 'gloves', 'weapon', 'offHand', 'amulet', 'ring1', 'ring2'] as const;
+const PAPER_DOLL_SLOTS = ['head', 'chest', 'legs', 'boots', 'gloves', 'arms', 'cloak', 'weapon', 'offHand', 'amulet', 'ring1', 'ring2'] as const;
 
 function ItemIcon({ item, size = 40, selected = false, onClick, title }: {
   item: Item; size?: number; selected?: boolean; onClick?: () => void; title?: string;
@@ -53,10 +54,18 @@ export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: Gam
 
   if (!u) return null;
 
-  const armOn = () => {
+  /** arm a slot click: the selected item goes into THIS slot when allowed
+   *  (altSlots — the bucket fits head/off-hand — or any one-handed weapon
+   *  into the off hand); otherwise the normal auto-slot equip happens. */
+  const armOnSlot = (slot: string) => {
     if (!sel) return;
-    if (sel.kind === 'consumable') engine.useConsumable(sel.id, u.id);
-    else engine.equipItem(u.id, sel.id);
+    if (sel.kind === 'consumable') { engine.useConsumable(sel.id, u.id); setSelId(null); return; }
+    const native = sel.slot ?? (sel._baseId ? ITEM_BASES[sel._baseId]?.slot ?? null : null)
+      ?? (sel.kind === 'weapon' ? 'weapon' : sel.kind === 'armor' ? 'chest' : null);
+    const allowed = slot === native
+      || (sel.altSlots ?? []).includes(slot as EquipSlot)
+      || (sel.kind === 'weapon' && !sel.twoHanded && slot === 'offHand');
+    engine.equipItem(u.id, sel.id, allowed ? slot : undefined);
     setSelId(null);
   };
 
@@ -97,7 +106,7 @@ export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: Gam
                   {it ? (
                     <ItemIcon item={it} size={38} onClick={() => engine.unequipItem(u.id, slot)} />
                   ) : (
-                    <div className="inv-item empty" style={{ width: 38, height: 38 }} onClick={sel ? () => armOn() : undefined}>
+                    <div className="inv-item empty" style={{ width: 38, height: 38 }} onClick={sel ? () => armOnSlot(slot) : undefined}>
                       <span className="inv-item-icon">{SLOT_ICON[slot]}</span>
                     </div>
                   )}

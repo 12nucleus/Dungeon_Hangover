@@ -9,8 +9,8 @@ import { ENCHANTS, type Item } from './items';
 function allItems(u: Unit): (Item | undefined)[] {
   return [
     u.equipment.head, u.equipment.chest, u.equipment.legs,
-    u.equipment.boots, u.equipment.gloves, u.equipment.weapon,
-    u.equipment.offHand, u.equipment.amulet, u.equipment.ring1, u.equipment.ring2,
+    u.equipment.boots, u.equipment.gloves, u.equipment.arms, u.equipment.cloak,
+    u.equipment.weapon, u.equipment.offHand, u.equipment.amulet, u.equipment.ring1, u.equipment.ring2,
   ];
 }
 

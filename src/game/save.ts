@@ -46,6 +46,10 @@ export interface SaveData {
   bonfirePos: GridPos | null;
   bonfireLit: boolean;
   defeatedSpecialMobs: string[];
+  /** ids of props destroyed by the player — stays cleared across rests/loads (additive) */
+  destroyedProps?: string[];
+  /** player-curated item-bar keys (max 6, additive) */
+  itemBar?: string[];
   /** fog-of-war explored grid (boolean[size][size]) */
   explored: boolean[][];
   combat: {

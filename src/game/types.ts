@@ -22,7 +22,7 @@ export type DamageType =
   | 'fire' | 'cold' | 'radiant' | 'force' | 'poison';
 export type SkillCost = 'action' | 'bonus' | 'free';
 export type SkillKind = 'melee' | 'ranged' | 'aoe' | 'heal' | 'buff';
-export type EquipSlot = 'head' | 'chest' | 'legs' | 'boots' | 'gloves' | 'weapon' | 'offHand' | 'amulet' | 'ring';
+export type EquipSlot = 'head' | 'chest' | 'legs' | 'boots' | 'gloves' | 'arms' | 'cloak' | 'weapon' | 'offHand' | 'amulet' | 'ring';
 
 export interface GridPos { x: number; z: number; }
 
@@ -156,7 +156,7 @@ export interface Unit {
   level: number;
   xp: number;             // accumulated experience
   skillPoints: number;    // unspent (used by a later chunk)
-  equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item };
+  equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; arms?: import('./items').Item; cloak?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item };
   maxHp: number;
   hp: number;
   ac: number;
@@ -285,6 +285,8 @@ export interface UISnapshot {
   pendingLoot?: { source: string; items: import('./items').Item[]; gold: number } | null;
   /** BG3-style turn phase: walk → action → bonus → end turn */
   turnMode?: 'walk' | 'action' | 'bonus';
+  /** player-curated item bar (consumable keys in display order, max 6) */
+  itemBar?: string[];
   /** next tile click is a jump (budget-2 hop) */
   jumpMode?: boolean;
   /** cheat console overlay (backtick key) */

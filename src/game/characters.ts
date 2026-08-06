@@ -2008,8 +2008,8 @@ export const PART_PIVOTS: Record<string, { cx: number; cy: number }> = {
 
 export type EquipStyle =
   | 'shirt' | 'leather' | 'chain' | 'plate'
-  | 'hood' | 'helm' | 'cap'
-  | 'pants' | 'greaves' | 'boots';
+  | 'hood' | 'helm' | 'cap' | 'bucket'
+  | 'pants' | 'greaves' | 'boots' | 'bracers' | 'cloak';
 
 export interface EquipVisual {
   slot: EquipSlot;
@@ -2071,7 +2071,28 @@ function buildGloves(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) 
   ringShell(v, piv, piv.cx - 3, 28, -3, piv.cx + 3, 34, 3, 2, def.color);
 }
 
+function buildBracers(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  ringShell(v, piv, piv.cx - 4, 37, -4, piv.cx + 4, 44, 4, 2, def.color);
+}
+
+function buildCloak(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  // shoulders: a band across the back
+  ringShell(v, piv, -9, 54, -6, 9, 58, 2, 2, def.color);
+  // back panel sweeping down
+  for (let y = 48; y <= 56; y++) {
+    const t = (56 - y) / 8;   // 0 at top → 1 at bottom: taper in slightly
+    const hx = Math.round(8 - t * 2);
+    ringShell(v, piv, -hx, y, -8, hx, y, -5, 1, def.color);
+  }
+}
+
 function buildHead(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  if (def.style === 'bucket') {
+    // the wooden bucket, worn as a hat: wide shallow cylinder with a lip
+    ringShell(v, piv, -7, 68, -7, 7, 74, 7, 3, def.color);
+    ringShell(v, piv, -8, 72, -8, 8, 73, 8, 2, shade(def.color, 0.8));
+    return;
+  }
   const topY = def.style === 'cap' ? 71 : 73;
   const botY = def.style === 'cap' ? 65 : 58;
   ringShell(v, piv, -7, botY, -7, 7, topY, 7, 2, def.color, (_x, y, z) => z > 3 && y < 64);
@@ -2109,6 +2130,8 @@ function buildPiece(def: EquipVisual): { part: string; mesh: THREE.Mesh }[] {
     case 'legs': for (const s of ['L', 'R']) mk('leg' + s, (v, p) => buildLegs(v, p, def)); break;
     case 'boots': for (const s of ['L', 'R']) mk('shin' + s, (v, p) => buildBoots(v, p, def)); break;
     case 'gloves': for (const s of ['L', 'R']) mk('hand' + s, (v, p) => buildGloves(v, p, def)); break;
+    case 'arms': for (const s of ['L', 'R']) mk('fore' + s, (v, p) => buildBracers(v, p, def)); break;
+    case 'cloak': mk('torso', (v, p) => buildCloak(v, p, def)); break;
     case 'head': mk('head', (v, p) => buildHead(v, p, def)); break;
     case 'amulet': mk('torso', (v, p) => buildAmulet(v, p, def)); break;
     case 'ring': for (const s of ['L', 'R']) mk('hand' + s, (v, p) => buildRing(v, p, def)); break;
@@ -2178,8 +2201,8 @@ export function unequipAll(rig: Rig): void {
 
 /**
  * Convert a data Item into an EquipVisual for the voxel rig. Returns null for
- * items that have no wearable visual (weapons are handled by setWeapon, cloaks
- * have no EquipSlot, consumables aren't equipped).
+ * items that have no wearable visual (weapons are handled by setWeapon,
+ * consumables aren't equipped).
  */
 export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisual | null {
   let slot: string | undefined =
@@ -2191,7 +2214,7 @@ export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisua
     else return null;
   }
   if (slot.startsWith('ring')) slot = 'ring';   // ring1/ring2 share one visual slot
-  if (slot === 'weapon' || slot === 'cloak') return null;
+  if (slot === 'weapon') return null;
   const s = slot as EquipSlot;
   const n = item.name.toLowerCase();
   let color = 0x9aa0a8;
@@ -2200,11 +2223,16 @@ export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisua
     if (n.includes('plate')) { color = 0xb8bfc9; style = 'plate'; }
     else if (n.includes('chain')) { color = 0x9aa0a8; style = 'chain'; }
     else if (n.includes('leather')) { color = 0x6b4423; style = 'leather'; }
+    else if (s === 'cloak') { color = 0x5a4030; style = 'cloak'; }
     else { color = 0xcfc4a8; style = 'shirt'; }
-  } else if (s === 'head') { color = 0x6b4423; style = 'helm'; }
+  } else if (s === 'head') {
+    if (item._baseId === 'wooden_bucket') { color = 0x6b4423; style = 'bucket'; }
+    else { color = 0x6b4423; style = 'helm'; }
+  }
   else if (s === 'legs') { color = 0x4a3b2a; style = 'pants'; }
   else if (s === 'boots') { color = 0x4a3b2a; style = 'boots'; }
   else if (s === 'gloves') { color = 0x6b4423; style = 'leather'; }
+  else if (s === 'arms') { color = 0x6b4423; style = 'bracers'; }
   else if (s === 'amulet' || s === 'ring') { color = 0xffd700; style = 'shirt'; }
   return { slot: s, color, style };
 }

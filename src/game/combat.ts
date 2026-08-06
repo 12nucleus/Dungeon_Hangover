@@ -77,6 +77,10 @@ export class Combat {
     clone.hasAction = true;
     clone.hasBonus = true;
     clone.movementLeft = effMove(clone);
+    // party-size cap: the player may field at most 6 (Greg + companions + summons)
+    if (clone.team === 'party' && this.living('party').length >= 6) {
+      return null as unknown as Unit;
+    }
     // nearest free walkable tile to `near`
     let best: GridPos | null = null;
     let bestD = Infinity;
@@ -641,6 +645,7 @@ export class Combat {
         return ev;
       }
       const raised: Unit[] = [];
+      let refused = false;
       for (const cid of targets) {
         const corpse = this.byId(cid);
         if (!corpse) continue;
@@ -651,9 +656,11 @@ export class Combat {
         skel.equipment = {};
         skel.name = 'Risen Skeleton';
         const unit = this.summon(skel, u.pos, u.id);
+        if (!unit) { refused = true; continue; }   // party already at cap (max 6)
         raised.push(unit);
         ev.push({ type: 'summon', unit });
       }
+      if (refused) ev.push({ type: 'log', text: 'The dead stir — but the party is at full strength (max 6).', kind: 'info' });
       ev.push({ type: 'log', text: `${raised.length} skeleton${raised.length > 1 ? 's' : ''} ${raised.length > 1 ? 'rise' : 'rises'} to serve!`, kind: 'system' });
       ev.push({ type: 'skillfx', skill: s, at: center, targets: raised.map((r) => r.id) });
       ev.push(...this.checkEnd());
@@ -668,11 +675,14 @@ export class Combat {
         return ev;
       }
       const count = s.summonCount ?? 1;
+      let refused = false;
       for (let i = 0; i < count; i++) {
         const unit = this.summon(tpl(), u.pos, u.id);
+        if (!unit) { refused = true; break; }   // party at cap (max 6)
         ev.push({ type: 'summon', unit });
         ev.push({ type: 'log', text: `${unit.name} answers the call!`, kind: 'system' });
       }
+      if (refused) ev.push({ type: 'log', text: 'The call echoes, but the party is at full strength (max 6).', kind: 'info' });
       ev.push({ type: 'skillfx', skill: s, at: center, targets: this.living(u.team).map((t) => t.id) });
       ev.push(...this.checkEnd());
       return ev;
@@ -828,7 +838,10 @@ export class Combat {
       }
       // attack-roll skills
       // weapon attacks use the equipped weapon's dice; skill = the "move"
-      const weapon = (s.kind === 'melee' || s.kind === 'ranged') ? u.equipment.weapon : undefined;
+      // quick_strike (bonus flourish) hits with the OFF-HAND weapon when a
+      // real off-hand weapon is equipped (bucket in the left hand, etc.)
+      let weapon = (s.kind === 'melee' || s.kind === 'ranged') ? u.equipment.weapon : undefined;
+      if (s.id === 'quick_strike' && u.equipment.offHand?.kind === 'weapon') weapon = u.equipment.offHand;
       const diceExpr = weapon?.damageDice ?? s.damageDice;
       const ench = weapon?.enchantId ? ENCHANTS[weapon.enchantId] : undefined;
       const blessed = u.conditions.some((c) => c.id === 'blessed');
@@ -891,7 +904,7 @@ export class Combat {
       if (u.conditions.some((x) => x.id === 'lich_form')) amount += 2;
       if (u.conditions.some((x) => x.id === 'inspired')) amount += 2;
       if (sneakCrit) ev.push({ type: 'log', text: '🎯 Sneak attack — guaranteed crit!', kind: 'crit' });
-      this.applyDamage(ev, t, amount, s.damageType, crit);
+      this.applyDamage(ev, t, amount, weapon?.damageType ?? s.damageType, crit);
       // skill rider condition on a landed hit (soap splash → slippery, …)
       if (t.alive && s.appliesCondition && !t.conditions.some((x) => x.id === s.appliesCondition)) {
         t.conditions.push({ id: s.appliesCondition, name: CONDITIONS[s.appliesCondition].name, roundsLeft: s.appliesRounds ?? 2 });
@@ -915,17 +928,18 @@ export class Combat {
           ev.push({ type: 'float', unitId: t.id, text: `❄ ${CONDITIONS[u.onHit!.condition]?.name ?? u.onHit!.condition}`, cls: 'debuff' });
         }
       }
+      const isOffHandStrike = weapon === u.equipment.offHand;
       if (weapon?.fragile) {
-        u.equipment.weapon = undefined;
+        if (isOffHandStrike) u.equipment.offHand = undefined; else u.equipment.weapon = undefined;
         ev.push({ type: 'log', text: `The ${weapon.name} shatters on impact!`, kind: 'system' });
       }
       if (atk.fumble && weapon?.fumbleBreak && Math.random() < weapon.fumbleBreak) {
-        u.equipment.weapon = undefined;
+        if (isOffHandStrike) u.equipment.offHand = undefined; else u.equipment.weapon = undefined;
         ev.push({ type: 'log', text: `The ${weapon.name} snaps in your hands!`, kind: 'system' });
       }
       if (atk.fumble && weapon?.fumbleDrop && Math.random() < weapon.fumbleDrop) {
-        const dropped = u.equipment.weapon;
-        u.equipment.weapon = undefined;
+        const dropped = weapon;
+        if (isOffHandStrike) u.equipment.offHand = undefined; else u.equipment.weapon = undefined;
         ev.push({ type: 'log', text: `You dropped the ${dropped?.name ?? 'weapon'}! It slides out of your soapy hands.`, kind: 'system' });
       }
       // enchantment rider: extra elemental damage + frost slow
@@ -1122,6 +1136,19 @@ export class Combat {
     if (target.team === u.team) {
       // thrown into friendly hands — the item's normal drink/eat effect at range
       ev.push(...this.useConsumable(u, item, target.id));
+    } else if (item.kind === 'weapon') {
+      // a hurled weapon hits with its own dice (bucket! bottle! torch!)
+      u.hasBonus = false;
+      const wd = rollDice(item.damageDice ?? '1d4');
+      this.applyDamage(ev, target, wd.total, item.damageType ?? 'bludgeoning', false);
+      ev.push({ type: 'log', text: `${item.icon} ${item.name} thuds into ${target.name} for ${wd.total} ${item.damageType ?? 'bludgeoning'}!`, kind: 'hit' });
+      if (item.onHitCondition && Math.random() < item.onHitCondition.chance) {
+        const oc = item.onHitCondition;
+        if (!target.conditions.some((x) => x.id === oc.id)) {
+          target.conditions.push({ id: oc.id, name: CONDITIONS[oc.id]?.name ?? oc.id, roundsLeft: oc.rounds });
+          ev.push({ type: 'float', unitId: target.id, text: `❄ ${CONDITIONS[oc.id]?.name ?? oc.id}`, cls: 'debuff' });
+        }
+      }
     } else {
       u.hasBonus = false;   // useConsumable pays this for the ally case
       this.applyDamage(ev, target, 1 + Math.floor(Math.random() * 4), 'bludgeoning', false);

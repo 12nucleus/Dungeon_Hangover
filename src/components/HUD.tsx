@@ -489,13 +489,13 @@ export function HUD({ snap, engine }: Props) {
 
       {/* ══ MINIMAP ══ */}
       {phase !== 'menu' && <Minimap snap={snap} />}
-      {phase !== 'menu' && (
-        <div className="bottom-bar">
-          {/* party frames */}
-          <div className="party-frames">
-            {party.map((u) => (
+      {phase !== 'menu' && party.length > 0 && (
+        <div className="party-sidebar">
+          {party.map((u) => {
+            const size = party.length >= 5 ? 40 : party.length >= 3 ? 46 : 52;
+            return (
               <div key={u.id} className={`party-frame ${u.id === snap.activeId ? 'active' : ''}`}>
-                <Portrait u={u} size={52} active={u.id === snap.activeId} />
+                <Portrait u={u} size={size} active={u.id === snap.activeId} />
                 <div className="pf-info">
                   <div className="pf-name" style={{ color: TEAM_COLOR[u.team] }}>{u.name}</div>
                   <div className="pf-hp">{u.hp}/{effMaxHp(u)}{u.equipment.weapon?.enchantId ? ' ✦' : ''}</div>
@@ -504,9 +504,12 @@ export function HUD({ snap, engine }: Props) {
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-
+            );
+          })}
+        </div>
+      )}
+      {phase !== 'menu' && (
+        <div className="bottom-bar">
           {/* torch indicator — the torch never burns out; T equips/stows it */}
           {snap.torchEquipped && (
             <div className="torch-indicator" onClick={() => engine?.toggleTorch()} title="Stow torch — press T to switch back [T]">

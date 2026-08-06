@@ -318,6 +318,8 @@ export function destroyProp(engine: any, prop: any) {
     void engine.narrate('f50_sack', "A sack. It contains a dagger that's seen better centuries, a potion of questionable provenance, and a torch. This is your inheritance. Spend it wisely.", 4600);
   }
   const { items, gold } = engine.props.destroy(prop);
+  // remember the prop is gone so rests / reloads keep the dungeon cleared
+  engine.destroyedProps.add(prop.id);
   FX.debris(engine.particles, wp.clone().add(new THREE.Vector3(0, 0.35, 0)), prop.def.palette, 24);
   FX.dust(engine.particles, wp.clone());
   engine.audio.crumble(0.9);

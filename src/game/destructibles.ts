@@ -145,6 +145,17 @@ export class DestructibleManager {
     }
   }
 
+  /** silent removal (no loot, no FX) — used to restore destroyed props on load */
+  removeById(id: string) {
+    const p = this.byId(id);
+    if (!p) return;
+    p.alive = false;
+    this.group.remove(p.group, p.pick);
+    const pi = this.pickboxes.indexOf(p.pick);
+    if (pi >= 0) this.pickboxes.splice(pi, 1);
+    this.world.blocked[p.pos.x][p.pos.z] = false;
+  }
+
   /** remove from scene, unblock tile, roll the loot table */
   destroy(p: Destructible): { items: Item[]; gold: number } {
     if (!p.alive) return { items: [], gold: 0 };

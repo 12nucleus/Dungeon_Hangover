@@ -5,8 +5,10 @@
 // only editable at the bonfire (see BonfireLoadout). During combat
 // the same slots drive selectSkill/targeting.
 // ─────────────────────────────────────────────────────────────
+import { useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot } from '@/game/types';
+import type { Item } from '@/game/items';
 import { SKILLS } from '@/game/skills';
 import { ALL_CLASS_SKILLS } from '@/game/classSkills';
 
@@ -41,43 +43,105 @@ export function Hotbar({ snap, engine }: Props) {
   if (!active) return null;
   const phase = snap.phase;
   const loadout = (active.hotbarLoadout ?? active.equippedSkills) as (string | null)[];
-  // persistent consumable/item bar — the party's shared usable items, always
-  // reachable above the skill bar. Click to drink/eat/use on the active hero:
-  // free in explore, costs the bonus action in combat. In combat each item
-  // also offers a Throw (🎯) bonus action.
-  const items = (snap.inventory ?? []).filter((i) => i.kind === 'consumable').slice(0, 12);
+  // persistent item bar — the party's shared usable items, always reachable
+  // above the skill bar. Stacks merge by base id; the bar shows max 6 stacks
+  // (pinned via ⚙ first, then auto-filled from owned inventory). Click to
+  // drink/eat/use on the active hero: free in explore, bonus action in
+  // combat. Throwable weapons (the bucket!) offer a 🎯 throw instead.
+  const [showPin, setShowPin] = useState(false);
+  const inventoryItems = snap.inventory ?? [];
+  const stackMap = new Map<string, { key: string; item: Item; count: number }>();
+  for (const it of inventoryItems) {
+    if (it.kind !== 'consumable' && it.kind !== 'weapon') continue;
+    const key = it._baseId ?? it.id;
+    const e = stackMap.get(key);
+    if (e) e.count++;
+    else stackMap.set(key, { key, item: it, count: 1 });
+  }
+  const ownedKeys = [...stackMap.keys()];
+  const pinned = (snap.itemBar ?? []).filter((k) => stackMap.has(k));
+  const barKeys = [...pinned, ...ownedKeys.filter((k) => !pinned.includes(k))].slice(0, 6);
+  const togglePin = (key: string) => {
+    const next = pinned.includes(key) ? pinned.filter((k) => k !== key) : [...pinned, key];
+    engine.setItemBarLoadout(next);
+  };
+  const itemBarEditable = !enemyTurn && phase !== 'combat';
 
   return (
     <div className={`hotbar-stack ${enemyTurn ? 'enemy-phase' : ''}`}>
       {/* usable item bar — above the skill bar, usable any time */}
-      {items.length > 0 && (
+      {barKeys.length > 0 && (
         <div className={`item-bar ${phase === 'combat' ? '' : 'idle'}`}>
           <span className={`item-bar-label ${phase === 'combat' && snap.turnMode === 'bonus' ? 'on' : ''}`} title="Click an item to use it — free in explore, a bonus action in combat">
             ITEMS
+            {itemBarEditable && (
+              <button
+                className={`item-pin-gear ${showPin ? 'on' : ''}`}
+                onClick={() => setShowPin(!showPin)}
+                title="Customize which items show here (max 6)"
+              >⚙</button>
+            )}
           </span>
           <div className="item-bar-slots">
-            {items.map((it) => (
-              <div key={it.id} className={`item-slot ${phase === 'combat' && !active.hasBonus ? 'no-bonus' : ''}`}>
-                <button
-                  className={`item-use ${phase === 'combat' && (!active.hasBonus || enemyTurn) ? 'disabled' : ''}`}
-                  onClick={() => !enemyTurn && engine.useConsumable(it.id, active.id)}
-                  title={`${it.icon} ${it.name} — ${it.desc} (${phase === 'combat' ? 'bonus action' : 'free'})`}
-                >
-                  <span className="skill-icon">{it.icon}</span>
-                  {phase === 'combat' && <span className="item-cost">B</span>}
-                </button>
-                {phase === 'combat' && (
-                  <button
-                    className={`item-throw ${snap.selectedSkill === `THROW:${it.id}` ? 'on' : ''}`}
-                    onClick={() => !enemyTurn && engine.startThrow(it.id)}
-                    title={`Throw ${it.name} at a unit (bonus action)`}
-                  >
-                    🎯
-                  </button>
-                )}
-              </div>
-            ))}
+            {barKeys.map((key) => {
+              const st = stackMap.get(key)!;
+              const isWeapon = st.item.kind === 'weapon';
+              return (
+                <div key={key} className={`item-slot ${phase === 'combat' && !active.hasBonus ? 'no-bonus' : ''}`}>
+                  {isWeapon ? (
+                    <button
+                      className={`item-throw ${snap.selectedSkill === `THROW:${key}` ? 'on' : ''} ${enemyTurn ? 'disabled' : ''}`}
+                      onClick={() => !enemyTurn && engine.startThrow(key)}
+                      title={`Throw ${st.item.icon} ${st.item.name} at a unit (bonus action, ${st.item.damageDice ?? '1d4'} ${st.item.damageType ?? 'bludgeoning'})`}
+                    >
+                      <span className="skill-icon">{st.item.icon}</span>
+                      🎯
+                      {st.count > 1 && <span className="item-count">{st.count}</span>}
+                    </button>
+                  ) : (
+                    <button
+                      className={`item-use ${phase === 'combat' && (!active.hasBonus || enemyTurn) ? 'disabled' : ''}`}
+                      onClick={() => !enemyTurn && engine.useConsumable(key, active.id)}
+                      title={`${st.item.icon} ${st.item.name} ×${st.count} — ${st.item.desc} (${phase === 'combat' ? 'bonus action' : 'free'})`}
+                    >
+                      <span className="skill-icon">{st.item.icon}</span>
+                      {st.count > 1 && <span className="item-count">{st.count}</span>}
+                      {phase === 'combat' && <span className="item-cost">B</span>}
+                    </button>
+                  )}
+                  {!isWeapon && phase === 'combat' && (
+                    <button
+                      className={`item-throw ${snap.selectedSkill === `THROW:${key}` ? 'on' : ''}`}
+                      onClick={() => !enemyTurn && engine.startThrow(key)}
+                      title={`Throw ${st.item.name} at a unit (bonus action)`}
+                    >🎯</button>
+                  )}
+                </div>
+              );
+            })}
           </div>
+          {showPin && (
+            <div className="item-bar-pop">
+              {ownedKeys.length === 0 && <span className="item-bar-pop-empty">No usable items yet.</span>}
+              {ownedKeys.map((k) => {
+                const st = stackMap.get(k)!;
+                const isPinned = pinned.includes(k);
+                return (
+                  <button
+                    key={k}
+                    className={`item-pin-row ${isPinned ? 'on' : ''}`}
+                    onClick={() => togglePin(k)}
+                    title={isPinned ? 'Unpin from the bar' : 'Pin to the bar'}
+                  >
+                    <span className="skill-icon">{st.item.icon}</span>
+                    <span className="item-pin-name">{st.item.name}</span>
+                    <span className="item-pin-count">×{st.count}</span>
+                    <span className="item-pin-state">{isPinned ? '📌' : '○'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

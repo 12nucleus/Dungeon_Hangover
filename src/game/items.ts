@@ -16,6 +16,10 @@ export interface Item {
   id: string;
   kind: ItemKind;
   slot?: EquipSlot;
+  /** extra slots this item can be equipped into (e.g. the bucket: weapon/off-hand/head) */
+  altSlots?: EquipSlot[];
+  /** two-handed weapon — both hands busy, no off-hand while equipped */
+  twoHanded?: boolean;
   name: string;
   icon: string;
   tier: Tier;
@@ -83,7 +87,7 @@ const ENCHANT_IDS = Object.keys(ENCHANTS);
 
 // ── item bases ───────────────────────────────────────────────
 interface ItemBase {
-  kind: ItemKind; slot?: EquipSlot; name: string; icon: string; tier: Tier;
+  kind: ItemKind; slot?: EquipSlot; altSlots?: EquipSlot[]; twoHanded?: boolean; name: string; icon: string; tier: Tier;
   weaponKind?: WeaponKind; damageDice?: string; damageType?: DamageType;
   acBonus?: number; healDice?: string; value: number; desc: string;
   hpBonus?: number; physResist?: number; levelReq?: number; tool?: string;
@@ -104,9 +108,9 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   dagger2: B({ kind: 'weapon', slot: 'weapon', name: 'Fine Dagger', icon: '🔪', tier: 2, weaponKind: 'dagger', damageDice: '1d4+2', damageType: 'piercing', value: 30, desc: 'Slim and silent.' }),
   dagger3: B({ kind: 'weapon', slot: 'weapon', name: 'Masterwork Dagger', icon: '🔪', tier: 3, weaponKind: 'dagger', damageDice: '2d4+2', damageType: 'piercing', value: 95, desc: 'A duellist\'s dream.' }),
   // bows (piercing)
-  bow1: B({ kind: 'weapon', slot: 'weapon', name: 'Bent Shortbow', icon: '🏹', tier: 1, weaponKind: 'bow', damageDice: '1d6+1', damageType: 'piercing', value: 14, desc: 'Creaks, but shoots true-ish.' }),
-  bow2: B({ kind: 'weapon', slot: 'weapon', name: 'Fine Shortbow', icon: '🏹', tier: 2, weaponKind: 'bow', damageDice: '1d6+2', damageType: 'piercing', value: 42, desc: 'Yew laminate, smooth draw.' }),
-  bow3: B({ kind: 'weapon', slot: 'weapon', name: 'Masterwork Shortbow', icon: '🏹', tier: 3, weaponKind: 'bow', damageDice: '2d6+2', damageType: 'piercing', value: 130, desc: 'Elven craftsmanship.' }),
+  bow1: B({ kind: 'weapon', slot: 'weapon', name: 'Bent Shortbow', icon: '🏹', tier: 1, weaponKind: 'bow', damageDice: '1d6+1', damageType: 'piercing', value: 14, twoHanded: true, desc: 'Creaks, but shoots true-ish.' }),
+  bow2: B({ kind: 'weapon', slot: 'weapon', name: 'Fine Shortbow', icon: '🏹', tier: 2, weaponKind: 'bow', damageDice: '1d6+2', damageType: 'piercing', value: 42, twoHanded: true, desc: 'Yew laminate, smooth draw.' }),
+  bow3: B({ kind: 'weapon', slot: 'weapon', name: 'Masterwork Shortbow', icon: '🏹', tier: 3, weaponKind: 'bow', damageDice: '2d6+2', damageType: 'piercing', value: 130, twoHanded: true, desc: 'Elven craftsmanship.' }),
   // maces (bludgeoning)
   mace1: B({ kind: 'weapon', name: 'Cracked Mace', icon: '🔨', tier: 1, weaponKind: 'mace', damageDice: '1d6+1', damageType: 'bludgeoning', value: 12, desc: 'Dents armor. And skulls.' }),
   mace2: B({ kind: 'weapon', name: 'Fine Mace', icon: '🔨', tier: 2, weaponKind: 'mace', damageDice: '1d6+2', damageType: 'bludgeoning', value: 38, desc: 'Blessed by the forge-temple.' }),
@@ -137,7 +141,7 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   iron_key: B({ kind: 'trinket', name: 'Iron Key', icon: '🗝️', tier: 1, value: 0, desc: 'A heavy, cold key. It fits a great iron door.' }),
   golden_key: B({ kind: 'trinket', name: 'Golden Key', icon: '🔑', tier: 3, value: 0, desc: 'Ornate and warm to the touch. It hums with promise.' }),
   // ── the boss reward (special epic loot) ──
-  warlord_blade: B({ kind: 'weapon', name: "Warlord's Cleaver", icon: '⚔️', tier: 3, weaponKind: 'sword', damageDice: '2d8+4', damageType: 'slashing', value: 320, desc: 'A brutal greatblade taken from a bathing tyrant. Still faintly soapy.' }),
+  warlord_blade: B({ kind: 'weapon', name: "Warlord's Cleaver", icon: '⚔️', tier: 3, weaponKind: 'sword', damageDice: '2d8+4', damageType: 'slashing', value: 320, twoHanded: true, desc: 'A brutal greatblade taken from a bathing tyrant. Still faintly soapy.' }),
   severed_finger: B({ kind: 'trinket', name: "The Hermit's Severed Finger", icon: '\uD83D\uDD90\uFE0F', tier: 1, value: 0, desc: 'A gnawed-off ring finger, still wearing a tarnished silver band. The ring is engraved: "Agnes".' }),
   toeless_boots: B({ kind: 'armor', slot: 'boots', name: "Toeless Boots", icon: '\uD83D\uDC62', tier: 2, acBonus: 1, value: 50, desc: "Fine leather boots. Missing the toes. Don't ask. +1 AC. +1 movement." }),
 
@@ -146,19 +150,19 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   broken_bottle: B({ kind: 'weapon', slot: 'weapon', name: 'Broken Bottle', icon: '🍾', tier: 1, weaponKind: 'dagger', damageDice: '1d4', damageType: 'slashing', value: 1, fragile: true, onHitCondition: { id: 'bleeding', chance: 1, rounds: 2 }, desc: 'A jagged bottle edge. One good swing and it\'s gone.' }),
   rat_bone: B({ kind: 'weapon', slot: 'weapon', name: 'Rat Bone', icon: '🦴', tier: 1, weaponKind: 'club', damageDice: '1d4', damageType: 'bludgeoning', value: 2, desc: 'A gnawed femur. Surprisingly sturdy. The rat it came from had opinions.' }),
   rusty_sword: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Sword', icon: '🗡️', tier: 1, weaponKind: 'sword', damageDice: '1d6+1', damageType: 'slashing', value: 18, fumbleBreak: 0.1, desc: 'A blade that has seen better centuries. 10% chance to snap on a fumble.' }),
-  rusty_axe: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Axe', icon: '🪓', tier: 1, weaponKind: 'sword', damageDice: '1d8', damageType: 'slashing', value: 22, desc: 'Mostly rust, technically an axe.' }),
+  rusty_axe: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Axe', icon: '🪓', tier: 1, weaponKind: 'sword', damageDice: '1d8', damageType: 'slashing', value: 22, twoHanded: true, desc: 'Mostly rust, technically an axe. Two hands, one swing, zero regrets.' }),
   rusty_mace: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Mace', icon: '🔨', tier: 1, weaponKind: 'mace', damageDice: '1d6+1', damageType: 'bludgeoning', value: 20, onHitCondition: { id: 'stunned', chance: 0.1, rounds: 1 }, desc: 'Dents armor. 10% chance to rattle the target\'s brain.' }),
-  rusty_spear: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Spear', icon: '🔱', tier: 1, weaponKind: 'staff', damageDice: '1d6', damageType: 'piercing', value: 16, desc: 'Pointy end, rusted end, middle is a mystery.' }),
-  goblin_spear: B({ kind: 'weapon', slot: 'weapon', name: 'Goblin Spear', icon: '🔱', tier: 1, weaponKind: 'staff', damageDice: '1d6', damageType: 'piercing', value: 14, desc: 'Crude, sharp, and smug about it.' }),
+  rusty_spear: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Spear', icon: '🔱', tier: 1, weaponKind: 'staff', damageDice: '1d6', damageType: 'piercing', value: 16, twoHanded: true, desc: 'Pointy end, rusted end, middle is a mystery. Takes both hands.' }),
+  goblin_spear: B({ kind: 'weapon', slot: 'weapon', name: 'Goblin Spear', icon: '🔱', tier: 1, weaponKind: 'staff', damageDice: '1d6', damageType: 'piercing', value: 14, twoHanded: true, desc: 'Crude, sharp, and smug about it. Two hands.' }),
   wrench: B({ kind: 'weapon', slot: 'weapon', name: 'Wrench', icon: '🔧', tier: 1, weaponKind: 'mace', damageDice: '1d4+1', damageType: 'bludgeoning', value: 12, tool: 'plumber', desc: 'Heavy, greasy, and it opens pipes AND skulls. Counts as a Plumber\'s tool.' }),
   plunger: B({ kind: 'weapon', slot: 'weapon', name: 'Plunger', icon: '🪠', tier: 1, weaponKind: 'club', damageDice: '1d4', damageType: 'bludgeoning', value: 6, onHitCondition: { id: 'stunned', chance: 0.25, rounds: 1 }, desc: 'The most feared weapon in any sewer. 25% chance to stun.' }),
   drowned_majesty: B({ kind: 'weapon', slot: 'weapon', name: "The Drowned Majesty", icon: '🛁', tier: 3, weaponKind: 'club', damageDice: '1d10+1', damageType: 'bludgeoning', value: 320, levelReq: 3, onHitCondition: { id: 'slippery', chance: 0.15, rounds: 2 }, fumbleDrop: 0.05, desc: "Gribnab's soap-crusted club. It smells like strawberries and tyranny. 15% slippery on hit, and it WILL slide out of your hands on a fumble." }),
   towel: B({ kind: 'weapon', slot: 'weapon', name: 'Towel', icon: '🧻', tier: 1, weaponKind: 'club', damageDice: '1d2', damageType: 'bludgeoning', value: 3, onHitCondition: { id: 'blinded', chance: 0.5, rounds: 1 }, desc: 'A towel from Gribnab\'s rack. Whip-crack! 50% chance to blind.' }),
   rope: B({ kind: 'weapon', slot: 'weapon', name: 'Rope', icon: '🪢', tier: 1, weaponKind: 'club', damageDice: '1d4', damageType: 'bludgeoning', value: 4, desc: 'A length of old well-rope. Good for climbing, acceptable for hitting.' }),
-  wooden_bucket: B({ kind: 'weapon', slot: 'weapon', name: 'Wooden Bucket', icon: '🪣', tier: 1, weaponKind: 'club', damageDice: '1d2', damageType: 'bludgeoning', value: 3, desc: 'A bucket. As a weapon it\'s mostly a statement. The narrator has SO many comments.' }),
-  goblin_banner: B({ kind: 'armor', name: 'Goblin Banner', icon: '🚩', tier: 1, acBonus: 1, value: 12, desc: 'Torn from the throne-room wall. +1 AC. It smells like a parade.' }),
+  wooden_bucket: B({ kind: 'weapon', slot: 'weapon', altSlots: ['offHand', 'head'], name: 'Wooden Bucket', icon: '🪣', tier: 1, weaponKind: 'club', damageDice: '1d4', damageType: 'bludgeoning', value: 3, desc: 'A bucket. As a weapon it\'s a statement — a wet, denting one. Swing it, throw it, or wear it. The narrator has SO many comments.' }),
+  goblin_banner: B({ kind: 'armor', slot: 'cloak', name: 'Goblin Banner', icon: '🚩', tier: 1, acBonus: 1, value: 12, desc: 'Torn from the throne-room wall, worn as a cape. +1 AC. It smells like a parade.' }),
   // armor
-  tattered_cloak: B({ kind: 'armor', name: 'Tattered Cloak', icon: '🧥', tier: 1, acBonus: 1, value: 15, desc: '+1 AC. The Hermit\'s gift. It has seen better days and worse centuries.' }),
+  tattered_cloak: B({ kind: 'armor', slot: 'cloak', name: 'Tattered Cloak', icon: '🧥', tier: 1, acBonus: 1, value: 15, desc: '+1 AC. The Hermit\'s gift. It has seen better days and worse centuries.' }),
   sturdy_boots: B({ kind: 'armor', slot: 'boots', name: 'Sturdy Boots', icon: '👢', tier: 1, acBonus: 1, value: 12, desc: '+1 AC. Physical damage taken −1. The Hermit insists they\'re lucky.' }),
   leather_boot: B({ kind: 'armor', slot: 'boots', name: 'Leather Boot', icon: '🥾', tier: 1, acBonus: 1, value: 10, desc: '+1 AC. Found on a floating body. The body didn\'t mind.' }),
   leather_vest: B({ kind: 'armor', name: 'Leather Vest', icon: '🦺', tier: 1, acBonus: 1, value: 18, desc: '+1 AC. Boiled leather, goblin-grade stitching.' }),
@@ -166,6 +170,9 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   guards_cap: B({ kind: 'armor', slot: 'head', name: "Guard's Cap", icon: '🎖️', tier: 1, acBonus: 1, value: 8, desc: '+1 AC. Smells faintly of the guard who lost it. Probably Scrag\'s.' }),
   pipe_helmet: B({ kind: 'armor', slot: 'head', name: 'Pipe-Fitting Helmet', icon: '🪖', tier: 1, acBonus: 0, physResist: 1, value: 9, desc: 'Physical damage taken −1. Waterproof, too. Probably.' }),
   ribcage_armor: B({ kind: 'armor', slot: 'chest', name: 'Ribcage Armor', icon: '🩻', tier: 1, acBonus: 0, physResist: 1, value: 14, desc: 'Physical damage taken −1. Worn by someone who no longer needs it.' }),
+  leather_bracers: B({ kind: 'armor', slot: 'arms', name: 'Leather Bracers', icon: '💪', tier: 1, acBonus: 1, value: 9, desc: '+1 AC. Stiffened leather vambraces. Snug as a hug with knuckles.' }),
+  rusty_bracers: B({ kind: 'armor', slot: 'arms', name: 'Rusty Bracers', icon: '🥁', tier: 1, acBonus: 0, physResist: 1, value: 6, desc: 'Physical damage taken −1. Hammered iron. They clang when you clap.' }),
+  wooden_shield: B({ kind: 'armor', slot: 'offHand', name: 'Wooden Shield', icon: '🛡️', tier: 1, acBonus: 1, value: 11, desc: '+1 AC. Splintered but loyal. Held in the off hand.' }),
   soap_crown: B({ kind: 'armor', slot: 'head', name: 'Soap Crown', icon: '👑', tier: 2, acBonus: 1, levelReq: 2, value: 60, desc: '+1 AC. Goblins respect you. Equipping it earns the throne\'s respect — and everyone smells strawberries.' }),
   // trinkets
   hermits_ring: B({ kind: 'trinket', name: "Hermit's Ring", icon: '💍', tier: 2, value: 40, desc: '+5% XP. Warm against the finger. Which finger is a question you stop asking.' }),
@@ -202,7 +209,7 @@ export function makeItem(baseId: string, enchantId?: string, rarity?: Rarity): I
   const name = en ? `${en.prefix} ${b.name} +${b.tier}` : b.name;
   const value = b.value + (en ? 20 * b.tier : 0);
   return {
-    id: `it${iid++}`, kind: b.kind, name, icon: b.icon, tier: b.tier, rarity: r,
+    id: `it${iid++}`, kind: b.kind, slot: b.slot, altSlots: b.altSlots, twoHanded: b.twoHanded, name, icon: b.icon, tier: b.tier, rarity: r,
     weaponKind: b.weaponKind, damageDice: b.damageDice, damageType: b.damageType,
     acBonus: b.acBonus, healDice: b.healDice, enchantId, value, desc: b.desc,
     _baseId: baseId,
