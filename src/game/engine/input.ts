@@ -18,7 +18,7 @@ export function bindInput(engine: any) {
   window.addEventListener('keydown', engine.onKeyDown);
   window.addEventListener('keyup', engine.onKeyUp);
   window.addEventListener('resize', engine.onResize);
-  // keep the settings in sync when the user exits fullscreen with Esc
+  // keep the settings in sync when the user exits fullscreen with Esc (web API)
   document.addEventListener('fullscreenchange', () => {
     const isFs = !!document.fullscreenElement;
     if (isFs === !!engine.settings?.fullscreen) return;
@@ -26,6 +26,21 @@ export function bindInput(engine: any) {
     SettingsManager.save(engine.settings);
     engine.emitSnapshot?.();
   });
+  // Tauri native fullscreen has no DOM fullscreenchange — sync via window resize.
+  // (Native fullscreen is used in the desktop app so ESC never exits it and stays
+  // available for cutscene skipping; the checkbox follows along on the way back.)
+  if ((window as any).__TAURI_INTERNALS__) {
+    void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+      getCurrentWindow().onResized(() => {
+        void getCurrentWindow().isFullscreen().then((fs: boolean) => {
+          if (fs === !!engine.settings?.fullscreen) return;
+          engine.settings.fullscreen = fs;
+          SettingsManager.save(engine.settings);
+          engine.emitSnapshot?.();
+        });
+      });
+    }).catch(() => { /* not in tauri */ });
+  }
 }
 
 export function onPointerMove(engine: any, e: PointerEvent) {

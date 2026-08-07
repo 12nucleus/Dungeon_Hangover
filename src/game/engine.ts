@@ -23,6 +23,7 @@ import { canUnlock, treeFor } from './skilltree';
 import { TrapManager } from './traps';
 import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot, Ability } from './types';
 import { type NPCDef, type DialogueAction } from './npc';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { QuestLog, QUESTS } from './quest';
 import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes/index';
 
@@ -1504,6 +1505,14 @@ export class GameEngine {
     this.queue = [];
     this.eventQueue = [];
 
+    // 3b. Music: leave the dungeon behind — hard-stop the ambient track and
+    //    return to the muffled tavern theme the title screen expects (the
+    //    splash gesture handler starts it the same way; the title narration
+    //    and enterDungeon unmuffle/swap it when the next run begins).
+    this.audio.stopMusic();
+    this.audio.playTavernMusic({ muffled: true, volume: 0.10 });
+    this.audio.setMusicDucked(true);
+
     // 4. Rebuild the title-exterior backdrop so the splash overlay has
     //    something to fade out over (it expects the same tavern view).
     if (this.cutsceneHost) {
@@ -1676,13 +1685,20 @@ export class GameEngine {
    *  Resolution presets cap the drawing buffer (the canvas still stretches to
    *  the window); 0 = native window size at devicePixelRatio. */
   public applyDisplaySettings() {
-    // fullscreen is best-effort — browsers require a user gesture, so the
-    // saved on-launch request may be rejected silently.
+    // fullscreen: in the Tauri desktop app use the NATIVE window fullscreen —
+    // the browser's ESC-exits-fullscreen trap doesn't apply, so ESC reaches
+    // the page and can skip cutscenes without dropping fullscreen. In a plain
+    // browser fall back to the Web Fullscreen API (best-effort — browsers
+    // require a user gesture, so a saved on-launch request may be rejected).
     try {
       const wantFs = !!this.settings.fullscreen;
-      const isFs = !!document.fullscreenElement;
-      if (wantFs && !isFs) void document.documentElement.requestFullscreen?.().catch(() => { });
-      else if (!wantFs && isFs) void document.exitFullscreen?.().catch(() => { });
+      if ((window as any).__TAURI_INTERNALS__) {
+        void getCurrentWindow().setFullscreen(wantFs).catch(() => { });
+      } else {
+        const isFs = !!document.fullscreenElement;
+        if (wantFs && !isFs) void document.documentElement.requestFullscreen?.().catch(() => { });
+        else if (!wantFs && isFs) void document.exitFullscreen?.().catch(() => { });
+      }
     } catch { /* ignore */ }
     const hostW = this.container.clientWidth, hostH = this.container.clientHeight;
     if (hostW <= 0 || hostH <= 0) return;

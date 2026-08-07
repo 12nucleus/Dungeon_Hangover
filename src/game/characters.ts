@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { orcModel } from './voxelModels.mjs';
 import type { CharacterScheme, WeaponKind, EquipSlot } from './types';
-import type { Item } from './items';
+import { ENCHANTS, type Item } from './items';
 import { playClipOnRig } from '../animationEditor/AnimationRuntime';
 import { gregDrinkClip } from '../animationData/gregDrinkClip';
 import { POSE_PRESETS } from './poseEditor';
@@ -2099,7 +2099,33 @@ export interface EquipVisual {
   slot: EquipSlot;
   color: number;
   style?: EquipStyle;
+  /** magic infusion — enchant or high rarity: gem/trim color + glow accent */
+  magic?: { color: number; glow: boolean };
+  /** tier-driven detail 1..3: 1 plain, 2 studs/rivets, 3 gold trim + gems */
+  detail?: number;
 }
+
+/** '#ff7a1f' → 0xff7a1f */
+export function hexToNum(hex: string): number {
+  return parseInt(hex.replace('#', ''), 16);
+}
+
+/** unlit bright material for enchanted gems — reads as glowing + blooms */
+function gemMat(color: number): THREE.MeshLambertMaterial {
+  return new THREE.MeshLambertMaterial({ vertexColors: true, emissive: new THREE.Color(color), emissiveIntensity: 0.85 });
+}
+
+/** glowing gem cluster (1–3 bright cubes) at a piece-local grid position */
+function addGem(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual, x: number, y: number, z: number) {
+  if (!def.magic) return;
+  const c = def.magic.color;
+  v.add(x - piv.cx, y - piv.cy, z, c, 0.02);
+  v.add(x - piv.cx, y - piv.cy + 1, z, shade(c, 1.35), 0.02);
+  v.add(x - piv.cx, y - piv.cy - 1, z, shade(c, 0.65), 0.02);
+}
+
+/** gold trim colour used at detail 3 (brass fittings, buckles, crest trim) */
+const TRIM_GOLD = 0xd8b13a;
 
 function inRound(x: number, z: number, x0: number, z0: number, x1: number, z1: number, r: number): boolean {
   const cx0 = x0 + r, cx1 = x1 - r, cz0 = z0 + r, cz1 = z1 - r;
@@ -2132,41 +2158,131 @@ function ringShell(
 }
 
 function buildChest(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
-  const color = def.color;
+  const C = def.color;
+  const dark = shade(C, 0.78);
+  const lit = shade(C, 1.15);
+  const det = def.detail ?? 1;
   for (let y = 34; y <= 57; y++) {
     const t = (y - 37) / 18;
     const hx = Math.round(7 + t * 1.8);
-    ringShell(v, piv, -hx - 2, y, -7, hx + 2, y, 7, 2, color);
+    let c = C;
+    if (def.style === 'plate') c = y % 3 === 0 ? dark : (y === 57 ? lit : C);   // banded plates
+    else if (def.style === 'chain') c = y % 2 === 0 ? C : dark;                 // fine mail rings
+    else if (y === 57) c = lit;                                                 // cloth/leather hem highlight
+    ringShell(v, piv, -hx - 2, y, -7, hx + 2, y, 7, 2, c);
   }
   if (def.style === 'plate') {
-    for (const s of [-1, 1]) ringShell(v, piv, s * 9, 52, -5, s * 12, 56, 5, 2, color);
+    for (const s of [-1, 1]) {
+      // pauldron plates with a lit top edge
+      ringShell(v, piv, s * 9, 52, -5, s * 12, 56, 5, 2, dark);
+      ringShell(v, piv, s * 9, 57, -5, s * 12, 58, 5, 2, lit);
+    }
+  } else if (def.style === 'leather') {
+    // stitching: a darker line down the front
+    for (let y = 38; y <= 54; y++) for (let x = -1; x <= 1; x += 2) v.add(x, y, 7, dark, 0.04);
   }
+  if (det >= 3) {
+    // gold waist trim
+    ringShell(v, piv, -hx(42) - 2, 42, -7, hx(42) + 2, 42, 7, 2, TRIM_GOLD);
+  }
+}
+
+// hx at a given row (shared with the loop above)
+function hx(y: number): number {
+  const t = (y - 37) / 18;
+  return Math.round(7 + t * 1.8);
 }
 
 function buildLegs(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  const C = def.color;
+  const dark = shade(C, 0.75);
+  const det = def.detail ?? 1;
   ringShell(v, piv, piv.cx - 5, 22, -5, piv.cx + 5, 34, 5, 2, def.color);
+  // hem shading + knee studs
+  ringShell(v, piv, piv.cx - 5, 33, -5, piv.cx + 5, 34, 5, 2, dark);
+  if (det >= 2) {
+    v.add(piv.cx - 3, 26, 5, dark, 0.04);
+    v.add(piv.cx + 3, 26, 5, dark, 0.04);
+  }
 }
 
 function buildBoots(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
-  ringShell(v, piv, piv.cx - 5, 0, -6, piv.cx + 5, 21, 7, 2, def.color);
+  const C = def.color;
+  const dark = shade(C, 0.62);
+  const mid = shade(C, 0.88);
+  const lit = shade(C, 1.25);
+  // sole — dark, slightly wider than the foot
+  ringShell(v, piv, piv.cx - 5, 0, -6, piv.cx + 5, 1, 7, 2, dark);
+  // foot — rounded box, base leather (toe row handled below)
+  ringShell(v, piv, piv.cx - 4, 1, -5, piv.cx + 4, 4, 6, 2, C);
+  // toe — the two front rows in darker leather (the boot welt)
+  ringShell(v, piv, piv.cx - 4, 1, 7, piv.cx + 4, 4, 8, 2, dark);
+  // ankle wrap
+  ringShell(v, piv, piv.cx - 4, 4, -4, piv.cx + 4, 8, 5, 2, C);
+  // shaft — tapers up the shin with alternating seam rows
+  for (let y = 8; y <= 17; y++) {
+    const t = (y - 8) / 9;
+    const r = Math.max(2, Math.round(4 - t * 1.3));
+    ringShell(v, piv, piv.cx - r, y, -r, piv.cx + r, y, r + 1, 2, y % 2 === 0 ? C : mid);
+  }
+  // cuff — dark band at the top of the shaft
+  ringShell(v, piv, piv.cx - 4, 18, -4, piv.cx + 4, 19, 4, 2, dark);
+  // knee guard — lit plate at the front of the shaft
+  for (let y = 15; y <= 18; y++) for (let x = -2; x <= 2; x++) v.add(x, y, 5, lit, 0.04);
+  const det = def.detail ?? 1;
+  if (det >= 2) {
+    // cuff studs
+    v.add(piv.cx - 3, 18, 4, dark, 0.05);
+    v.add(piv.cx + 3, 18, 4, dark, 0.05);
+    v.add(piv.cx - 3, 18, -4, dark, 0.05);
+    v.add(piv.cx + 3, 18, -4, dark, 0.05);
+  }
+  if (det >= 3) {
+    // brass buckle at the ankle
+    v.add(piv.cx, 6, 6, TRIM_GOLD, 0.03);
+    v.add(piv.cx, 7, 6, TRIM_GOLD, 0.03);
+  }
 }
 
 function buildGloves(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
-  ringShell(v, piv, piv.cx - 3, 28, -3, piv.cx + 3, 34, 3, 2, def.color);
+  const C = def.color;
+  const dark = shade(C, 0.75);
+  const det = def.detail ?? 1;
+  ringShell(v, piv, piv.cx - 3, 28, -3, piv.cx + 3, 34, 3, 2, C);
+  // cuff band
+  ringShell(v, piv, piv.cx - 3, 33, -3, piv.cx + 3, 34, 3, 2, dark);
+  if (det >= 3) ringShell(v, piv, piv.cx - 3, 33, -3, piv.cx + 3, 33, 3, 2, TRIM_GOLD);
 }
 
 function buildBracers(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
-  ringShell(v, piv, piv.cx - 4, 37, -4, piv.cx + 4, 44, 4, 2, def.color);
+  const C = def.color;
+  const dark = shade(C, 0.75);
+  const det = def.detail ?? 1;
+  ringShell(v, piv, piv.cx - 4, 37, -4, piv.cx + 4, 44, 4, 2, C);
+  ringShell(v, piv, piv.cx - 4, 37, -4, piv.cx + 4, 38, 4, 2, dark);
+  ringShell(v, piv, piv.cx - 4, 43, -4, piv.cx + 4, 44, 4, 2, dark);
+  if (det >= 2) {
+    v.add(piv.cx, 39, 4, dark, 0.05);
+    v.add(piv.cx, 42, 4, dark, 0.05);
+  }
+  if (det >= 3) ringShell(v, piv, piv.cx - 4, 40, -4, piv.cx + 4, 40, 4, 2, TRIM_GOLD);
 }
 
 function buildCloak(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  const C = def.color;
+  const dark = shade(C, 0.8);
+  const det = def.detail ?? 1;
   // shoulders: a band across the back
-  ringShell(v, piv, -9, 54, -6, 9, 58, 2, 2, def.color);
+  ringShell(v, piv, -9, 54, -6, 9, 58, 2, 2, C);
   // back panel sweeping down
   for (let y = 48; y <= 56; y++) {
     const t = (56 - y) / 8;   // 0 at top → 1 at bottom: taper in slightly
     const hx = Math.round(8 - t * 2);
-    ringShell(v, piv, -hx, y, -8, hx, y, -5, 1, def.color);
+    ringShell(v, piv, -hx, y, -8, hx, y, -5, 1, y % 2 === 0 ? C : dark);
+  }
+  if (det >= 3) {
+    // embroidered hem
+    for (let x = -6; x <= 6; x += 2) { v.add(x, 48, -8, TRIM_GOLD, 0.03); v.add(x, 48, -7, TRIM_GOLD, 0.03); }
   }
 }
 
@@ -2186,9 +2302,47 @@ function buildHead(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
     ringShell(v, piv, -10, 57, -10, 10, 58, 10, 2, dark);
     return;
   }
-  const topY = def.style === 'cap' ? 71 : 73;
-  const botY = def.style === 'cap' ? 65 : 58;
-  ringShell(v, piv, -7, botY, -7, 7, topY, 7, 2, def.color, (_x, y, z) => z > 3 && y < 64);
+  const C = def.color;
+  const dark = shade(C, 0.72);
+  const lit = shade(C, 1.22);
+  const isCap = def.style === 'cap';
+  const isHood = def.style === 'hood';
+  const bot = isCap ? 64 : 58;          // brow line
+  const top = isCap ? 70 : (isHood ? 74 : 73);
+  const browFace = isCap ? 65 : 63;     // where the face opening ends
+  const r0 = isCap ? 6 : 7;             // dome radius at the brow
+  // skull dome — tapered rows closing toward the crown, alternating tone so
+  // the headgear reads as banded metal / leather rather than a flat blob
+  for (let y = bot; y <= top; y++) {
+    const t = (y - bot) / (top - bot);
+    const r = Math.max(isCap ? 2 : 3, Math.round(r0 - t * (r0 - (isCap ? 2 : 3))));
+    const c = y === top ? lit : (y % 2 === 0 ? C : dark);
+    ringShell(v, piv, -r, y, -r, r, y, r, 2, c, (_x, y2, z) => z > 3 && y2 < browFace);
+  }
+  // brim — a wider ring at the brow line (helm + cap; a hood has no brim)
+  if (!isHood) {
+    ringShell(v, piv, -9, bot - 1, -9, 9, bot - 1, 9, 2, dark, (_x, y2, z) => z > 4 && y2 < browFace);
+  } else {
+    // hood: a cowl drape behind the neck
+    ringShell(v, piv, -9, bot - 1, -8, 9, bot + 4, -9, 1, dark);
+  }
+  // brow plate — a raised band across the forehead above the face opening
+  for (let y = browFace - 2; y <= browFace; y++) for (let x = -3; x <= 3; x++) v.add(x - piv.cx, y - piv.cy, 7, lit, 0.04);
+  const det = def.detail ?? 1;
+  if (det >= 2 && !isHood) {
+    // brim studs
+    v.add(-8, bot - 1, 7, dark, 0.05);
+    v.add(8, bot - 1, 7, dark, 0.05);
+    v.add(-8, bot - 1, -7, dark, 0.05);
+    v.add(8, bot - 1, -7, dark, 0.05);
+  }
+  if (!isCap && !isHood) {
+    // crest fin — front-to-back ridge on top of the dome
+    for (let y = top - 2; y <= top + 2; y++) for (let z = -3; z <= 3; z++) v.add(0 - piv.cx, y - piv.cy, z, det >= 3 ? TRIM_GOLD : dark, 0.04);
+    // nose guard — a small plate at the brow center
+    v.add(0 - piv.cx, browFace - 3, 7, lit, 0.04);
+    v.add(0 - piv.cx, browFace - 4, 7, dark, 0.04);
+  }
 }
 
 function buildAmulet(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
@@ -2218,21 +2372,30 @@ function buildShield(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) 
 
 function buildPiece(def: EquipVisual): { part: string; mesh: THREE.Mesh }[] {
   const out: { part: string; mesh: THREE.Mesh }[] = [];
-  const mk = (part: string, build: (v: Vox, piv: { cx: number; cy: number }) => void) => {
+  const mk = (part: string, build: (v: Vox, piv: { cx: number; cy: number }) => void, gem?: (v: Vox, piv: { cx: number; cy: number }) => void) => {
     const piv = PART_PIVOTS[part];
     if (!piv) return;
     const vox = new Vox(C_DETAIL, 1);   // must match the player rig's SUB so
     build(vox, piv);                    // equipment voxels are the same size
     out.push({ part, mesh: vox.mesh() });
+    // enchanted gear carries a glowing gem (emissive material → blooms)
+    if (gem && def.magic) {
+      const gv = new Vox(C_DETAIL, 1);
+      gem(gv, piv);
+      const gm = gv.mesh();
+      gm.material = gemMat(def.magic.color);
+      gm.userData.magicGem = true;
+      out.push({ part, mesh: gm });
+    }
   };
   switch (def.slot) {
-    case 'chest': mk('torso', (v, p) => buildChest(v, p, def)); break;
-    case 'legs': for (const s of ['L', 'R']) mk('leg' + s, (v, p) => buildLegs(v, p, def)); break;
-    case 'boots': for (const s of ['L', 'R']) mk('shin' + s, (v, p) => buildBoots(v, p, def)); break;
-    case 'gloves': for (const s of ['L', 'R']) mk('hand' + s, (v, p) => buildGloves(v, p, def)); break;
-    case 'arms': for (const s of ['L', 'R']) mk('fore' + s, (v, p) => buildBracers(v, p, def)); break;
-    case 'cloak': mk('torso', (v, p) => buildCloak(v, p, def)); break;
-    case 'head': mk('head', (v, p) => buildHead(v, p, def)); break;
+    case 'chest': mk('torso', (v, p) => buildChest(v, p, def), (v, p) => addGem(v, p, def, 0, 46, 7)); break;
+    case 'legs': for (const s of ['L', 'R']) mk('leg' + s, (v, p) => buildLegs(v, p, def), (v, p) => addGem(v, p, def, 0, 29, 5)); break;
+    case 'boots': for (const s of ['L', 'R']) mk('shin' + s, (v, p) => buildBoots(v, p, def), (v, p) => addGem(v, p, def, 0, 13, 5)); break;
+    case 'gloves': for (const s of ['L', 'R']) mk('hand' + s, (v, p) => buildGloves(v, p, def), (v, p) => addGem(v, p, def, 0, 32, 3)); break;
+    case 'arms': for (const s of ['L', 'R']) mk('fore' + s, (v, p) => buildBracers(v, p, def), (v, p) => addGem(v, p, def, 0, 40, 4)); break;
+    case 'cloak': mk('torso', (v, p) => buildCloak(v, p, def), (v, p) => addGem(v, p, def, 0, 56, 6)); break;
+    case 'head': mk('head', (v, p) => buildHead(v, p, def), (v, p) => addGem(v, p, def, 0, def.style === 'cap' ? 66 : 64, 7)); break;
     case 'amulet': mk('torso', (v, p) => buildAmulet(v, p, def)); break;
     case 'trinket': mk('torso', (v, p) => buildTrinket(v, p, def)); break;
     case 'ring': for (const s of ['L', 'R']) mk('hand' + s, (v, p) => buildRing(v, p, def)); break;
@@ -2329,29 +2492,63 @@ export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisua
   if (slot === 'weapon') return null;
   const s = slot as EquipSlot;
   const n = item.name.toLowerCase();
-  let color = 0x9aa0a8;
-  let style: EquipStyle = 'shirt';
-  if (item.kind === 'armor') {
-    if (n.includes('plate')) { color = 0xb8bfc9; style = 'plate'; }
-    else if (n.includes('chain')) { color = 0x9aa0a8; style = 'chain'; }
-    else if (n.includes('leather')) { color = 0x6b4423; style = 'leather'; }
-    else if (s === 'cloak') { color = 0x5a4030; style = 'cloak'; }
-    else { color = 0xcfc4a8; style = 'shirt'; }
-  } else if (s === 'head') {
-    if (item._baseId === 'wooden_bucket') { color = 0x6b4423; style = 'bucket'; }
-    else { color = 0x6b4423; style = 'helm'; }
+
+  // ── material detection — drives the base color of every piece ──
+  let mat: 'plate' | 'chain' | 'leather' | 'cloth' | 'wood' = 'leather';
+  if (n.includes('plate')) mat = 'plate';
+  else if (n.includes('chain')) mat = 'chain';
+  else if (n.includes('leather') || n.includes('hide')) mat = 'leather';
+  else if (n.includes('cloth') || n.includes('robe') || n.includes('tunic') || n.includes('garb') || n.includes('silk')) mat = 'cloth';
+  else if (n.includes('wood') || n.includes('bucket')) mat = 'wood';
+  const MATS: Record<string, number> = {
+    plate: 0xb8bfc9,     // steel
+    chain: 0x9aa0a8,     // mail
+    leather: 0x6b4423,   // tanned hide
+    cloth: 0x8a2b2b,     // dyed cloth (defaults red)
+    wood: 0x8a6a42,
+  };
+  if (mat === 'cloth' && s === 'cloak') MATS.cloth = 0x5a4030;
+
+  let color: number;
+  let style: EquipStyle;
+  switch (s) {
+    case 'head':
+      if (item._baseId === 'wooden_bucket') { color = 0x6b4423; style = 'bucket'; break; }
+      style = mat === 'cloth' ? 'hood' : 'helm';
+      color = mat === 'cloth' ? 0x5a3a4a : (mat === 'wood' ? 0x8a6a42 : MATS[mat]);
+      break;
+    case 'chest':
+      style = mat === 'plate' ? 'plate' : mat === 'chain' ? 'chain' : mat === 'leather' ? 'leather' : 'shirt';
+      color = MATS[mat];
+      break;
+    case 'legs': color = mat === 'plate' ? 0x9aa0a8 : MATS[mat]; style = 'pants'; break;
+    case 'boots': color = MATS[mat]; style = 'boots'; break;
+    case 'gloves': color = mat === 'plate' ? 0xb8bfc9 : (mat === 'chain' ? 0x9aa0a8 : MATS[mat]); style = 'leather'; break;
+    case 'arms': color = mat === 'plate' ? 0xb8bfc9 : (mat === 'chain' ? 0x9aa0a8 : MATS[mat]); style = 'bracers'; break;
+    case 'cloak': color = mat === 'cloth' ? 0x5a4030 : MATS[mat]; style = 'cloak'; break;
+    case 'amulet':
+    case 'ring': color = 0xffd700; style = 'shirt'; break;
+    case 'trinket':
+      if (n.includes('penny')) color = 0xd8b13a;
+      else if (n.includes('whisker')) color = 0xe8e0cc;
+      else if (n.includes('belt')) color = 0x4a3520;
+      else color = 0x9a7b4f;
+      style = 'shirt';
+      break;
+    default: color = MATS[mat]; style = 'shirt';
   }
-  else if (s === 'legs') { color = 0x4a3b2a; style = 'pants'; }
-  else if (s === 'boots') { color = 0x4a3b2a; style = 'boots'; }
-  else if (s === 'gloves') { color = 0x6b4423; style = 'leather'; }
-  else if (s === 'arms') { color = 0x6b4423; style = 'bracers'; }
-  else if (s === 'trinket') {
-    if (n.includes('penny')) color = 0xd8b13a;
-    else if (n.includes('whisker')) color = 0xe8e0cc;
-    else if (n.includes('belt')) color = 0x4a3520;
-    else color = 0x9a7b4f;
-    style = 'shirt';
+
+  // ── magic infusion: enchant glows in its element colour; rare/epic items
+  //    carry a rarity glint even without an enchant ──
+  const RARITY: Record<string, number> = { uncommon: 0x5fae5f, rare: 0x5b8def, epic: 0xb06ae0 };
+  let magic: { color: number; glow: boolean } | undefined;
+  if (item.enchantId && ENCHANTS[item.enchantId]) {
+    magic = { color: hexToNum(ENCHANTS[item.enchantId].color), glow: true };
+  } else if (item.rarity && item.rarity !== 'common' && RARITY[item.rarity]) {
+    magic = { color: RARITY[item.rarity], glow: true };
   }
-  else if (s === 'amulet' || s === 'ring') { color = 0xffd700; style = 'shirt'; }
-  return { slot: s, color, style };
+  // jewellery pieces ARE the gem — dye them entirely
+  if (magic && (s === 'amulet' || s === 'ring' || s === 'trinket')) color = magic.color;
+
+  return { slot: s, color, style, magic, detail: Math.min(3, Math.max(1, item.tier ?? 1)) };
 }

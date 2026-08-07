@@ -26,7 +26,10 @@ export async function playIntroCutscene(h: CutsceneHost) {
   (hv as unknown as { introGameplayRig?: typeof gameplayRig }).introGameplayRig = gameplayRig;
   h.busy = true;
   h.introActive = true;
-  h.introSkipped = false;
+  // NOTE: do NOT reset h.introSkipped here. The intro is chained directly from
+  // endTitleSequence — when the player skipped the title (or the wake), that
+  // flag must carry through so the intro fast-forwards to the character picker
+  // instead of replaying in full. Director-launched scenes reset it themselves.
   // endTitleSequence just called clearCine() (which flips cinematic=false)
   // right before chaining into us — re-assert it so the HUD's main-menu
   // overlay (`phase === 'menu' && !cinematic`) can't flash over the tavern
@@ -148,7 +151,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.fadeTo(0);
   h.audio.stopMusic(); h.audio.stopTavernMusic(); h.audio.playTavernMusic();
   await h.cineDelay(1100);   // hold the establishing shot while the fade completes
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // == BEAT 1: establishing - the warm, dingy room; Greg mid-bender ==
   // Medium-wide front-right shot on Greg so the audience reads his mug + the
@@ -157,7 +159,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.focus(poi.gregHead);
   await h.cineDelay(900);    // smooth single swing from the wide shot onto Greg
   await h.narrate('t_open', 'The Dirty Mug. Last call came and went two hours ago. Nobody has found the courage to tell Greg.', 5200);
-  if (h.introSkipped) { finishIntro(h); return; }
   // Greg takes a long, theatrical sip: a single 3-second keyframed animation
   // (raise the mug → sip with head tilted back → lower it back to the table).
   // The clip drives the arm/head rotations; updateRig keeps the sitting hip-sink.
@@ -174,7 +175,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.cineDelay(500);
   hv.rig.anim.lunge = 0.7;
   await h.narrate('greg_a', "Barkeep! Another! And one for me shadow - the big fella's had a hard night an' all!", 5000);
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // == BEAT 3: slow pan across the unimpressed room ==
   // FIX 4: WIDER shot so the audience reads the patron tables and the wizard
@@ -183,7 +183,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.focus(new THREE.Vector3(-1.0, 1.5, -1.4));
   await h.cineDelay(600);
   await h.narrate('narr_room', 'There is no shadow. There is only Greg, a table he has declared a sovereign kingdom, and a room full of people quietly praying he leaves the premises.', 7400);
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // == BEAT 4: Greg picks a fight with the furniture ==
   // Low-angle medium shot — we should feel Greg leaning INTO the
@@ -193,7 +192,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.cineDelay(500);
   hv.rig.anim.lunge = 1;
   await h.narrate('greg_b', "I said the WHOLE table's mine, Norris! Every splinter of it! Come and take it, if yeh think yer hard enough!", 5600);
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // == BEAT 5: the barmaid delivers yet another round ==
   // FIX 4: face the BARMAID (was facing the wrong angle). The bartender is
@@ -203,7 +201,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.focus(poi.barmaid.clone().add(new THREE.Vector3(0, 0.2, 0)));
   if (bar) h.barmaidServe(bar);
   await h.narrate('narr_maid', 'The barmaid has poured this exact drink for this exact man forty-seven times. She stopped making eye contact somewhere around the thirtieth. It is safer that way.', 7600);
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // == BEAT 6: the nervous wizard in the corner ==
   // FIX 4: face the wizard from the front (not profile). The wizard is small;
@@ -212,7 +209,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.focus(poi.wizard.clone().add(new THREE.Vector3(0, 0.1, 0)));
   await h.cineDelay(500);
   await h.narrate('narr_wiz', "Over in the corner, a wizard barely taller than his own staff is counting on his fingers, very quietly, very nervously. It's the face of a man about to cast something he hasn't practiced in a while.", 7400);
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // == BEAT 7: the bouncer cracks his knuckles; Greg mounts the table ==
   // FIX 3a: the previous version's "two-shot" focus point (-2.0, 1.2, -0.6)
@@ -228,7 +224,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.cineDelay(400);   // brief settle onto the bouncer before the line lands
   await h.narrate('narr_bounce', 'By the door, the bouncer cracks his knuckles - a retired warlord who took this job for the peace and quiet. Greg reads the room perfectly, and climbs onto the table.', 7400);
   if (bc) bc.anim.mode = 'idle';
-  if (h.introSkipped) { finishIntro(h); return; }
   // FIX 4: wide shot for Greg on the table — we want to feel his theatrical
   // stance AND read the room while the wizard lines up the spell.
   hv.rig.anim.mode = 'idle'; hv.rig.anim.crouch = 0; hv.rig.anim.flinch = 0;
@@ -290,7 +285,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   if (wiz) wiz.anim.mode = 'point';
   h.audio.play('dice', 0.4);           // soft "summoning" sound as staff rises
   await h.cineDelay(1400);
-  if (h.introSkipped) { finishIntro(h); return; }
   // STAGE B: AIM (0.8 s) — camera stays on the wizard. Charging motes bloom
   // at the staff tip (no focus/distance change — the camera finally settled
   // onto the wizard in STAGE A; if we touch the focus here we restart the
@@ -302,7 +296,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.cineDelay(400);
   h.particles.burst({ pos: wizardTip, count: 10, color: [0xa855f7, 0xe9d5ff], speed: [0.1, 0.5], life: [0.3, 0.7], size: [0.2, 0.45], gravity: -0.6, endScale: 0.15 });
   await h.cineDelay(400);
-  if (h.introSkipped) { finishIntro(h); return; }
   // STAGE C: FIRE (0.8 s) — wizard snaps forward, single whip-pan to Greg + a
   // SINGLE shake burst at the polymorph moment (NO second shake during the pan
   // itself — that was the cause of the "bouncing around" feel).
@@ -376,7 +369,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   if (h.heroLight) h.heroLight.color.setHex(0xffb060);
   // reset wizard so the cast pose doesn't stick
   if (wiz) { wiz.anim.mode = 'idle'; wiz.anim.lunge = 0; }
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // -- Greg, human again and thoroughly rattled, drops back onto his stool --
   hv.rig.group.position.copy(seat);
@@ -421,7 +413,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.cineDelay(900);
 
   await h.narrate('narr_thud', 'The magic wears off. The ale, sadly, does not. Greg salutes the crowd, mistakes the floor for the chair, and meets both at considerable speed.', 6800);
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // FIX 7 (continued): PASS OUT — full-screen blur to black, tavern music
   // crossfades to the dungeon ambient loop.
@@ -429,7 +420,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.audio.stopTavernMusic(); h.audio.playMusic('music_ambient');
   await h.cineDelay(1800);
   await h.narrate('narr_bridge', 'He drank the tavern dry, insulted a man with a sword, challenged a wizard to a fistfight, and spent four seconds as livestock. Then the floor rose up to introduce itself.', 6800);
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // ── wake at the bottom of the dungeon ──
   h.scene.remove(h.tavern); h.tavern = null; h.tavernRigs = []; h.tavernActors = {}; h.iso.box = null;
@@ -486,22 +476,16 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.fadeTo(0);
   await delay(700);
   await h.narrate('narr_wake', "You wake up. You are lying on cold stone. You are wearing underwear. This is not how you thought today would go, and you once thought you'd marry a chandelier.", 6200);
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // Greg comes to — cursing, confused, no idea where or who he is.
   await h.narrate('greg_wake_1', "Urgh… wha… where the bloody hell am I? …Stone ceiling. Right. Not the tavern, then.", 5200);
-  if (h.introSkipped) { finishIntro(h); return; }
   await h.narrate('greg_wake_2', "Who… who am I? …Greg. I'm Greg. The Dim. Probably. …Wait, that don't feel right neither.", 5200);
-  if (h.introSkipped) { finishIntro(h); return; }
   await h.narrate('narr_create', 'The world swims into focus. Somewhere in the muck of your skull, a thought forms: you can\'t climb fifty floors as a nameless lump. Time to remember what you are.', 6200);
-  if (h.introSkipped) { finishIntro(h); return; }
 
   const starPos = floorWp.clone().add(new THREE.Vector3(0, 1.7, 0));
   h.spawnStars(starPos);
   await h.narrate('narr_premise', 'You stand. The room spins. You are not sure if it\'s the hangover or the dungeon. Both, probably.', 4800);
-  if (h.introSkipped) { finishIntro(h); return; }
   await h.narrate('narr_premise_2', "A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that never burns out. Somewhere in the dark, something squeaks.", 6600);
-  if (h.introSkipped) { finishIntro(h); return; }
 
   // ── character creation: stats, 2 classes, 2 starting skills ──
   // The React overlay renders on phase='creation'. requestCreation resolves
