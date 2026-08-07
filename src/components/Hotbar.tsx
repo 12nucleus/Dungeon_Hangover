@@ -19,7 +19,7 @@ interface Props {
 
 const KEYMAP = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='];
 
-type DefaultAction = 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack';
+type DefaultAction = 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack' | 'shove' | 'defend';
 
 /** default actions shown before the 12 skill slots */
 const DEFAULTS: { id: DefaultAction; icon: string; label: string }[] = [
@@ -29,6 +29,7 @@ const DEFAULTS: { id: DefaultAction; icon: string; label: string }[] = [
   { id: 'throw', icon: '🎯', label: 'Throw' },
   { id: 'attack', icon: '⚔️', label: 'Attack (weapon)' },
   { id: 'bonusAttack', icon: '🔸', label: 'Bonus Attack' },
+  { id: 'shove', icon: '🫸', label: 'Shove' },
 ];
 
 export function Hotbar({ snap, engine }: Props) {
@@ -154,7 +155,7 @@ export function Hotbar({ snap, engine }: Props) {
           return (
             <button
               key={d.id}
-              className={`skill-btn default ${enemyTurn ? 'disabled' : ''} ${d.id === 'run' && (active as { running?: boolean }).running ? 'on' : ''} ${isAttack && snap.sneaking && phase === 'combat' ? 'backstab' : ''}`}
+              className={`skill-btn default ${enemyTurn ? 'disabled' : ''} ${d.id === 'run' && (active as { running?: boolean }).running ? 'on' : ''} ${isAttack && snap.sneaking && phase === 'combat' ? 'backstab' : ''} ${isAttack && active.attackUsed && phase === 'combat' ? 'disabled' : ''}`}
               onClick={() => !enemyTurn && engine.defaultAction(d.id)}
               title={`${isAttack && weapon ? `${weapon.icon} ${weapon.name} — basic attack${snap.sneaking ? ' (Backstab: guaranteed crit)' : ''}` : `${d.label}${d.id === 'run' ? ' [R]' : ''}${d.id === 'bonusAttack' ? ' — a second (bonus-action) strike' : ''}`}`}
             >

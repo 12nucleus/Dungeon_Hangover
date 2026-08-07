@@ -8,6 +8,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { buildCharacter, updateRig, setWeapon } from '@/game/characters';
 import type { CharacterScheme, WeaponKind } from '@/game/types';
+import { attachVoxelView, addTicker, removeTicker } from './voxelView';
 
 interface Props {
   scheme: CharacterScheme;
@@ -25,6 +26,11 @@ export function ClassPortrait({ scheme, weapon, width = 120, height = 150, class
     const host = mount.current;
     if (!host) return;
 
+    // ONE shared WebGL context for every portrait (15 class cards would
+    // otherwise evict the game canvas — see voxelView.ts)
+    const view = attachVoxelView(host, width, height);
+    canvasRef.current = view.canvas;
+
     // build a minimal scene
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b0b12);
@@ -36,13 +42,6 @@ export function ClassPortrait({ scheme, weapon, width = 120, height = 150, class
     const camera = new THREE.PerspectiveCamera(34, width / height, 0.1, 50);
     camera.position.set(1.7, 1.4, 3.1);
     camera.lookAt(0, 0.95, 0);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    renderer.shadowMap.enabled = true;
-    host.appendChild(renderer.domElement);
-    canvasRef.current = renderer.domElement;
 
     // lights
     const hemi = new THREE.HemisphereLight(0xffffff, 0x222233, 1.1);
@@ -72,28 +71,23 @@ export function ClassPortrait({ scheme, weapon, width = 120, height = 150, class
     rig.anim.mode = 'idle';
     scene.add(rig.group);
 
-    let raf = 0;
-    let disposed = false;
-    const loop = () => {
-      if (disposed) return;
+    let ticker: (() => void) | null = null;
+    ticker = () => {
       rig.anim.t += 0.016;
       updateRig(rig, 0.016);
       rig.group.rotation.y += 0.004; // slow turn so the portrait reads
-      renderer.render(scene, camera);
-      raf = requestAnimationFrame(loop);
+      view.renderOnce(scene, camera);
     };
-    loop();
+    addTicker(ticker);
 
     return () => {
-      disposed = true;
-      cancelAnimationFrame(raf);
+      removeTicker(ticker);
       rig.group.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.geometry) m.geometry.dispose();
         if (m.material) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
       });
-      renderer.dispose();
-      if (renderer.domElement.parentNode === host) host.removeChild(renderer.domElement);
+      view.dispose();
     };
   }, [scheme, weapon, width, height]);
 

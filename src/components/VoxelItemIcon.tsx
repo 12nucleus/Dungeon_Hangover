@@ -13,6 +13,7 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { Item } from '@/game/items';
+import { attachVoxelView, addTicker, removeTicker } from './voxelView';
 
 interface Props {
   item: Item;
@@ -718,16 +719,14 @@ export function VoxelItemIcon({ item, size = 40, spin = false }: Props) {
     const host = mount.current;
     if (!host) return;
 
+    // ONE shared WebGL context for every icon (per-icon contexts evict the
+    // game canvas in Chrome/WebView2 — see voxelView.ts)
+    const view = attachVoxelView(host, size, size);
+
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b0b12);
 
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(size, size);
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    renderer.shadowMap.enabled = true;
-    host.appendChild(renderer.domElement);
 
     const hemi = new THREE.HemisphereLight(0xffffff, 0x222233, 1.1);
     scene.add(hemi);
@@ -755,26 +754,21 @@ export function VoxelItemIcon({ item, size = 40, spin = false }: Props) {
     camera.lookAt(0, 0, 0);
     scene.add(model);
 
-    let raf = 0;
-    let disposed = false;
-    const loop = () => {
-      if (disposed) return;
-      if (spin) model.rotation.y += 0.02;
-      renderer.render(scene, camera);
-      raf = requestAnimationFrame(loop);
-    };
-    loop();
+    view.renderOnce(scene, camera);
+    let ticker: (() => void) | null = null;
+    if (spin) {
+      ticker = () => { model.rotation.y += 0.02; view.renderOnce(scene, camera); };
+      addTicker(ticker);
+    }
 
     return () => {
-      disposed = true;
-      cancelAnimationFrame(raf);
+      if (ticker) removeTicker(ticker);
       model.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.geometry) m.geometry.dispose();
         if (m.material) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
       });
-      renderer.dispose();
-      if (renderer.domElement.parentNode === host) host.removeChild(renderer.domElement);
+      view.dispose();
     };
   }, [item, size, spin]);
 

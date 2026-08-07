@@ -38,8 +38,8 @@ export const TRAP_DEFS: Record<string, TrapDef> = {
 
 /**
  * Placement table: [defId, x, z] — floor levels supply their own table
- * (the Warlord's Warren placements moved into floor50/engine init); the
- * generic defaults are kept for the original 7-room map path.
+ * (floor 50 ships its own in engine init); the generic defaults are kept
+ * for levels that ship none.
  */
 export const TRAP_PLACEMENTS: [string, number, number][] = [];
 

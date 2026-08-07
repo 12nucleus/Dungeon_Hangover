@@ -22,7 +22,7 @@ export type DamageType =
   | 'fire' | 'cold' | 'radiant' | 'force' | 'poison';
 export type SkillCost = 'action' | 'bonus' | 'free';
 export type SkillKind = 'melee' | 'ranged' | 'aoe' | 'heal' | 'buff';
-export type EquipSlot = 'head' | 'chest' | 'legs' | 'boots' | 'gloves' | 'arms' | 'cloak' | 'trinket' | 'weapon' | 'offHand' | 'amulet' | 'ring';
+export type EquipSlot = 'head' | 'chest' | 'legs' | 'boots' | 'gloves' | 'arms' | 'cloak' | 'belt' | 'trinket' | 'weapon' | 'offHand' | 'amulet' | 'ring';
 
 export interface GridPos { x: number; z: number; }
 
@@ -156,7 +156,7 @@ export interface Unit {
   level: number;
   xp: number;             // accumulated experience
   skillPoints: number;    // unspent (used by a later chunk)
-  equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; arms?: import('./items').Item; cloak?: import('./items').Item; trinket?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item };
+  equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; arms?: import('./items').Item; belt?: import('./items').Item; cloak?: import('./items').Item; trinket?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item };
   maxHp: number;
   hp: number;
   ac: number;
@@ -173,6 +173,8 @@ export interface Unit {
   cooldowns: Record<string, number>;
   hasAction: boolean;
   hasBonus: boolean;
+  /** the free basic attack (⚔️ phase) is spent for this turn */
+  attackUsed?: boolean;
   movementLeft: number;
   initiative: number;
   conditions: Condition[];

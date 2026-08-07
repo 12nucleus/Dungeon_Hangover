@@ -365,6 +365,20 @@ export async function disarmTrap(engine: any, u: Unit, trap: any) {
     const goldReward = 3 + Math.floor(Math.random() * 8);
     offerLoot(engine, 'Disarmed trap', [], goldReward);
     spawnFloater(engine, u.id, '✔ Disarmed!', 'buff');
+    // the trap is genuinely gone now — stepping on the tile is safe
+    // (at() and the walker both skip triggered traps)
+    trap.triggered = true;
+    if (trap.mesh) {
+      engine.trapManager.group.remove(trap.mesh);
+      trap.mesh.geometry.dispose();
+      (trap.mesh.material as THREE.Material).dispose();
+      trap.mesh = undefined;
+    }
+    const els = engine.trapManager.group.userData.trapEls ?? [];
+    engine.trapManager.group.userData.trapEls = els.filter((e: any) => {
+      if (e.wp.x === trap.pos.x && e.wp.z === trap.pos.z) { e.el.remove(); return false; }
+      return true;
+    });
   } else {
     engine.pushLog(`${u.name} fumbles the disarm!`, 'system');
     await triggerTrap(engine, u, trap);

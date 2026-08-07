@@ -76,6 +76,7 @@ export class Combat {
     clone.cooldowns = {};
     clone.hasAction = true;
     clone.hasBonus = true;
+    clone.attackUsed = false;
     clone.movementLeft = effMove(clone);
     // party-size cap: the player may field at most 6 (Greg + companions + summons)
     if (clone.team === 'party' && this.living('party').length >= 6) {
@@ -314,6 +315,7 @@ export class Combat {
     }
     u.hasAction = true;
     u.hasBonus = true;
+    u.attackUsed = false;
     u.movementLeft = effMove(u);
     if (u.conditions.some((c) => c.id === 'slowed')) u.movementLeft = Math.ceil(u.movementLeft / 2);
     if (u.conditions.some((c) => c.id === 'rooted')) u.movementLeft = 0;
@@ -367,6 +369,7 @@ export class Combat {
         if (p.team !== 'party') continue;
         p.hasAction = true;
         p.hasBonus = true;
+        p.attackUsed = false;
         p.movementLeft = effMove(p);
       }
       this.turnMode = 'walk';
@@ -484,6 +487,13 @@ export class Combat {
   // ── skill use (player) ─────────────────────────────────────
   canUse(u: Unit, s: SkillDef): string | null {
     if (!u.alive) return 'dead';
+    // the basic attack is FREE and once per turn (attackUsed) — it must never
+    // eat the action, or the skill attacks gray out right after it (the ⚔️
+    // attack then the 🔸 skill are BOTH expected each round)
+    if (s.id === 'attack') {
+      if (u.attackUsed) return 'Already attacked this turn';
+      return null;
+    }
     if (s.cost === 'action' && !u.hasAction) return 'No action left';
     if (s.cost === 'bonus' && !u.hasBonus) return 'No bonus action left';
     if ((u.cooldowns[s.id] ?? 0) > 0) return `Cooldown: ${u.cooldowns[s.id]} round(s)`;
@@ -506,7 +516,7 @@ export class Combat {
         name: w ? `Attack (${w.name ?? 'weapon'})` : 'Punch',
       } as SkillDef;
     }
-    if (!s || (skillId !== 'attack' && !u.equippedSkills.includes(skillId))) return [];
+    if (!s || (skillId !== 'attack' && skillId !== 'shove' && !u.equippedSkills.includes(skillId))) return [];
     const deny = this.canUse(u, s);
     if (deny) return [{ type: 'log', text: deny, kind: 'info' }];
     // BG3 phase advance: action → bonus (if any left), bonus → back to walk
@@ -555,8 +565,11 @@ export class Combat {
     const ev: CombatEvent[] = [];
     ev.push({ type: 'log', text: `${u.name} uses ${s.icon} ${s.name}`, kind: 'info' });
 
-    // pay costs
-    if (s.cost === 'action') {
+    // pay costs — the basic attack is FREE (spent via attackUsed instead) so
+    // the action stays available for one skill per round
+    if (skillId === 'attack') {
+      u.attackUsed = true;
+    } else if (s.cost === 'action') {
       u.hasAction = false;
       // frenzy: the carrier's extra action is granted after its first action
       if (u.cooldowns['frenzy_extra']) {

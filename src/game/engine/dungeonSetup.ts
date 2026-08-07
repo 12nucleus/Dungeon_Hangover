@@ -129,7 +129,7 @@ export function setupDungeon(engine: any, L: LevelDef) {
   engine.secretChestMesh = buildGoldenChest();
   place(engine, engine.secretChestMesh, st.secretChest, 0.02);
 
-  // lever + rubble (Warren path) + authored blockers (floor 50)
+  // lever + rubble (legacy lever path) + authored blockers (floor 50)
   engine.leverMesh = buildLever();
   place(engine, engine.leverMesh, st.secretLever);
   for (const t of st.secretRubble) {
@@ -251,7 +251,7 @@ export function updateDungeon(engine: any, dt: number) {
   }
 
   if (engine.leverMesh && !engine.secretOpen && adj(st.secretLever)) pullLever(engine);
-  // boss door: iron key (Warren) or the level's open flag (floor 50)
+  // boss door: iron key (legacy) or the level's open flag (floor 50)
   if (engine.ironDoor && !engine.ironDoorOpen) {
     const openCond = st.bossDoorOpenFlag ? engine.flags.has(st.bossDoorOpenFlag) : engine.hasIronKey;
     if (openCond) openIronDoor(engine);

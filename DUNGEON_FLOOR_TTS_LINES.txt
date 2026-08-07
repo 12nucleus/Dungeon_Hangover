@@ -228,6 +228,12 @@ Sober-ish. You can see the dungeon for what it is. It's worse.
 [sober_6]   (camping.ts SOBER_LINES)
 Stone cold sober. This is the worst thing that has ever happened to you.
 
+[boss_rat_1]   (src/game/cutscenes/bossRat.ts)
+The room smells like rat. Specifically, like a rat that has never once considered bathing.
+
+[boss_rat_2]   (src/game/cutscenes/bossRat.ts)
+In the center, on a little bone pedestal, is a finger. It has a ring on it. The rat is watching you. The rat is ALWAYS watching.
+
 ── NPC DIALOGUE (29)
 ───────────────────────────────────────────────────────────────
 

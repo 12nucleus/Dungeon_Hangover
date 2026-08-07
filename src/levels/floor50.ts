@@ -318,6 +318,13 @@ for (const c of CORRIDORS) {
   }
 }
 for (const k of GATE_LANE_TILES) reserved.add(k);
+// ── occupied-tile tracker: every placed prop (explicit + dressed) records its
+// tile so later passes never stack two props on one square, and so the generic
+// room-dressing pass can skip what's already there. ──
+const occupied = new Set<string>();
+// hoist destructibles so the dressing pass can avoid their tiles
+const destructiblesList = floor50Destructibles(20260802, map.rooms, map.walk, reserved);
+for (const d of destructiblesList) occupied.add(`${d.x},${d.z}`);
 
 // ── props ─────────────────────────────────────────────────────
 const rng = mulberry32(20260802);
@@ -339,6 +346,7 @@ const put = (kind: PropPlacement['kind'], x: number, z: number, s = rng()) => {
     if (GATE_LANE_TILES.has(k) || reserved.has(k)) return;
   }
   props.push({ kind, x: wx, z: wz, seed: s });
+  occupied.add(`${wx},${wz}`);
 };
 
 // torches on corridor walls every ~6 tiles (skip water rooms)
@@ -518,10 +526,12 @@ putW('skeleton', R19.x0, R19.z0, 0.5);
 // r20 — well + well bucket
 putW('well', mid(R20), mid(R20), 0.5);
 putW('bucket', R20.x0, mid(R20), 0.5);
-// r21 — map table, footlocker, stew pot
+// r21 — map table, footlockers, stew pot, bunks (it's a barracks!)
 putW('dice_table', R21.x0, R21.z1, 0.5);
 putW('footlocker', R21.x1, R21.z0, 0.5);
 putW('cauldron', mid(R21), R21.z0, 0.5);
+putW('bunk', R21.x1, R21.z1, 0.5);
+putW('bunk', R21.x0 + 1, R21.z0 + 1, 0.5);
 // r22 — weapon racks + note sign
 putW('weapon_rack', R22.x0, R22.z0, 0.5);
 putW('weapon_rack', R22.x0, R22.z1, 0.6);
@@ -558,6 +568,69 @@ for (const t of corridorTiles) {
     if (rng() < 0.12) put('stalactite', nx - OFFSET.x, nz - OFFSET.z);
   }
 }
+// ── generic room dressing ─────────────────────────────────────
+// Fill a room's interior with NON-BLOCKING themed props so it reads as a real,
+// lived-in space. Every kind used here is non-blocking, so even dense dressing
+// can never seal a room or its entrance (movement only blocks on `blocked`
+// tiles, and these never set one). Water tiles, reserved squares, and already-
+// occupied tiles are skipped; the barracks (r21) and armory (r22) get extra
+// density and over-weighted signature furniture.
+const FILL_BLOCKING = new Set<PropKind>(['crate', 'stalagmite', 'boulder', 'tent', 'campfire']);
+const roomDress = (id: string, kinds: PropKind[], density = 0.6, step = 2) => {
+  const r = map.rooms[id];
+  if (!r) return;
+  const R = mulberry32((20260802 ^ (id.charCodeAt(1) * 2654435761)) >>> 0);
+  for (let x = r.x0 + 1; x < r.x1; x += step) {
+    for (let z = r.z0 + 1; z < r.z1; z += step) {
+      const k = `${x},${z}`;
+      if (reserved.has(k) || occupied.has(k)) continue;
+      if (water[x]?.[z]) continue;
+      if (R() > density) continue;
+      const kind = kinds[Math.floor(R() * kinds.length)];
+      if (FILL_BLOCKING.has(kind)) continue; // never auto-place a blocking prop
+      put(kind, x - OFFSET.x, z - OFFSET.z, R());
+    }
+  }
+};
+
+// per-room furniture palette (signature pieces are repeated in the barracks /
+// armory lists so they dominate). Clutter kinds are shared across rooms.
+const THEME: Record<string, PropKind[]> = {
+  r1:  ['barrel', 'bones', 'bucket', 'scratches', 'rubble', 'rug'],
+  r2:  ['barrel', 'bedroll', 'mushroom', 'bones', 'rug'],
+  r3:  ['skeleton', 'barrel', 'bones', 'rubble'],
+  r4:  ['bedroll', 'bones', 'barrel', 'nest', 'mushroom', 'rug'],
+  r5:  ['bones', 'webpile', 'barrel', 'rug'],
+  r6:  ['barrel', 'wine_bottle', 'broken_bottle', 'rubble', 'rug'],
+  r7:  ['body', 'chest', 'barrel', 'bones'],
+  r8:  ['pipe', 'valve', 'barrel', 'rubble'],
+  r9:  ['barrel', 'sign', 'bones', 'rug', 'banner'],
+  r10: ['bunk', 'footlocker', 'dice_table', 'barrel', 'bookshelf', 'rug', 'banner'],
+  r11: ['nest', 'bones', 'barrel', 'mushroom', 'rug'],
+  r12: ['body', 'barrel', 'bones', 'drain'],
+  r13: ['mushroom', 'bones', 'bookshelf', 'barrel', 'rug'],
+  r14: ['wrench', 'plunger', 'pipe_fitting', 'toolbox', 'barrel', 'pipe'],
+  r15: ['skeleton', 'bones', 'barrel', 'rug', 'bookshelf'],
+  r16: ['chest', 'mirror', 'bunk', 'barrel', 'bookshelf', 'rug'],
+  r17: ['chest', 'barrel', 'rug', 'bookshelf'],
+  r18: ['compass', 'fountain', 'barrel', 'rug', 'banner'],
+  r19: ['skeleton', 'rubble', 'barrel', 'bones'],
+  r20: ['well', 'bucket', 'barrel', 'bones', 'rug'],
+  // ── GOBLIN BARRACKS: bunks, footlockers, a map table, the stew pot, clutter ──
+  r21: ['bunk', 'bunk', 'footlocker', 'footlocker', 'dice_table', 'cauldron', 'bedroll', 'barrel', 'banner', 'rug', 'bones'],
+  // ── ARMORY: weapon racks, armor stands, shield racks, a chest, clutter ──
+  r22: ['weapon_rack', 'weapon_rack', 'armor_stand', 'armor_stand', 'shield_rack', 'shield_rack', 'chest', 'barrel', 'banner', 'tapestry', 'rug'],
+  r23: ['altar', 'chest', 'barrel', 'bones'],
+  r24: ['throne', 'banner', 'tapestry', 'chest', 'barrel', 'rug', 'armor_stand', 'bookshelf'],
+  r25: ['towel', 'wine_bottle', 'duck', 'rug', 'tapestry', 'barrel'],
+};
+for (const id of Object.keys(THEME)) {
+  const heavy = id === 'r21' || id === 'r22';
+  roomDress(id, THEME[id], heavy ? 0.78 : 0.6, 2);
+}
+putW('chandelier', mid(R24), (R24.z0 + R24.z1) >> 1, 0.5);
+putW('chandelier', mid(R25), (R25.z0 + R25.z1) >> 1, 0.5);
+putW('chandelier', mid(R22), (R22.z0 + R22.z1) >> 1, 0.5);
 
 // ── spawns for the roster ─────────────────────────────────────
 const FLOOR50_SPAWNS: Floor50Spawns = {
@@ -608,7 +681,7 @@ export const floor50Level: LevelDef = {
   },
   structures,
   traps: (seed) => floor50Traps(seed, map.rooms, map.walk, reserved),
-  destructibles: (() => floor50Destructibles(20260802, map.rooms, map.walk, reserved))(),
+  destructibles: destructiblesList,
   makeInteractables: (seed) => floor50Interactables(seed, map.rooms),
   hazards: floor50Hazards(map.rooms),
   makeHiddenTreasures: (seed) => floor50HiddenTreasures(seed, map.rooms, map.walk, reserved),

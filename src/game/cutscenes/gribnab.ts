@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────
 // cutscenes/gribnab — "The Soapy King" boss reveal.
-// Same bath-song structure as the Warren's warlord, but the captions
+// Same bath-song structure as the original warlord boss, but the captions
 // are the bible's Pre-Fight blocks and they vary on how the player got
 // the door open: knocked (calm, soapy) vs door_forced (very upset).
 // ─────────────────────────────────────────────────────────────

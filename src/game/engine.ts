@@ -33,7 +33,7 @@ import { buildTavernExterior } from './engine/tavernExterior';
 import { buildTavern } from './engine/tavern';
 import { buildSheep } from './engine/sheep';
 import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone, grantKey as grantKeyModule, winGame as winGameModule, grantLoot as grantLootModule } from './engine/dungeonSetup';
-import { smashProp, checkCombatTrigger, enqueue, setAnimScale, triggerTrap as triggerTrapModule } from './engine/combatAnimation';
+import { smashProp, checkCombatTrigger, enqueue, setAnimScale, triggerTrap as triggerTrapModule, disarmTrap as disarmTrapModule } from './engine/combatAnimation';
 import { updateFog, updateExploredVisibility, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule, hidePathPreview, type InteractPick } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
 import { respawn as respawnModule } from './engine/camping';
@@ -1426,7 +1426,7 @@ export class GameEngine {
     }
     this.phase = 'explore';
     this.selectedId = this.combat.living('party')[0]?.id ?? null;
-    this.pushLog('You descend into the Warlord\'s Warren, torch in hand... (click to move, Q/E rotate, wheel zoom)', 'system');
+    this.pushLog('You descend into the Sewer Cellar, torch in hand... (click to move, Q/E rotate, wheel zoom)', 'system');
     this.emitSnapshot();
   }
 
@@ -1598,11 +1598,38 @@ export class GameEngine {
    };
  }
 
- selectSkill(skillId: string | null) {
-    const active = this.combat.active;
-    if (!active || active.team !== 'party' || this.busy) return;
+  selectSkill(skillId: string | null) {
+    const inCombat = !!this.combat?.inCombat;
+    // explore: the party leader acts (skills like The Scout work out of
+    // combat); combat: the active unit
+    const active = inCombat ? this.combat.active : (this.byId(this.selectedId ?? '') ?? this.combat.living('party')[0]);
+    if (!active || (inCombat && active.team !== 'party') || this.busy) return;
     if (!skillId) { this.cancelTargeting(); return; }
-    if (!this.combat?.inCombat) {
+    if (!inCombat) {
+      // The Scout (zoologist): an EXPLORE ability — reveal the surrounding map
+      // and spot hidden enemies (the r12 den loses its ambush: surprise round)
+      if (skillId === 'scout') {
+        const u = this.combat.living('party')[0];
+        if (!u) return;
+        if ((u.cooldowns['scout'] ?? 0) > 0) {
+          this.setHoverInfoOnce('The scout is still away — wait for them to return.');
+          return;
+        }
+        const R = 14;
+        for (let x = u.pos.x - R; x <= u.pos.x + R; x++) {
+          for (let z = u.pos.z - R; z <= u.pos.z + R; z++) {
+            if (x < 0 || z < 0 || x >= WORLD_SIZE || z >= WORLD_SIZE) continue;
+            if ((x - u.pos.x) ** 2 + (z - u.pos.z) ** 2 <= R * R) this.explored[x][z] = true;
+          }
+        }
+        this.flags.add('scouted_12');   // the r12 rat den is caught flat-footed
+        u.cooldowns['scout'] = 4;       // 3-round cooldown, ticking like combat
+        this.fogDirty = true;
+        this.audio.play('dice', 0.7);
+        this.pushLog('🦅 A scout slips ahead — the map opens up. Hidden enemies are spotted.', 'system');
+        this.emitSnapshot();
+        return;
+      }
       this.setHoverInfoOnce('Skills can only be used in combat.');
       return;
     }
@@ -1693,7 +1720,13 @@ export class GameEngine {
     try {
       const wantFs = !!this.settings.fullscreen;
       if ((window as any).__TAURI_INTERNALS__) {
-        void getCurrentWindow().setFullscreen(wantFs).catch(() => { });
+        void getCurrentWindow().setFullscreen(wantFs).catch(() => {
+          // native fullscreen denied (missing window capability?) — fall back
+          // to the Web Fullscreen API so the toggle still works
+          const isFs = !!document.fullscreenElement;
+          if (wantFs && !isFs) void document.documentElement.requestFullscreen?.().catch(() => { });
+          else if (!wantFs && isFs) void document.exitFullscreen?.().catch(() => { });
+        });
       } else {
         const isFs = !!document.fullscreenElement;
         if (wantFs && !isFs) void document.documentElement.requestFullscreen?.().catch(() => { });
@@ -2294,7 +2327,7 @@ export class GameEngine {
   }
 
   /** BG3-style default hotbar actions: walk/run/jump/throw/attack + bonus attack. */
-  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack' | 'defend') {
+  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack' | 'shove' | 'defend') {
     this.audio.play('ui_click', 0.5);
     switch (action) {
       case 'walk':
@@ -2360,6 +2393,25 @@ export class GameEngine {
           return;
         }
         this.setHoverInfoOnce('Bonus attack unavailable — needs a bonus action in combat.');
+        return;
+      }
+      case 'shove': {
+        // shove is a UNIVERSAL bonus action (like the basic attack) — it's not
+        // a class skill, so it lives in the default bar, never the loadout.
+        const a = this.combat.active;
+        if (a && a.team === 'party' && this.phase === 'combat') {
+          if (this.combat.turnMode === 'walk') {
+            this.setHoverInfoOnce('Shoving is a 🔸 skills-phase action — switch or Skip there.');
+            return;
+          }
+          if (this.combat.turnMode !== 'bonus') {
+            this.setHoverInfoOnce('Shoving is a 🔸 skills-phase action.');
+            return;
+          }
+          this.selectSkill('shove');
+          return;
+        }
+        this.setHoverInfoOnce('Shove is a combat action.');
         return;
       }
       case 'defend': {
@@ -3004,6 +3056,7 @@ export class GameEngine {
   public checkCombatTrigger() { checkCombatTrigger(this); }
   public smashProp(u: Unit, prop: Destructible, skill?: SkillDef) { smashProp(this, u, prop, skill); }
   public triggerTrap(u: Unit, trap: any) { triggerTrapModule(this, u, trap); }
+  public disarmTrap(u: Unit, trap: any) { disarmTrapModule(this, u, trap); }
 
   // interaction
   public updateFog(_dt: number) { updateFog(this, _dt); }

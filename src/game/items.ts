@@ -176,7 +176,7 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   soap_crown: B({ kind: 'armor', slot: 'head', name: 'Soap Crown', icon: '👑', tier: 2, acBonus: 1, levelReq: 2, value: 60, desc: '+1 AC. Goblins respect you. Equipping it earns the throne\'s respect — and everyone smells strawberries.' }),
   // trinkets
   hermits_ring: B({ kind: 'trinket', slot: 'ring', name: "Hermit's Ring", icon: '💍', tier: 2, value: 40, desc: '+5% XP. Warm against the finger. Which finger is a question you stop asking.' }),
-  leather_belt: B({ kind: 'trinket', slot: 'trinket', name: 'Leather Belt', icon: '🧷', tier: 1, hpBonus: 2, value: 10, desc: '+2 max HP. Holds your pants up, emotionally speaking.' }),
+  leather_belt: B({ kind: 'trinket', slot: 'belt', name: 'Leather Belt', icon: '🧷', tier: 1, hpBonus: 2, value: 10, desc: '+2 max HP. Holds your pants up, emotionally speaking.' }),
   blessed_penny: B({ kind: 'trinket', slot: 'trinket', name: 'Blessed Penny', icon: '🪙', tier: 2, value: 25, desc: '+5% gold found. It has a tiny saint on it. The saint looks hungover too.' }),
   rat_whisker: B({ kind: 'trinket', slot: 'trinket', name: 'Rat Whisker', icon: '🐭', tier: 1, acBonus: 1, value: 6, desc: '+1 AC. The whisker of a very large, very unlucky rat. Worn as a charm.' }),
   lockpick: B({ kind: 'trinket', name: 'Lockpick', icon: '🪛', tier: 1, value: 15, desc: 'Opens locked chests and doors. The dungeon calls it cheating. The dungeon is a hypocrite.' }),

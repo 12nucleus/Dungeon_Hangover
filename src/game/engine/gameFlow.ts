@@ -27,7 +27,7 @@ export function startGame(engine: any) {
   }
   engine.phase = 'explore';
   engine.selectedId = engine.combat.living('party')[0]?.id ?? null;
-  engine.pushLog('You descend into the Warlord\'s Warren, torch in hand... (click to move, Q/E rotate, wheel zoom)', 'system');
+  engine.pushLog('You descend into the Sewer Cellar, torch in hand... (click to move, Q/E rotate, wheel zoom)', 'system');
   engine.emitSnapshot();
 }
 

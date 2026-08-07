@@ -91,6 +91,8 @@ def lines_from_sources() -> dict[str, str]:
     lines.update(extract(os.path.join(ROOT, "src", "game", "engine", "dungeonSetup.ts"), narrate))
     # intro (current texts — includes the changed wake lines)
     lines.update(extract(os.path.join(ROOT, "src", "game", "cutscenes", "intro.ts"), narrate))
+    # boss cutscenes (Baron Gnaw's lair reveal lines)
+    lines.update(extract(os.path.join(ROOT, "src", "game", "cutscenes", "bossRat.ts"), narrate))
     return lines
 
 

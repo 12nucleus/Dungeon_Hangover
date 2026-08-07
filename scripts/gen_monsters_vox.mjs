@@ -26,7 +26,7 @@ const MONSTERS = [
     scheme: { skin: 0x699636, cloth: 0x39322a, accent: 0x242019, hair: 0x1c1c1c, hood: true, orc: true, bulk: 0.85 } },
   { file: 'monster_skar_boss', model: 'orc', weapon: 'club',
     scheme: { skin: 0xb06a3a, cloth: 0x5c2e2e, accent: 0x38231f, hair: 0x0f0f0f, hood: false, orc: true, bulk: 1.15 } },
-  // ── dungeon beasts & undead (src/game/skills.ts createDungeonRoster) ──
+  // ── sewer beasts & undead (shared with floor 50's roster) ──
   { file: 'monster_cave_rat', model: 'rat',
     scheme: { skin: 0x6b4a2f, cloth: 0x9a7a55, accent: 0xc79a9a, hair: 0x140f0f } },
   { file: 'monster_rabid_rat', model: 'rat',
@@ -35,8 +35,6 @@ const MONSTERS = [
     scheme: { skin: 0x3a2f3a, cloth: 0x2a2230, accent: 0x5a4a60, hair: 0xffd23a } },
   { file: 'monster_skeleton', model: 'skeleton', weapon: 'sword',
     scheme: { skin: 0xd8d2be, cloth: 0x3a2f28, accent: 0x9a9a9a, hair: 0x8fe3ff } },
-  { file: 'monster_warlord_gorruk', model: 'orc', weapon: 'club',
-    scheme: { skin: 0x5f7a3a, cloth: 0x3a2a2a, accent: 0x2a1f1a, hair: 0x101010, hood: false, orc: true, bulk: 1.35 } },
 ];
 
 function buildModel(m) {

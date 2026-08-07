@@ -16,7 +16,7 @@
 //                        room + multi-room mezzanine plateaus) for
 //                        quick/expansion levels.
 //
-// Authored levels (like The Warlord's Warren) drive Carver by hand
+// Authored levels (like The Sewer Cellar) drive Carver by hand
 // and then call buildTerrain with their own palettes/zones, so every
 // level can look entirely different while sharing the one engine.
 //

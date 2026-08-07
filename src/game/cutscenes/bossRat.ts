@@ -36,9 +36,7 @@ export async function playBossRatCutscene(h: CutsceneHost) {
   // ── BEAT 1: the lair, the pedestal, the eyes ──
   h.iso.focus(eyeWp);
   h.iso.desiredDist = 5.5; h.iso.desiredPitch = 0.5; h.iso.desiredYaw = -Math.PI * 0.3;
-  h.showCine("The room smells like rat. Specifically, like a rat that has never once considered bathing.");
-  await h.cineDelay(2600);
-  h.clearCine();
+  await h.narrate('boss_rat_1', 'The room smells like rat. Specifically, like a rat that has never once considered bathing.', 2600);
   h.iso.desiredDist = 9.0; h.iso.desiredPitch = 0.72; h.iso.desiredYaw = -Math.PI * 0.5;
   await h.cineDelay(1400);
 
@@ -50,9 +48,7 @@ export async function playBossRatCutscene(h: CutsceneHost) {
   h.audio.squeak();
   h.audio.screech();
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.15);
-  h.showCine("In the center, on a little bone pedestal, is a finger. It has a ring on it. The rat is watching you. The rat is ALWAYS watching.");
-  await h.cineDelay(3400);
-  h.clearCine();
+  await h.narrate('boss_rat_2', 'In the center, on a little bone pedestal, is a finger. It has a ring on it. The rat is watching you. The rat is ALWAYS watching.', 3400);
 
   // ── BEAT 3: round on the party, fight ──
   if (v) {

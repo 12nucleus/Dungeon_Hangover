@@ -2093,7 +2093,7 @@ export const PART_PIVOTS: Record<string, { cx: number; cy: number }> = {
 export type EquipStyle =
   | 'shirt' | 'leather' | 'chain' | 'plate'
   | 'hood' | 'helm' | 'cap' | 'bucket'
-  | 'pants' | 'greaves' | 'boots' | 'bracers' | 'cloak';
+  | 'pants' | 'greaves' | 'boots' | 'bracers' | 'cloak' | 'belt';
 
 export interface EquipVisual {
   slot: EquipSlot;
@@ -2288,18 +2288,61 @@ function buildCloak(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
 
 function buildHead(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
   if (def.style === 'bucket') {
-    // the wooden bucket, worn as a full helm: square walls clear of the head
-    // (head max half-width is 6 — walls sit at 7..9 so nothing z-fights), an
-    // eye slit for Greg, and rim rings top & bottom. The crown shows through
-    // the open top — exactly how a bucket sits on a head, and nothing overlaps.
-    const C = def.color;
-    const dark = shade(C, 0.75);
-    // walls (ring at r≈7..9 encloses the head's r≈6 dome)
-    ringShell(v, piv, -9, 59, -9, 9, 70, 9, 2, C, (x, y, z) => z >= 6 && y >= 61 && y <= 63 && Math.abs(x) <= 2);
-    // upper lip (the bucket's open rim — rings the crown)
-    ringShell(v, piv, -10, 71, -10, 10, 72, 10, 2, dark);
-    // lower rim (sits at the neck like a helm brim)
-    ringShell(v, piv, -10, 57, -10, 10, 58, 10, 2, dark);
+    // Wooden bucket worn as a helm. Tapered round walls (wider at the rim,
+    // narrower at the neck) with vertical staves, two iron hoops, a CLOSED
+    // wooden lid so the skull is hidden (it used to show through the open
+    // top — and the exposed crown lit up bright), plus an iron handle arc.
+    // A front eye-slit keeps Greg's view clear.
+    const C = def.color;                       // wood
+    const woodDk = shade(C, 0.7);
+    const woodLt = shade(C, 1.14);
+    const iron = 0x6f6f6f;
+    const wallR = (y: number) => Math.round(7 + ((y - 59) / (72 - 59)) * 2); // 7→9
+    const eye = (x: number, y: number, z: number) =>
+      z >= 4 && Math.abs(x) <= 4 && y >= 60 && y <= 66;
+    // ── tapered round walls (1-voxel shell) with vertical staves ──
+    for (let y = 59; y <= 72; y++) {
+      const R = wallR(y);
+      for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) {
+        const rr = x * x + z * z;
+        if (rr > R * R || rr <= (R - 1) * (R - 1)) continue;
+        if (eye(x, y, z)) continue;
+        const stave = Math.floor((Math.atan2(z, x) + Math.PI) / (Math.PI / 4)) % 2 === 0;
+        v.add(x - piv.cx, y - piv.cy, z, stave ? C : woodDk, 0.02);
+      }
+    }
+    // ── iron hoops (keep the eye-slit open) ──
+    for (const hy of [61, 68]) {
+      const R = wallR(hy);
+      for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) {
+        const rr = x * x + z * z;
+        if (rr > R * R || rr <= (R - 1) * (R - 1)) continue;
+        if (eye(x, hy, z)) continue;
+        v.add(x - piv.cx, hy - piv.cy, z, iron, 0.02);
+      }
+    }
+    // ── neck brim (dark wood ring at the chin) ──
+    for (let x = -8; x <= 8; x++) for (let z = -8; z <= 8; z++) {
+      const rr = x * x + z * z;
+      if (rr > 64 || rr <= 49) continue;
+      if (eye(x, 58, z)) continue;
+      v.add(x - piv.cx, 58 - piv.cy, z, woodDk, 0.02);
+    }
+    // ── closed lid (solid disc, caps the skull) ──
+    for (const ly of [73, 74]) {
+      for (let x = -9; x <= 9; x++) for (let z = -9; z <= 9; z++) {
+        if (x * x + z * z > 81) continue;
+        const c = (x === 0 && z === 0) ? woodLt : woodDk;
+        v.add(x - piv.cx, ly - piv.cy, z, c, 0.02);
+      }
+    }
+    // ── iron handle arc over the top ──
+    for (let a = 0; a <= 180; a += 12) {
+      const rad = (a * Math.PI) / 180;
+      const x = Math.round(9 * Math.cos(rad));
+      const y = Math.round(73 + 4 * Math.sin(rad));
+      v.add(x - piv.cx, y - piv.cy, 0, iron, 0.03);
+    }
     return;
   }
   const C = def.color;
@@ -2357,6 +2400,26 @@ function buildTrinket(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual)
   v.add(2 - piv.cx, 41 - piv.cy, 6, def.color, 0.02);
 }
 
+function buildBelt(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  // a leather band around the waist + a buckle at the front
+  const C = def.color;
+  const dark = shade(C, 0.75);
+  const det = def.detail ?? 1;
+  for (let y = 34; y <= 36; y++) {
+    ringShell(v, piv, -8, y, -5, 8, y, 5, 2, C);
+  }
+  // buckle frame + tongue (gold at high detail, brass otherwise)
+  const buck = det >= 3 ? TRIM_GOLD : 0xc9a94a;
+  v.add(0 - piv.cx, 35 - piv.cy, 6, buck, 0.04);
+  for (const sx of [-1, 1]) {
+    v.add(sx - piv.cx, 34 - piv.cy, 6, dark, 0.04);
+    v.add(sx - piv.cx, 35 - piv.cy, 6, dark, 0.04);
+    v.add(sx - piv.cx, 36 - piv.cy, 6, dark, 0.04);
+  }
+  v.add(0 - piv.cx, 34 - piv.cy, 6, dark, 0.04);
+  v.add(0 - piv.cx, 36 - piv.cy, 6, dark, 0.04);
+}
+
 function buildRing(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
   for (let a = 0; a < 360; a += 45) {
     const rad = (Math.PI * a) / 180;
@@ -2398,6 +2461,7 @@ function buildPiece(def: EquipVisual): { part: string; mesh: THREE.Mesh }[] {
     case 'head': mk('head', (v, p) => buildHead(v, p, def), (v, p) => addGem(v, p, def, 0, def.style === 'cap' ? 66 : 64, 7)); break;
     case 'amulet': mk('torso', (v, p) => buildAmulet(v, p, def)); break;
     case 'trinket': mk('torso', (v, p) => buildTrinket(v, p, def)); break;
+    case 'belt': mk('torso', (v, p) => buildBelt(v, p, def)); break;
     case 'ring': for (const s of ['L', 'R']) mk('hand' + s, (v, p) => buildRing(v, p, def)); break;
     case 'offHand': mk('foreL', (v, p) => buildShield(v, p, def)); break;
     default: break;
@@ -2526,6 +2590,7 @@ export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisua
     case 'gloves': color = mat === 'plate' ? 0xb8bfc9 : (mat === 'chain' ? 0x9aa0a8 : MATS[mat]); style = 'leather'; break;
     case 'arms': color = mat === 'plate' ? 0xb8bfc9 : (mat === 'chain' ? 0x9aa0a8 : MATS[mat]); style = 'bracers'; break;
     case 'cloak': color = mat === 'cloth' ? 0x5a4030 : MATS[mat]; style = 'cloak'; break;
+    case 'belt': color = 0x4a3520; style = 'belt'; break;
     case 'amulet':
     case 'ring': color = 0xffd700; style = 'shirt'; break;
     case 'trinket':

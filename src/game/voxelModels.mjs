@@ -1061,6 +1061,117 @@ export function propTowel(seed = 0.5) {
   return { name: 'towel', voxels: v.list(), cube, blocks: false };
 }
 
+// ── NEW THEMED FURNITURE (floor-50 dressing pass) ─────────────
+
+// ARMOR STAND — wooden mannequin holding a chestplate (armory)
+export function propArmorStand(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 131);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x6b451f, W_D = 0x4a2f14, METAL = 0x8a8f9c, METAL_D = 0x5a5e68, CLOTH = 0x7a2a2a, GOLD = 0xc9a227;
+  v.box(-2, 0, 0, -2, 5, 0, W_D); v.box(2, 0, 0, 2, 5, 0, W_D);   // legs
+  v.box(-2, 0, -1, 2, 0, 1, W);                                   // feet bar
+  v.box(0, 0, 0, 0, 6, 0, W);                                     // central post
+  v.box(-3, 5, 0, 3, 5, 0, W);                                    // shoulder bar
+  v.box(-3, 2, 0, 3, 5, 1, METAL);                                // chestplate front
+  v.box(-3, 2, 1, 3, 4, 1, METAL_D);
+  v.add(0, 5, 1, GOLD); v.add(-2, 3, 1, CLOTH); v.add(2, 3, 1, CLOTH);
+  return { name: 'armor_stand', voxels: v.list(), cube, blocks: false };
+}
+
+// SHIELD RACK — row of round shields on a wall rack (armory)
+export function propShieldRack(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 133);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x6b451f, W_D = 0x4a2f14, SH = 0x8a2a2a, SH_D = 0x5c1c1c, SH_HI = 0xb04040, BAND = 0xc9a227;
+  v.box(-4, 0, 0, 4, 5, 1, W_D);     // frame back
+  v.box(-4, 4, 0, 4, 5, 1, W);       // top rail
+  v.box(-4, 0, 0, -4, 5, 1, W); v.box(4, 0, 0, 4, 5, 1, W);
+  for (const sx of [-3, 0, 3]) {
+    v.ellipsoid(sx, 3, 1.2, 2.0, 2.0, 0.5, SH);     // round shield
+    v.ellipsoid(sx, 3, 1.2, 0.9, 0.9, 0.7, SH_HI);  // boss
+    v.add(sx, 3, 1.7, BAND);                          // rim stud
+  }
+  return { name: 'shield_rack', voxels: v.list(), cube, blocks: false };
+}
+
+// BOOKSHELF — tall wooden shelf with coloured book spines
+export function propBookshelf(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 135);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x6b451f, W_D = 0x4a2f14;
+  const BOOKS = [0x8a2a2a, 0x2a4a8a, 0x2a8a4a, 0xc9a227, 0x6a2a8a, 0x444a55, 0x8a5a2a];
+  v.box(-3, 0, -1, 3, 7, 1, W_D);
+  v.box(-3, 0, -1, -3, 7, 1, W); v.box(3, 0, -1, 3, 7, 1, W);
+  v.box(-3, 7, -1, 3, 7, 1, W);
+  for (const y of [2, 4, 6]) v.box(-3, y, -1, 3, y, 1, W_D);          // shelves
+  for (const y of [1, 3, 5]) for (let x = -2; x <= 2; x++) {
+    const c = BOOKS[Math.floor(R() * BOOKS.length)];
+    v.box(x, y, -1, x, y + 1, 1, c);                                  // books
+  }
+  return { name: 'bookshelf', voxels: v.list(), cube, blocks: false };
+}
+
+// RUG — flat coloured floor mat (non-blocking, no light)
+export function propRug(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 137);
+  const v = new Vox();
+  const cube = 0.05;
+  const A = 0x6a2a2a, B = 0xc9a227, C = 0x5c1c1c, D = 0x3a1c1c;
+  for (let x = -4; x <= 4; x++) for (let z = -4; z <= 4; z++) {
+    const d = Math.max(Math.abs(x) / 4.2, Math.abs(z) / 4.2);
+    if (d > 1) continue;
+    v.add(x, 0, z, d > 0.8 ? B : (d > 0.5 ? (R() < 0.5 ? A : C) : (R() < 0.4 ? D : A)));
+  }
+  return { name: 'rug', voxels: v.list(), cube, blocks: false };
+}
+
+// TAPESTRY — wall hanging (throne / armory / bath)
+export function propTapestry(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 139);
+  const v = new Vox();
+  const cube = 0.055;
+  const CL = 0x3a4a8a, CL_D = 0x26305f, GOLD = 0xc9a227, W_D = 0x4a2f14;
+  v.box(-3, 0, -1, 3, 7, 1, CL);
+  v.box(-3, 0, 0, 3, 0, 1, CL_D); v.box(-3, 7, 0, 3, 7, 1, CL_D);
+  v.box(-4, 7, -1, 4, 7, 1, W_D);                                    // top rod
+  v.add(-1, 3, 0, GOLD); v.add(1, 3, 0, GOLD); v.add(0, 5, 0, CL_D); v.add(0, 2, 0, GOLD);
+  return { name: 'tapestry', voxels: v.list(), cube, blocks: false };
+}
+
+// CHANDELIER — hanging iron ring with candles (adds a soft light)
+export function propChandelier(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 141);
+  const v = new Vox();
+  const cube = 0.05;
+  const IRON = 0x4a4d55, IRON_D = 0x33353c, FLAME = 0xffb24a, WAX = 0xe8e2cc;
+  v.ring(0, 0, 0, 0, 3.0, 3.0, IRON, 1.0);
+  v.ring(0, 0, 0, 0, 1.4, 1.4, IRON_D, 0.7);
+  for (let a = 0; a < 360; a += 60) {
+    const rad = (a * Math.PI) / 180;
+    const cx = Math.round(3 * Math.cos(rad)), cz = Math.round(3 * Math.sin(rad));
+    v.box(cx, 0, cz, cx, 1, cz, WAX);
+    v.add(cx, 2, cz, FLAME);
+  }
+  return { name: 'chandelier', voxels: v.list(), cube, blocks: false, hang: true,
+    glow: { color: 0xffb24a, intensity: 1.5, dist: 16, decay: 2, y: 0, flicker: 0.3 }, flame: true };
+}
+
+// BARREL — decorative (NON-blocking) staved barrel for clutter
+export function propBarrel(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 143);
+  const v = new Vox();
+  const cube = 0.055;
+  const WOOD = 0x8a5c2e, WOOD_D = 0x5a3a1e, IRON = 0x4a4d55;
+  v.col(0, 0, 0, 0, 4, 0, 1.8, 1.8, WOOD);
+  v.ring(0, 0, 0, 1, 2.0, 2.0, IRON, 0.8);
+  v.ring(0, 0, 0, 3, 2.0, 2.0, IRON, 0.8);
+  v.box(-1, 4, -1, 1, 4, 1, WOOD_D);
+  v.add(0, 5, 0, WOOD_D);
+  return { name: 'barrel', voxels: v.list(), cube, blocks: false };
+}
 export const PROP_BUILDERS = {
   stalagmite: propStalagmite,
   stalactite: propStalactite,
@@ -1113,6 +1224,13 @@ export const PROP_BUILDERS = {
   banner: propBanner,
   duck: propDuck,
   towel: propTowel,
+  armor_stand: propArmorStand,
+  shield_rack: propShieldRack,
+  bookshelf: propBookshelf,
+  rug: propRug,
+  tapestry: propTapestry,
+  chandelier: propChandelier,
+  barrel: propBarrel,
 };
 
 // ══════════════════════════════════════════════════════════════

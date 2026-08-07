@@ -8,7 +8,8 @@ export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'crystal_blue' 
   | 'puddle' | 'bucket' | 'scratches' | 'skeleton' | 'body' | 'mat' | 'wine_press' | 'wine_bottle' | 'broken_bottle'
   | 'valve' | 'pipe' | 'sign' | 'bunk' | 'footlocker' | 'dice_table' | 'nest' | 'drain' | 'wrench' | 'plunger'
   | 'pipe_fitting' | 'toolbox' | 'chest' | 'mirror' | 'compass' | 'fountain' | 'well' | 'cauldron' | 'weapon_rack'
-  | 'altar' | 'throne' | 'banner' | 'duck' | 'towel';
+  | 'altar' | 'throne' | 'banner' | 'duck' | 'towel'
+  | 'armor_stand' | 'shield_rack' | 'bookshelf' | 'rug' | 'tapestry' | 'chandelier' | 'barrel';
 
 export interface PropPlacement {
   kind: PropKind;
