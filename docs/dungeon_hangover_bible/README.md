@@ -10,12 +10,31 @@ The original master design bible (classes, skills, story, loot rules) is at
 
 ---
 
+## IMPLEMENTATION STATUS (shipped v0.1.0, commit `82b43c5`)
+
+| Floors | Status |
+|--------|--------|
+| **50 — The Sewer Cellar** | ✅ **implemented & shipped** — see `src/levels/floor50.ts` + `floor50Content.ts`; this README's floor file is the design that was built |
+| 49–1 | 📋 design only — the bible below is the spec to implement |
+
+- The floor **registry** (`src/levels/index.ts`, `levelForFloor`) and the
+  **exit-stairs departure point** (boss-gated, floor 50 → 49) exist in code.
+  Actual floor-to-floor travel is the next milestone: see
+  **`../LLM_FLOOR_GUIDE.md`** (how floors/props/rigs/TTS are built today) and
+  **`../FLOOR_TRANSITIONS.md`** (transition machinery + the checklist to wire floor 49).
+- Each floor file's **Transitions** section (item 9 below) is the arrival/departure
+  design that the transition system must honor.
+
+---
+
 ## FILE STRUCTURE
 
 | File | Content |
 |------|---------|
 | `../DUNGEON_HANGOVER_DESIGN_BIBLE.md` | Master design bible — classes, skills, 50-floor storyline, loot rules, core pillars |
-| `00_MASTER_INDEX.md` | This file — navigation and quick reference |
+| `README.md` | This file — navigation and quick reference |
+| `../LLM_FLOOR_GUIDE.md` | **How the game systems actually work in code** (floor generation, vox, props, TTS) — read before implementing any floor |
+| `../FLOOR_TRANSITIONS.md` | Floor-transition machinery + how to connect floors |
 | `floors/FLOOR_50_SEWER_CELLAR.md` | Floor 50 — Sewer Cellar |
 | `floors/FLOOR_49_FUNGAL_GROTTO.md` | Floor 49 — Fungal Grotto |
 | `floors/FLOOR_48_COLLAPSED_LIBRARY.md` | Floor 48 — Collapsed Library |

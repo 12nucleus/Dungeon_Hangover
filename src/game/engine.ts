@@ -217,8 +217,37 @@ export class GameEngine {
   public showCine(text: string) { this.bigMessage = text; this.cinematic = true; this.emitSnapshot(); }
   public clearCine() { this.bigMessage = null; this.cinematic = false; this.emitSnapshot(); }
 
-  /** play a pre-generated narrator line (edge-tts mp3) under a subtitle. Falls
-   *  back to text-only if the asset is missing, so the scene always works. */
+  /** currently-playing voice-over element (narration, NPC line, class blurb) */
+  private voEl: HTMLAudioElement | null = null;
+  /** generation token — any new VO (or a skip) invalidates older in-flight ones */
+  private voSeq = 0;
+
+  /** Stop whatever voice-over is playing right now. Called on skip, dialogue
+   *  close/advance, and before every new VO — so voices never overlap: the
+   *  newest line always takes over and the previous one is cut immediately. */
+  public stopVo() {
+    this.voSeq++;
+    const el = this.voEl;
+    this.voEl = null;
+    if (el) { try { el.pause(); } catch { /* element already gone */ } }
+  }
+
+  /** Start a VO element under the current generation. Returns null when a
+   *  newer VO (or a skip) superseded us while the element was being created. */
+  private playVo(url: string): HTMLAudioElement | null {
+    const seq = this.voSeq;
+    let a: HTMLAudioElement;
+    try { a = new Audio(url); } catch { return null; }
+    if (seq !== this.voSeq) return null;   // superseded before we got here
+    a.volume = 1;
+    this.voEl = a;
+    const clear = () => { if (this.voEl === a) this.voEl = null; };
+    a.addEventListener('ended', clear);
+    a.addEventListener('error', clear);
+    try { void a.play().catch(clear); } catch { clear(); }
+    return a;
+  }
+
   /** skip-aware wait: resolves immediately once cutsceneSkip is set */
   public cineDelay(ms: number): Promise<void> {
     return new Promise<void>((resolve) => {
@@ -232,21 +261,23 @@ export class GameEngine {
 
   public async narrate(id: string, text: string, minMs = 4200) {
     if (this.cutsceneSkip) return;
+    this.stopVo();               // a previous VO (if any) must not overlap ours
     this.showCine(text);
     let dur = minMs;
     try {
       const res = await fetch(`${import.meta.env.BASE_URL}audio/narration/${id}.mp3`);
       if (res.ok) {
-        const a = new Audio(`${import.meta.env.BASE_URL}audio/narration/${id}.mp3`);
-        a.volume = 1;
+        const probe = new Audio(`${import.meta.env.BASE_URL}audio/narration/${id}.mp3`);
         dur = (await new Promise<number>((resolve) => {
-          a.onloadedmetadata = () => resolve((a.duration || minMs / 1000) * 1000);
-          a.onerror = () => resolve(minMs);
+          probe.onloadedmetadata = () => resolve((probe.duration || minMs / 1000) * 1000);
+          probe.onerror = () => resolve(minMs);
           setTimeout(() => resolve(minMs), 400);
         }));
-        try { a.play().catch(() => {}); } catch { /* ignore */ }
+        // re-check: a skip may have happened while probing — don't start audio
+        // after the scene was told to stop; the caption wait below still resolves
+        if (!this.cutsceneSkip) this.playVo(`${import.meta.env.BASE_URL}audio/narration/${id}.mp3`);
       }
-    } catch { /* asset missing ? text only */ }
+    } catch { /* asset missing → text only */ }
     await this.cineDelay(Math.max(minMs, dur));
     // narrate owns its own caption lifecycle — clear the line after it plays
     // (cutscene beats that clearCine() early are harmless double-clears)
@@ -741,8 +772,8 @@ export class GameEngine {
       speakDialogue: (npcId, nodeId) => self.speakDialogue(npcId, nodeId),
       showCine: (text) => self.showCine(text),
       clearCine: () => self.clearCine(),
-      markSkipped: () => { self.cutsceneSkip = true; self.introSkipped = true; },
-      resetSkipState: () => { self.cutsceneSkip = false; self.introSkipped = false; },
+      markSkipped: () => { self.cutsceneSkip = true; self.introSkipped = true; self.stopVo(); },
+      resetSkipState: () => { self.cutsceneSkip = false; self.introSkipped = false; self.stopVo(); },
       fadeTo: (v) => self.fadeTo(v),
 
       // -- math + transforms --
@@ -2046,14 +2077,12 @@ export class GameEngine {
   /**
    * Play a class's narrator summary (class_<id>.mp3) during character creation.
    * Fire-and-forget audio — no subtitle, no blocking. Used when the player
-   * clicks a class card in the creation browser.
+   * clicks a class card in the creation browser. Rapid clicks never stack:
+   * each new card cuts the previous line.
    */
   playClassNarration(classId: string) {
-    try {
-      const a = new Audio(`${import.meta.env.BASE_URL}audio/narration/class_${classId}.mp3`);
-      a.volume = 1;
-      a.play().catch(() => {});
-    } catch { /* asset missing → silently ignore */ }
+    this.stopVo();
+    this.playVo(`${import.meta.env.BASE_URL}audio/narration/class_${classId}.mp3`);
   }
 
   // -- sneak (called from React HUD) --------------------------
@@ -2344,18 +2373,18 @@ export class GameEngine {
 
   closeDialogue() { this.showDialogue = null; this.stopDialogueVo(); this.emitSnapshot(); }
 
-  private dialogueVoToken = 0;
-
   /** Speak an NPC node's voice-over — `audio/npc/<npcId>_<nodeId>.mp3`, with
    *  an optional `<nodeId>_cap.mp3` intro-flavor line first (missing assets
-   *  degrade to text-only dialogue). A newer call supersedes an older one,
-   *  so clicking through a conversation never stacks voices. */
+   *  degrade to text-only dialogue). A newer call supersedes an older one:
+   *  the current line is cut the instant the next one starts, so clicking
+   *  through a conversation never stacks or overlaps voices. */
   public speakDialogue(npcId: string, nodeId: string) {
-    const token = ++this.dialogueVoToken;
+    this.stopVo();                     // cut any VO currently playing (incl. the previous node)
+    const token = this.voSeq;          // our generation — we own the air until superseded
     const base = `${import.meta.env.BASE_URL}audio/npc/${npcId}_${nodeId}`;
     void (async () => {
       for (const url of [`${base}_cap.mp3`, `${base}.mp3`]) {
-        if (token !== this.dialogueVoToken) return;
+        if (token !== this.voSeq) return;
         let a: HTMLAudioElement;
         try { a = new Audio(url); } catch { return; }
         const dur = await new Promise<number>((resolve) => {
@@ -2364,7 +2393,8 @@ export class GameEngine {
           setTimeout(() => resolve((a.duration ?? 0) * 1000), 1500);
         });
         if (dur <= 0) continue;
-        try { await a.play().catch(() => {}); } catch { continue; }
+        if (token !== this.voSeq) return;    // superseded while probing — don't start
+        this.playVo(url);
         await new Promise<void>((r) => setTimeout(r, Math.min(dur + 150, 30000)));
       }
     })();
@@ -2372,7 +2402,7 @@ export class GameEngine {
 
   /** Cancel any in-flight dialogue voice-over (conversation closed/skipped). */
   public stopDialogueVo() {
-    this.dialogueVoToken++;
+    this.stopVo();
   }
 
   // -- hotbar loadout (bonfire-only) --------------------------

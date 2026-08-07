@@ -176,6 +176,7 @@ export function deleteSlot(engine: any, slotId: string) {
 export function startNewGame(engine: any, slotId: string) {
   engine.currentSlotId = slotId;
   engine.clearLoot?.();   // a fresh run starts with no loot offers
+  engine.stopVo?.();      // no stray voice-over may survive into the new run
   enterDungeon(engine);
 }
 
@@ -223,6 +224,7 @@ export function loadGame(engine: any, slotId: string): boolean {
   if (!data) return false;
   engine.currentSlotId = slotId;
   engine.clearLoot?.();   // loot offers aren't persisted — drop stale ones
+  engine.stopVo?.();      // a save load must not leave a half-spoken line playing
 
   if (engine.titleExt) { engine.scene.remove(engine.titleExt); engine.titleExt = null; }
   if (engine.titlePrevBg) { engine.scene.background = engine.titlePrevBg; engine.titlePrevBg = null; }
