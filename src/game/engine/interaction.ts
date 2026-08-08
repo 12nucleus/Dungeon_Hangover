@@ -4,7 +4,7 @@
 // Engine internals will be made public in step 6 (engine.ts rewrite).
 // ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
-import { Combat } from '../combat';
+import { Combat, grantXp } from '../combat';
 import { skillById } from '../skillLookup';
 import type { GridPos, SkillDef, Unit } from '../types';
 import { NPCS, type NPCDef, type DialogueAction, type ChoiceCondition } from '../npc';
@@ -727,7 +727,13 @@ export function clickCombat(engine: any, pick: InteractPick | null, tile: GridPo
       return;
     }
     engine.enqueue(engine.combat.moveActiveTo(tile));
+    return;
   }
+  // nothing matched — say so instead of silently eating the click. A
+  // skill was armed but no valid target was hit, or a ⚔️ attack-phase
+  // click landed on empty ground.
+  if (engine.targeting) setHoverInfoOnce(engine, 'No valid target there — pick a unit or tile in range.');
+  else if (engine.combat.turnMode === 'action') setHoverInfoOnce(engine, 'No target there — click an enemy to attack.');
 }
 
 export function trySmashInCombat(engine: any, active: Unit, propId: string, preferred?: SkillDef) {
@@ -887,9 +893,15 @@ export function executeDialogueAction(engine: any, action: DialogueAction, npc: 
         }
         if (q.rewardGold) engine.addGold?.(q.rewardGold);
         if (q.xpReward) {
-          const hero = engine.combat?.living('party')[0];
-          if (hero) hero.xp += q.xpReward;
-          engine.pushLog(`The party gains ${q.xpReward} XP.`, 'system');
+          // quest XP goes through the SAME xp→level engine combat uses, so
+          // the reward actually levels the party up (and pays every member,
+          // not just the leader).
+          const party = engine.combat?.living('party');
+          if (party?.length) {
+            const ev = grantXp(party, q.xpReward);
+            engine.enqueue(ev);
+            engine.pushLog(`The party gains ${q.xpReward} XP.`, 'system');
+          }
         }
         engine.questLog.complete(action.questId);
         engine.pushLog(`📜 Quest complete: ${q.name}!`, 'system');

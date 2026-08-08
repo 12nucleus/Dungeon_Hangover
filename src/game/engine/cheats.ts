@@ -77,8 +77,15 @@ export function executeCheatCommand(engine: any, cmd: string) {
       reply('Party fully healed!');
       break;
     case 'killall':
-      for (const u of engine.combat.units) { if (u.team === 'enemy') { u.alive = false; u.hp = 0; } }
-      reply('All enemies slain!');
+      // route through the REAL kill pipeline (XP award, loot drops, kill
+      // counters, boss bookkeeping) — the old version zeroed alive flags
+      // directly, skipping awardXP + drops + defeatedSpecialMobs.
+      for (const u of engine.combat.units) {
+        if (u.team !== 'enemy' || !u.alive) continue;
+        const ev = engine.combat.killUnit(u);
+        if (ev.length) engine.enqueue(ev);
+      }
+      reply('All enemies slain! (real kill pipeline)');
       break;
     case 'boss1':
     case 'boss':

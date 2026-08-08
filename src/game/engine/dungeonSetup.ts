@@ -207,6 +207,63 @@ export function updateDungeon(engine: any, dt: number) {
   const st = engine.structures;
   if (engine.propAnims.length) engine.propAnims = engine.propAnims.filter((fn: any) => !fn(dt));
 
+  // ── authored doors: slide open when their flag is set ──
+  // HOISTED above the explore guard: a door/blocker flag can be set mid-fight
+  // (a charm/force dialogue resolving as combat starts, a shove, a scripted
+  // boss-door beat) and must open immediately — queueing it until the fight
+  // ends made the door pop open later with no player action.
+  for (const d of engine.doorMeshes) {
+    if (d.mesh.userData.opened || !engine.flags.has(d.flag)) continue;
+    d.mesh.userData.opened = true;
+    if (d.flag === 'soap_gate_open') {
+      // the soap conundrum resolves however the gate opened (soap, force, charm)
+      if (!engine.questLog?.get('soap_conundrum')) engine.questLog?.start('soap_conundrum');
+      if (engine.questLog?.get('soap_conundrum')?.stage !== 'completed') {
+        engine.completeQuest?.('soap_conundrum');
+        engine.pushLog('🧼 The gate swings open. The soap conundrum is solved.', 'system');
+      }
+    }
+    engine.world.blocked[d.pos.x][d.pos.z] = false;
+    engine.audio.door();
+    const y0 = d.mesh.position.y;
+    animateTo(engine, () => d.mesh.position.y, (v: any) => { d.mesh.position.y = v; }, y0 + (d.mesh.userData.openY as number), 1.2);
+    const mesh = d.mesh;
+    setTimeout(() => { if (mesh.parent) mesh.parent.remove(mesh); }, 1500);
+  }
+  // ── blockers: rubble collapses / secret doors slide when flag set ──
+  for (const b of engine.blockerMeshes) {
+    if (b.mesh.userData.opened || !engine.flags.has(b.flag)) continue;
+    b.mesh.userData.opened = true;
+    engine.world.blocked[b.tile.x][b.tile.z] = false;
+    if (b.kind === 'rubble') {
+      engine.audio.crumble(0.7);
+      const g = b.mesh;
+      FX.impactDust(engine.particles, g.position.clone().setY(g.position.y + 0.1), [0x6f6a78, 0x413d47]);
+      animateTo(engine, () => g.scale.y, (v: any) => { g.scale.set(Math.max(0.01, v), Math.max(0.01, v), Math.max(0.01, v)); }, 0.01, 0.6);
+      setTimeout(() => { if (g.parent) g.parent.remove(g); }, 700);
+    } else {
+      engine.audio.door();
+      const y0 = b.mesh.position.y;
+      animateTo(engine, () => b.mesh.position.y, (v: any) => { b.mesh.position.y = v; }, y0 + (b.mesh.userData.openY as number), 1.2);
+      const mesh = b.mesh;
+      setTimeout(() => { if (mesh.parent) mesh.parent.remove(mesh); }, 1500);
+    }
+  }
+
+  // a party wiped by OUT-OF-COMBAT hazards (traps, wine press, bath) must
+  // still route to the defeat flow — Combat.checkEnd only runs during fights.
+  // (In-combat wipes are already handled there.)
+  if (engine.combat.units.some((u: any) => u.team === 'party')
+      && engine.phase === 'explore'
+      && !engine.combat.inCombat
+      && !engine.combat.living('party').length) {
+    engine.runStats.deaths += 1;
+    engine.phase = 'defeat';
+    engine.combat.phase = 'defeat';
+    engine.pushLog('— 💀 DEFEAT. The realm falls silent... —', 'system');
+    return;
+  }
+
   if (engine.heroLight) {
     engine.torchT += dt;
     engine.heroLight.intensity = 12.5 + Math.sin(engine.torchT * 13) * 1.6 + Math.sin(engine.torchT * 27) * 0.8;
@@ -263,45 +320,6 @@ export function updateDungeon(engine: any, dt: number) {
   // floor 50: the vault chest is an interactable (cursed gold) — skip the generic path
   if (engine.secretChestMesh && !engine.secretChestOpen && adj(st.secretChest) && !engine.structures?.rooms) openSecretChest(engine);
 
-  // ── authored doors: slide open when their flag is set ──
-  for (const d of engine.doorMeshes) {
-    if (d.mesh.userData.opened || !engine.flags.has(d.flag)) continue;
-    d.mesh.userData.opened = true;
-    if (d.flag === 'soap_gate_open') {
-      // the soap conundrum resolves however the gate opened (soap, force, charm)
-      if (!engine.questLog?.get('soap_conundrum')) engine.questLog?.start('soap_conundrum');
-      if (engine.questLog?.get('soap_conundrum')?.stage !== 'completed') {
-        engine.completeQuest?.('soap_conundrum');
-        engine.pushLog('🧼 The gate swings open. The soap conundrum is solved.', 'system');
-      }
-    }
-    engine.world.blocked[d.pos.x][d.pos.z] = false;
-    engine.audio.door();
-    const y0 = d.mesh.position.y;
-    animateTo(engine, () => d.mesh.position.y, (v: any) => { d.mesh.position.y = v; }, y0 + (d.mesh.userData.openY as number), 1.2);
-    const mesh = d.mesh;
-    setTimeout(() => { if (mesh.parent) mesh.parent.remove(mesh); }, 1500);
-  }
-  // ── blockers: rubble collapses / secret doors slide when flag set ──
-  for (const b of engine.blockerMeshes) {
-    if (b.mesh.userData.opened || !engine.flags.has(b.flag)) continue;
-    b.mesh.userData.opened = true;
-    engine.world.blocked[b.tile.x][b.tile.z] = false;
-    if (b.kind === 'rubble') {
-      engine.audio.crumble(0.7);
-      const g = b.mesh;
-      FX.impactDust(engine.particles, g.position.clone().setY(g.position.y + 0.1), [0x6f6a78, 0x413d47]);
-      animateTo(engine, () => g.scale.y, (v: any) => { g.scale.set(Math.max(0.01, v), Math.max(0.01, v), Math.max(0.01, v)); }, 0.01, 0.6);
-      setTimeout(() => { if (g.parent) g.parent.remove(g); }, 700);
-    } else {
-      engine.audio.door();
-      const y0 = b.mesh.position.y;
-      animateTo(engine, () => b.mesh.position.y, (v: any) => { b.mesh.position.y = v; }, y0 + (b.mesh.userData.openY as number), 1.2);
-      const mesh = b.mesh;
-      setTimeout(() => { if (mesh.parent) mesh.parent.remove(mesh); }, 1500);
-    }
-  }
-
   // ── NPC rigs idle ──
   for (const n of engine.npcs) {
     if (n.rig) updateRig(n.rig, dt, 1);
@@ -337,7 +355,17 @@ export function updateDungeon(engine: any, dt: number) {
     const roomId = engine.roomOf(leader.pos.x, leader.pos.z);
     if (roomId && !engine.flags.has(`visited_${roomId}`)) {
       engine.setFlag(`visited_${roomId}`);
-      if (['r16', 'r17', 'r19'].includes(roomId)) engine.runStats.secretsFound += 1;
+      if (['r16', 'r17', 'r19'].includes(roomId)) {
+        engine.runStats.secretsFound += 1;
+        engine.pushLog('🗝 Secret found — a hidden room off the beaten path!', 'system');
+        engine.bigMessage = '🗝 SECRET FOUND';
+        setTimeout(() => { if (engine.bigMessage === '🗝 SECRET FOUND') { engine.bigMessage = null; engine.emitSnapshot(); } }, 2200);
+      }
+      // QA S3-5: warn an unarmed party before the final boss so the
+      // unwinnable-unarmed fight doesn't come as a surprise.
+      if (roomId === 'r25' && !party.some((p: any) => p.equipment?.weapon)) {
+        engine.pushLog('⚠ You are unarmed. The Goblin King in the bath is NOT. The armory behind you has weapons — worth a visit.', 'system');
+      }
       // first entry during a fight still CONSUMES the room — narrating then
       // would fire the line out of order once combat ends (e.g. the boss
       // arena entered mid-chase told its pedestal line only after the kill).
@@ -358,6 +386,9 @@ export function updateDungeon(engine: any, dt: number) {
     if (idx >= 0 && !engine.flags.has(`ht_${idx}`)) {
       engine.setFlag(`ht_${idx}`);
       engine.runStats.secretsFound += 1;
+      engine.pushLog('🗝 Secret found — hidden treasure under the muck!', 'system');
+      engine.bigMessage = '🗝 SECRET FOUND';
+      setTimeout(() => { if (engine.bigMessage === '🗝 SECRET FOUND') { engine.bigMessage = null; engine.emitSnapshot(); } }, 2200);
       FX.levelup(engine.particles, unitWorld(engine, leader.pos).clone().add(new THREE.Vector3(0, 0.6, 0)));
       const gold = 2 + Math.floor(Math.random() * 6);
       offerLoot(engine, 'Hidden treasure', [], gold);
@@ -589,6 +620,9 @@ export function checkDungeonAggro(engine: any) {
 }
 
 export function aggroGroup(engine: any, groupId: string | undefined) {
+  // a dead party must never wake groups — the fight would instantly re-resolve
+  // to DEFEAT and permanently consume the group's dormancy.
+  if (!engine.combat.living('party').length) return;
   const grp = engine.combat.units.filter((u: any) => u.alive && u.team === 'enemy' && u.dormant && u.groupId === groupId);
   if (!grp.length) return;
   for (const u of grp) u.dormant = false;

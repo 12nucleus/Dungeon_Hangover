@@ -11,7 +11,6 @@ import { rollD20, rollDice, abilityMod, fmtMod } from './dice';
 import { VoxelWorld } from './world';
 import { ENCHANTS, rollLootTable, type Item } from './items';
 import { effAC, effMove, effMaxHp, effAtkBonus, effPhysResist, hangoverPenalty, XP_THRESHOLDS, MAX_LEVEL } from './stats';
-import { classPoolSkillIdsForLevel } from './classSkills';
 
 /** damage-over-time by condition id (ticked at the start of the carrier's turn) */
 const DOT_BY_ID: Record<string, { dice: string; type: DamageType }> = {
@@ -179,7 +178,12 @@ export class Combat {
     // bossGroup unit far from the party — its cutscene wakes it again when
     // the party actually arrives.
     const party0 = this.living('party');
-    if (party0.length) {
+    // no living party member (e.g. a dead party re-aggroing, or a stale
+    // proximity trigger after a TPK) — never open a fight nobody can fight.
+    // The old behaviour started the fight anyway and instantly re-resolved
+    // to DEFEAT, spamming death banners at a player with no input.
+    if (!party0.length) return [];
+    {
       for (const u of this.units) {
         if (u.team !== 'enemy' || !u.alive || !u.bossGroup || u.dormant) continue;
         if (!party0.some((p) => Combat.dist(p.pos, u.pos) <= 40)) u.dormant = true;
@@ -510,7 +514,7 @@ export class Combat {
       const w = u.equipment?.weapon as { damageDice?: string; damageType?: string; icon?: string; name?: string } | undefined;
       s = {
         ...(s ?? { id: 'attack', name: 'Attack', icon: '⚔️', kind: 'melee', desc: 'A basic weapon attack.', range: 1, aoeRadius: 0, cost: 'action', cooldown: 0, attackAbility: 'str', damageDice: '1d4', damageType: 'bludgeoning', fxColor: 0xffe08a, fx: 'slash' }),
-        damageDice: w?.damageDice ?? '1d2',
+        damageDice: w?.damageDice ?? '1d4',
         damageType: (w?.damageType as DamageType) ?? 'bludgeoning',
         icon: w?.icon ?? '👊',
         name: w ? `Attack (${w.name ?? 'weapon'})` : 'Punch',
@@ -1073,23 +1077,16 @@ export class Combat {
     };
     const gained = Math.round(slain.xpValue * ringBonus(party[0]));
     ev.push({ type: 'log', text: `The party gains ${gained} XP.`, kind: 'system' });
-    for (const p of party) {
-      p.xp += Math.round(slain.xpValue * ringBonus(p));
-      while (p.level < MAX_LEVEL && p.xp >= (XP_THRESHOLDS[p.level + 1] ?? Infinity)) {
-        p.level++;
-        // hydrate the class pool: skills the hero has now reached the level
-        // for become known (tier-1 at Lv2, tier-2 at Lv3, tier-3+ at Lv4)
-        for (const sid of classPoolSkillIdsForLevel(p.classes ?? [], p.level)) {
-          if (!p.knownSkills.includes(sid)) p.knownSkills.push(sid);
-        }
-        p.maxHp += 6;
-        p.hp = Math.min(effMaxHp(p), p.hp + 6);
-        p.skillPoints += 1;
-        ev.push({ type: 'levelup', unitId: p.id });
-        ev.push({ type: 'log', text: `⬆ ${p.name} reaches level ${p.level}! (+6 max HP, +1 skill point)`, kind: 'system' });
-      }
-    }
+    ev.push(...grantXp(party, slain.xpValue, ringBonus));
     return ev;
+  }
+
+  /** debug/cheat entry point: kill a single enemy through the REAL death
+   *  pipeline (XP award, loot drop, kill counter, end-of-combat check) —
+   *  the exact path damage takes, so cheats can't desync progression. */
+  public killUnit(u: Unit): CombatEvent[] {
+    if (!u.alive || u.team !== 'enemy') return [];
+    return this.onDeath(u);
   }
 
   /** drink a consumable (bonus action in combat; free in explore). Engine removes the item first. */
@@ -1351,4 +1348,32 @@ export class Combat {
     }
     return null;
   }
+}
+
+/**
+ * SHARED XP→LEVEL engine: apply XP to a set of units and auto-level them on
+ * the cumulative thresholds. EVERY XP source (combat kills, quest rewards,
+ * bonfire) must route through here so the xp→level→skill-point transition
+ * lives in ONE place — the old duplicated paths let quest XP bank forever
+ * without levelling and let the bonfire hand out a level per call.
+ */
+export function grantXp(units: Unit[], baseAmount: number, ringBonus?: (p: Unit) => number): CombatEvent[] {
+  const ev: CombatEvent[] = [];
+  if (!units.length || !baseAmount) return ev;
+  for (const p of units) {
+    const amt = Math.round(baseAmount * (ringBonus?.(p) ?? 1));
+    if (!amt) continue;
+    p.xp += amt;
+    while (p.level < MAX_LEVEL && p.xp >= (XP_THRESHOLDS[p.level + 1] ?? Infinity)) {
+      p.level++;
+      // NO auto-hydration of the class pool — new skills come from the Skill
+      // Tree (one skill point per level-up to spend there).
+      p.maxHp += 6;
+      p.hp = Math.min(effMaxHp(p), p.hp + 6);
+      p.skillPoints += 1;
+      ev.push({ type: 'levelup', unitId: p.id });
+      ev.push({ type: 'log', text: `⬆ ${p.name} reaches level ${p.level}! (+6 max HP, +1 skill point — spend it in the Skill Tree)`, kind: 'system' });
+    }
+  }
+  return ev;
 }

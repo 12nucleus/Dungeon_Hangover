@@ -293,10 +293,10 @@ export const SKILLS: Record<string, SkillDef> = {
   },
   bath_time: {
     id: 'bath_time', name: 'Bath Time', icon: '🛁', kind: 'buff',
-    desc: 'Below 25% HP, once: Gribnab hops back in the tub and heals 2d8+4.',
+    desc: 'Below 25% HP, once: Gribnab hops back in the tub and heals 2d4+2.',
     range: 0, aoeRadius: 0, cost: 'action', cooldown: 0, selfOnly: true,
     attackAbility: 'con', damageDice: '', damageType: 'force',
-    healDice: '2d8+4', hpBelowPct: 0.25, oncePerFight: true,
+    healDice: '2d4+2', hpBelowPct: 0.25, oncePerFight: true,
     fxColor: 0x9ecbe0, fx: 'heal',
   },
   sovereign_sudds: {

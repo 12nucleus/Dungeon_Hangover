@@ -171,6 +171,7 @@ export async function animate(engine: any, ev: CombatEvent) {
         break;
       }
       engine.phase = ev.phase;
+      if (ev.phase === 'defeat') engine.runStats.deaths += 1;
       if (ev.phase === 'combat') {
         // fresh fight: the first party turn must re-fire the phase banner
         engine.lastTurnTeam = null;
@@ -342,6 +343,13 @@ export async function triggerTrap(engine: any, u: Unit, trap: any) {
       u.hp = Math.max(0, u.hp - amt);
       spawnFloater(engine, u.id, `⚠ -${amt}`, 'dmg');
       engine.pushLog(`${u.name} triggers ${trap.def.icon} ${trap.def.name}! Takes ${amt} ${type} damage.`, 'hit');
+      // traps can kill OUT of combat — mirror the wine-press/bath guard so a
+      // trap can never leave a 0-HP "zombie" hero (alive but dead, still
+      // taking turns). The explore tick then routes the wipe to defeat.
+      if (u.hp <= 0 && u.alive) {
+        u.alive = false;
+        spawnFloater(engine, u.id, '💀', 'death');
+      }
     } else engine.pushLog(`${u.name} triggers ${trap.def.icon} ${trap.def.name}!`, 'system');
     if (cond && !u.conditions.some((c: any) => c.id === cond)) {
       const cn = CONDITIONS[cond]?.name ?? cond;

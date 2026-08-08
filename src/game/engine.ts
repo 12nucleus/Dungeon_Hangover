@@ -11,7 +11,7 @@ import { ParticleSystem, FX } from './particles';
 import { updateRig, setWeapon, equip, unequip, unequipAll, itemToEquipVisual, type Rig } from './characters';
 import { Combat } from './combat';
 import { SKILLS, CONDITIONS, createRoster } from './skills';
-import { ALL_CLASS_SKILLS, classPoolSkillIdsForLevel, classPoolSkillIds } from './classSkills';
+import { ALL_CLASS_SKILLS, classPoolSkillIds } from './classSkills';
 import { AudioManager } from './audio';
 import { DestructibleManager, type Destructible } from './destructibles';
 import { makeItem, ITEM_BASES, type Item } from './items';
@@ -36,7 +36,8 @@ import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone, 
 import { smashProp, checkCombatTrigger, enqueue, setAnimScale, triggerTrap as triggerTrapModule, disarmTrap as disarmTrapModule } from './engine/combatAnimation';
 import { updateFog, updateExploredVisibility, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule, hidePathPreview, type InteractPick } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
-import { respawn as respawnModule } from './engine/camping';
+import { respawn as respawnModule, levelUpAtBonfire as levelUpAtBonfireModule } from './engine/camping';
+import { executeCheatCommand as executeCheatCommandModule } from './engine/cheats';
 import { offerLoot, flushLootQueue, takeAllLoot, takeLootItem, leaveLootItem, dismissLoot, clearLoot } from './engine/loot';
 import { showTargeting as showTargetingModule, showMoveTiles as showMoveTilesModule } from './engine/targeting';
 import { bindInput as bindInputModule, onPointerMove as onPointerMoveModule, onPointerDown as onPointerDownModule, onKeyDown as onKeyDownModule, onResize as onResizeModule } from './engine/input';
@@ -1137,7 +1138,9 @@ export class GameEngine {
 
   // -- cheat console ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ press ` to open, type a command, press Enter --
   /** parse & execute a console command string (already lowercased + trimmed) */
-
+  public executeCheatCommand(cmd: string) {
+    executeCheatCommandModule(this, cmd);
+  }
   // == tavern flashback set (intro cutscene) =====================
   //  "The Dirty Mug" - rebuilt entirely from voxels (no smooth primitives).
   //  The actual construction lives in src/game/engine/tavern.ts (single
@@ -1181,16 +1184,21 @@ export class GameEngine {
   }
 
   /** Wade the boss (or any rig) across the floor to a tile over `dur` seconds,
-   *  playing the walk cycle. Resolves when he arrives. Drives x/z only ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ the
-   *  frame loop leaves an enemy's Y alone in explore, so it stays grounded. */
+   *  playing the walk cycle. Resolves when he arrives (or immediately when the
+   *  cutscene is skipped — the frame loop leaves an enemy's Y alone in explore,
+   *  so it stays grounded). */
   public walkRigTo(v: UnitVisual, tile: GridPos, dur: number): Promise<void> {
     return new Promise((resolve) => {
+      // cutscene skip: resolve at once so the boss reveal fast-forwards to the
+      // fight instead of hard-blocking ~4s of walk animations.
+      if (this.cutsceneSkip) { resolve(); return; }
       const from = v.rig.group.position.clone();
       const to = this.unitWorld(tile);
       this.faceToward(v, to);
       v.rig.anim.mode = 'walk';
       let t = 0;
       this.propAnims.push((dt) => {
+        if (this.cutsceneSkip) { v.rig.group.position.copy(to); v.rig.anim.mode = 'idle'; resolve(); return true; }
         t = Math.min(dur, t + dt);
         const k = dur > 0 ? t / dur : 1;
         v.rig.group.position.x = from.x + (to.x - from.x) * k;
@@ -2103,10 +2111,9 @@ export class GameEngine {
       hero.maxHp = 24;
       hero.hp = 24;
       // Level-gated knowledge: at Lv1 the hero only knows the 2 skills they
-      // picked during creation. The rest of the class pool is hydrated into
-      // knownSkills by levelUpAtBonfire / awardXP (tier-1 at Lv2, tier-2 at
-      // Lv3, tier-3+ at Lv4) — that membership is what gates the loadout.
-      // Skill-tree unlocks add more as the hero spends points.
+      // picked during creation. Every further skill comes from the Skill Tree
+      // (K / bonfire) — each level-up grants one skill point to spend there,
+      // which unlocks one node = one new skill.
       hero.knownSkills = [...build.skills];
       hero.equippedSkills = [...build.skills];
       hero.hotbarLoadout = [...build.hotbarLoadout];
@@ -2537,7 +2544,7 @@ export class GameEngine {
     // and loot bags / destructibles popping back).
     this.showBonfireUI = true;
     this.pushLog('?? You rest at the bonfire. Your wounds close. The dungeon stirs...', 'system');
-    this.pushLog('Spend your XP here to level up, or change your skill loadout.', 'system');
+    this.pushLog('Rest by the fire. Spend skill points in the Skill Tree, or rearrange your loadout.', 'system');
     this.bigMessage = 'Bonfire Rest';
     this.emitSnapshot();
     setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2000);
@@ -2552,25 +2559,10 @@ export class GameEngine {
   }
 
   levelUpAtBonfire(unitId: string) {
-    const u = this.byId(unitId);
-    if (!u || u.team !== 'party' || !this.restingAtBonfire) return;
-    if (u.level >= 5) { this.setHoverInfoOnce('Already at maximum level.'); return; }
-    const threshold = u.level === 3 ? 300 : u.level === 4 ? 650 : 9999;
-    if (u.xp < threshold) { this.setHoverInfoOnce(`Need ${threshold} XP to level up (have ${u.xp}).`); return; }
-    u.xp -= threshold;
-    u.level++;
-    // hydrate the class pool: skills the hero has now reached the level for
-    // become known (tier-1 at Lv2, tier-2 at Lv3, tier-3+ at Lv4)
-    for (const sid of classPoolSkillIdsForLevel(u.classes ?? [], u.level)) {
-      if (!u.knownSkills.includes(sid)) u.knownSkills.push(sid);
-    }
-    u.maxHp += 6;
-    u.hp = Math.min(effMaxHp(u), u.hp + 6);
-    u.skillPoints += 1;
-    this.audio.play('heal', 0.9, 1.3);
-    this.pushLog(`? ${u.name} reaches level ${u.level}! (+6 max HP, +1 skill point). You feel slightly less drunk.`, 'system');
-    FX.levelup(this.particles, this.unitWorld(u.pos).add(new THREE.Vector3(0, 0.6, 0)));
-    this.emitSnapshot();
+    levelUpAtBonfireModule(this, unitId);
+    // camping.levelUpAtBonfire is the canonical path (cumulative XP_THRESHOLDS,
+    // +1 skill point, Skill-Tree-driven skill gain). This engine method
+    // delegates so both the inline and module paths agree.
   }
 
   respawn() {
@@ -2660,6 +2652,15 @@ export class GameEngine {
     this.audio.play('ui_click', 0.7);
     this.pushLog(`${u.name} equips ${item.icon} ${item.name}.`, 'system');
     this.emitSnapshot();
+  }
+
+  /** convenience alias: equip an item onto the party leader. The React HUD
+   *  uses equipItem(unitId, itemId); this exists so scripts/cheats/tests that
+   *  guess the natural `engine.equip(itemId)` name work instead of silently
+   *  no-opping on a phantom method. */
+  public equip(itemId: string, slotHint?: string) {
+    const hero = this.combat?.living('party')[0];
+    if (hero) this.equipItem(hero.id, itemId, slotHint);
   }
 
   /** discard an item from the party bag entirely (inventory drop button). */

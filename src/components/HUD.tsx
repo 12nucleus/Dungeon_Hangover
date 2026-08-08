@@ -402,7 +402,7 @@ export function HUD({ snap, engine }: Props) {
       )}
 
       {/* ══ HOVER INFO ══ */}
-      {snap.hoverInfo && phase !== 'menu' && <div className="hover-info">{snap.hoverInfo}</div>}
+      {snap.hoverInfo && phase !== 'menu' && phase !== 'victory' && phase !== 'defeat' && <div className="hover-info">{snap.hoverInfo}</div>}
 
       {/* ══ BIG MESSAGE ══ */}
       {snap.bigMessage && (
@@ -449,8 +449,10 @@ export function HUD({ snap, engine }: Props) {
         </div>
       )}
 
-      {/* ══ DIALOGUE OVERLAY ══ */}
-      {snap.showDialogue && (
+      {/* ══ DIALOGUE OVERLAY ══ — never mount over the victory/defeat recap
+          (QA S2-8: the dead boss's truce dialogue stayed clickable on the
+          "FLOOR 50 CLEARED" screen). */}
+      {snap.showDialogue && phase !== 'victory' && phase !== 'defeat' && (
         <div className="dialogue-overlay">
           <div className="dialogue-box">
             <div className="dialogue-npc-name">{snap.showDialogue.npcName}</div>
@@ -491,7 +493,7 @@ export function HUD({ snap, engine }: Props) {
               <button className="btn-primary btn-sm" onClick={() => engine?.toggleInventory()}>
                 🎒 Inventory
               </button>
-              <p className="bonfire-rest-hint">Spend XP to level up in the skill tree panel.</p>
+              <p className="bonfire-rest-hint">Level up by fighting — spend your skill points in the Skill Tree (📜).</p>
               <button className="btn-primary btn-sm btn-ember" onClick={() => engine?.closeBonfireUI()}>
                 🔥 Leave Bonfire
               </button>
@@ -551,7 +553,7 @@ export function HUD({ snap, engine }: Props) {
           )}
 
           {/* BG3-style bottom hotbar (default actions + 12 skill slots) */}
-          {phase !== 'creation' && party.length > 0 && <Hotbar snap={snap} engine={engine!} />}
+          {phase !== 'creation' && phase !== 'victory' && phase !== 'defeat' && party.length > 0 && <Hotbar snap={snap} engine={engine!} />}
           {/* persistent phase chip — what you can do RIGHT NOW */}
           {phase === 'combat' && (
             <div className={`combat-phase-chip ${activeUnit?.team === 'party' ? 'party' : 'enemy'}`}>

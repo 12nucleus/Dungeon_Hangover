@@ -8,7 +8,6 @@ import * as THREE from 'three';
 import { setWeapon, equip, unequip, itemToEquipVisual } from '../characters';
 import { FX } from '../particles';
 import { effMaxHp, MAX_LEVEL, XP_THRESHOLDS } from '../stats';
-import { classPoolSkillIdsForLevel } from '../classSkills';
 import type { GridPos, EquipSlot } from '../types';
 import { canUnlock, treeFor } from '../skilltree';
 import { ITEM_BASES, type Item } from '../items';
@@ -131,25 +130,29 @@ export function levelUpAtBonfire(engine: any, unitId: string) {
     engine.setHoverInfoOnce('Stone cold sober — already at maximum level.');
     return;
   }
-  const need = XP_THRESHOLDS[u.level + 1] ?? Infinity;
-  if (u.xp < need) {
+  // level-to-target: grant EVERY level the current XP supports in one call.
+  // XP is cumulative and never spent, so a single-step version kept passing
+  // the same threshold check on every call — three calls gave three levels.
+  let leveled = 0;
+  while (u.level < MAX_LEVEL && u.xp >= (XP_THRESHOLDS[u.level + 1] ?? Infinity)) {
+    u.level++;
+    // NO auto-hydration of the class pool — new skills come from the Skill
+    // Tree (one skill point per level-up to spend there).
+    u.maxHp += 6;
+    u.hp = Math.min(effMaxHp(u), u.hp + 6);
+    u.skillPoints += 1;
+    recomputeHangover(u);
+    leveled++;
+    engine.pushLog(`⬆ ${u.name} reaches level ${u.level}! (+6 max HP, +1 skill point — spend it in the Skill Tree).`, 'system');
+  }
+  if (!leveled) {
+    const need = XP_THRESHOLDS[u.level + 1] ?? Infinity;
     engine.setHoverInfoOnce(`Need ${need} XP to level up (have ${u.xp}).`);
     return;
   }
-  u.level++;
-  // hydrate the class pool: skills the hero has now reached the level for
-  // become known (tier-1 at Lv2, tier-2 at Lv3, tier-3+ at Lv4)
-  for (const sid of classPoolSkillIdsForLevel(u.classes ?? [], u.level)) {
-    if (!u.knownSkills.includes(sid)) u.knownSkills.push(sid);
-  }
-  u.maxHp += 6;
-  u.hp = Math.min(effMaxHp(u), u.hp + 6);
-  u.skillPoints += 1;
-  recomputeHangover(u);
   engine.audio.play('heal', 0.9, 1.3);
   const line = SOBER_LINES[u.level];
   if (line) void engine.narrate(`sober_${u.level}`, line, 3600);
-  engine.pushLog(`⬆ ${u.name} reaches level ${u.level}! (+6 max HP, +1 skill point).`, 'system');
   FX.levelup(engine.particles, unitWorld(engine, u.pos).add(new THREE.Vector3(0, 0.6, 0)));
   engine.emitSnapshot();
 }
@@ -216,6 +219,11 @@ export function respawn(engine: any) {
   for (const u of engine.combat.units) {
     if (u.team !== 'enemy' || !u.alive || !u.bossGroup) continue;
     u.dormant = true;
+    // dying is NOT a damage-preserving checkpoint: survivors of a lost
+    // fight come back at full HP, so "chip the boss, die, respawn, chip
+    // again" can't trivialise a boss. Kills still persist.
+    u.hp = u.maxHp;
+    u.conditions = [];
   }
   // an enemy that SURVIVED the losing fight must not keep aggro on the fresh
   // spawn either — re-dormant every alive non-boss enemy so the party can
@@ -224,6 +232,8 @@ export function respawn(engine: any) {
   for (const u of engine.combat.units) {
     if (u.team !== 'enemy' || !u.alive || u.bossGroup) continue;
     u.dormant = true;
+    u.hp = u.maxHp;
+    u.conditions = [];
   }
   // short aggro suppression right after a respawn so the party isn't re-swarmed
   // the instant they stand up at the bonfire (same grace the intro uses).

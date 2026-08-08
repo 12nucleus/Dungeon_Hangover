@@ -1,16 +1,17 @@
 // ─────────────────────────────────────────────────────────────
 // BonfireLoadout — the bonfire-only editor for the 12 hotbar
-// slots. Lists the party leader's known skills (both the existing
-// SKILLS pool and the 15-class Tier-1 pools) and lets the player
-// assign them to the BG3-style hotbar. Only reachable while resting.
+// slots. Lists the party leader's KNOWN skills and lets the player
+// assign them to the BG3-style hotbar. New skills are NOT listed
+// here anymore — they come from the Skill Tree (📜), which grants
+// one node per skill point (one point per level-up). Only reachable
+// while resting.
 // ─────────────────────────────────────────────────────────────
 import { useMemo, useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot } from '@/game/types';
 import { SKILLS } from '@/game/skills';
-import { ALL_CLASS_SKILLS, classPoolSkillIds } from '@/game/classSkills';
+import { ALL_CLASS_SKILLS } from '@/game/classSkills';
 import { classById } from '@/game/classes';
-import { minLevelForSkill } from '@/game/stats';
 
 interface Props {
   snap: UISnapshot;
@@ -25,22 +26,18 @@ export function BonfireLoadout({ snap, engine }: Props) {
     hero?.hotbarLoadout ?? hero?.equippedSkills ?? Array(12).fill(null),
   );
 
-  // Every skill the leader can eventually learn: the ones they know now
-  // (assignable) plus the full class pool they have NOT reached the level
-  // for yet (shown greyed-out with a level badge). `known` membership is
-  // the level gate — creation picks enter knownSkills at Lv1, the class
-  // pool hydrates on level-up (tier-1 → Lv2, tier-2 → Lv3, tier-3+ → Lv4).
+  // Every skill the leader knows right now (creation picks + Skill-Tree
+  // unlocks). All of them are assignable — level gating lives in the tree.
   const known = useMemo(() => {
-    const seen = new Map<string, { id: string; name: string; icon: string; cls: string; desc: string; minLevel: number; known: boolean }>();
-    const add = (id: string, known: boolean) => {
+    const seen = new Map<string, { id: string; name: string; icon: string; cls: string; desc: string }>();
+    const add = (id: string) => {
       if (seen.has(id)) return;
       const s = SKILLS[id] ?? ALL_CLASS_SKILLS[id];
       if (!s) return;
       const cls = s.classId ? (classById(s.classId)?.name ?? s.classId) : 'Base';
-      seen.set(id, { id, name: s.name, icon: s.icon, cls, desc: s.desc, minLevel: minLevelForSkill(s), known });
+      seen.set(id, { id, name: s.name, icon: s.icon, cls, desc: s.desc });
     };
-    for (const id of hero?.knownSkills ?? []) add(id, true);
-    for (const id of classPoolSkillIds(hero?.classes ?? [])) add(id, false);
+    for (const id of hero?.knownSkills ?? []) add(id);
     return [...seen.values()];
   }, [hero]);
 
@@ -69,7 +66,7 @@ export function BonfireLoadout({ snap, engine }: Props) {
           <button onClick={() => engine.toggleBonfireLoadout()}>✕</button>
         </div>
         <p className="bl-hint">
-          Assign up to 12 skills to your hotbar (BG3 style). Slot the ones you'll actually use.
+          Assign up to 12 skills to your hotbar (BG3 style). New skills come from the Skill Tree (📜) — one point per level.
         </p>
 
         {/* the 12 slots */}
@@ -97,14 +94,11 @@ export function BonfireLoadout({ snap, engine }: Props) {
           <div className="bl-known-grid">
             {known.map((sk) => {
               const already = slots.includes(sk.id);
-              const locked = !sk.known;
               return (
                 <button
                   key={sk.id}
-                  className={`bl-skill ${already ? 'used' : ''} ${locked ? 'locked' : ''}`}
-                  disabled={locked}
+                  className={`bl-skill ${already ? 'used' : ''}`}
                   onClick={() => {
-                    if (locked) return;
                     // already on the bar → remove it; otherwise place in first empty slot
                     if (already) {
                       setSlot(slots.indexOf(sk.id), null);
@@ -113,15 +107,14 @@ export function BonfireLoadout({ snap, engine }: Props) {
                       if (empty >= 0) setSlot(empty, sk.id);
                     }
                   }}
-                  title={locked ? `${sk.name} — unlocks at level ${sk.minLevel}` : `${sk.name} — ${sk.desc}`}
+                  title={`${sk.name} — ${sk.desc}`}
                 >
-                  <span className="bl-skill-icon">{locked ? '🔒' : sk.icon}</span>
+                  <span className="bl-skill-icon">{sk.icon}</span>
                   <div>
                     <strong>{sk.name}</strong>
                     <em>{sk.cls}</em>
                   </div>
-                  {locked && <span className="bl-lock">Lv {sk.minLevel}</span>}
-                  {!locked && already && <span className="bl-used">on bar</span>}
+                  {already && <span className="bl-used">on bar</span>}
                 </button>
               );
             })}

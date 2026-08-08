@@ -210,6 +210,24 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   };
   const grant = (e: GameEngineLike, items: string[], gold = 0) => {
     e.grantLoot(items.map((id) => makeItem(id)), gold);
+    // one-line "this will matter later" hint on quest/key items so the
+    // player knows a pickup isn't flavour junk (QA sweep #4 finding).
+    for (const id of items) {
+      const hint = QUEST_ITEM_HINTS[id];
+      if (hint) e.pushLog(hint, 'system');
+    }
+  };
+
+  /** items with a later mechanical use — hint on pickup so they don't read as junk. */
+  const QUEST_ITEM_HINTS: Record<string, string> = {
+    goblin_soap: '🧼 The goblin soap. You have a feeling this will matter later.',
+    premium_soap: '🧼 The premium soap. Fancy. Definitely going to matter later.',
+    soap_chunk: '🧼 A chunk of soap. You have a feeling this will matter later.',
+    severed_finger: '🖐️ A severed finger with a ring. Someone is missing this.',
+    rusty_key: '🗝️ A rusty key. It looks important.',
+    lockpick: '🔓 A lockpick. You hear distant locks clicking with anticipation.',
+    holy_water: '💧 Holy water. The vault chest feels lighter just looking at it.',
+    bubble_bath: '🫧 Bubble bath. Slippery. Pour it at your feet.',
   };
 
   // ── R1 — the bonfire cell ──
