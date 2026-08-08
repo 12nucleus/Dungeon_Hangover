@@ -93,10 +93,13 @@ export function setupDungeon(engine: any, L: LevelDef) {
   }
 
   // iron door(s): the boss door + any authored doors (soap gate, trapdoor)
-  const axis: 'x' | 'z' = (engine.world.isWalkable(st.bossDoor.x - 1, st.bossDoor.z) || engine.world.isWalkable(st.bossDoor.x + 1, st.bossDoor.z)) ? 'z' : 'x';
-  engine.ironDoor = buildIronDoor(axis);
-  place(engine, engine.ironDoor, st.bossDoor);
-  engine.world.blocked[st.bossDoor.x][st.bossDoor.z] = true;
+  // (floor 50 only — other floors may not have an iron gate)
+  if (st.bossDoor) {
+    const axis: 'x' | 'z' = (engine.world.isWalkable(st.bossDoor.x - 1, st.bossDoor.z) || engine.world.isWalkable(st.bossDoor.x + 1, st.bossDoor.z)) ? 'z' : 'x';
+    engine.ironDoor = buildIronDoor(axis);
+    place(engine, engine.ironDoor, st.bossDoor);
+    engine.world.blocked[st.bossDoor.x][st.bossDoor.z] = true;
+  }
   for (const d of st.doors ?? []) {
     const mesh = buildIronDoor(d.axis);
     place(engine, mesh, d.pos);
@@ -104,35 +107,43 @@ export function setupDungeon(engine: any, L: LevelDef) {
     engine.doorMeshes.push({ id: d.id, pos: { ...d.pos }, flag: d.openedByFlag, mesh });
   }
 
-  // warlord's bath
-  place(engine, buildStoneBath(), st.bossBath);
+  // warlord's bath (floor 50's Gribnab seat — optional dressing)
+  if (st.bossBath) place(engine, buildStoneBath(), st.bossBath);
 
-  // weapon rack
-  engine.weaponRack = buildWeaponRack();
-  engine.weaponRack.rotation.y = -Math.PI / 2;
-  place(engine, engine.weaponRack, { x: st.bossBath.x + 2, z: st.bossBath.z });
-  engine.rackClub = (engine.weaponRack.userData.club as THREE.Object3D) ?? null;
+  // weapon rack + boss lounge (floor 50's Gribnab reveal rig)
+  if (st.bossBath) {
+    engine.weaponRack = buildWeaponRack();
+    engine.weaponRack.rotation.y = -Math.PI / 2;
+    place(engine, engine.weaponRack, { x: st.bossBath.x + 2, z: st.bossBath.z });
+    engine.rackClub = (engine.weaponRack.userData.club as THREE.Object3D) ?? null;
 
-  // boss starts lounging & unarmed
-  const bossU = engine.combat.units.find((u: any) => u.bossGroup && u.dropKey === 'golden');
-  const bv = bossU ? engine.visuals.get(bossU.id) : null;
-  if (bossU && bv) {
-    setWeapon(bv.rig, null, bossU.scheme.accent);
-    bv.rig.anim.crouch = 1.15;
-    bv.yaw = bv.targetYaw = -Math.PI / 2;
-    bv.rig.group.rotation.y = bv.yaw;
+    // boss starts lounging & unarmed
+    const bossU = engine.combat.units.find((u: any) => u.bossGroup && u.dropKey === 'golden');
+    const bv = bossU ? engine.visuals.get(bossU.id) : null;
+    if (bossU && bv) {
+      setWeapon(bv.rig, null, bossU.scheme.accent);
+      bv.rig.anim.crouch = 1.15;
+      bv.yaw = bv.targetYaw = -Math.PI / 2;
+      bv.rig.group.rotation.y = bv.yaw;
+    }
   }
 
-  // golden chest (boss reward) + secret room stash
-  engine.goldenChest = buildGoldenChest();
-  place(engine, engine.goldenChest, st.goldenChest, 0.02);
-  engine.secretChestMesh = buildGoldenChest();
-  place(engine, engine.secretChestMesh, st.secretChest, 0.02);
+  // golden chest (boss reward) + secret room stash (floor 50 machinery)
+  if (st.goldenChest) {
+    engine.goldenChest = buildGoldenChest();
+    place(engine, engine.goldenChest, st.goldenChest, 0.02);
+  }
+  if (st.secretChest) {
+    engine.secretChestMesh = buildGoldenChest();
+    place(engine, engine.secretChestMesh, st.secretChest, 0.02);
+  }
 
   // lever + rubble (legacy lever path) + authored blockers (floor 50)
-  engine.leverMesh = buildLever();
-  place(engine, engine.leverMesh, st.secretLever);
-  for (const t of st.secretRubble) {
+  if (st.secretLever) {
+    engine.leverMesh = buildLever();
+    place(engine, engine.leverMesh, st.secretLever);
+  }
+  for (const t of st.secretRubble ?? []) {
     const r = buildRubble(0.3 + t.x * 0.07 + t.z * 0.03);
     place(engine, r, t);
     engine.world.blocked[t.x][t.z] = true;
@@ -361,6 +372,17 @@ export function updateDungeon(engine: any, dt: number) {
         engine.bigMessage = '🗝 SECRET FOUND';
         setTimeout(() => { if (engine.bigMessage === '🗝 SECRET FOUND') { engine.bigMessage = null; engine.emitSnapshot(); } }, 2200);
       }
+      // exploration payoff: seeing every room of the grotto earns the
+      // Explorer's Bonus (once) — the map rewards the curious, not the sprint
+      if (engine.floorNumber === 49 && !engine.flags.has('f49_explored_bonus')) {
+        const all = Object.keys(engine.roomNarration ?? {}).filter((k) => k.startsWith('r'));
+        if (all.length && all.every((r) => engine.flags.has(`visited_${r}`))) {
+          engine.setFlag('f49_explored_bonus');
+          engine.pushLog('🗺 You have seen every corner of the grotto. The map bows to you. The mushrooms nod — slowly, respectfully.', 'system');
+          void engine.narrate('f49_explored', 'Every room. Every corner. Every last glowing, judgmental corner. You have seen it ALL. The grotto is impressed. The grotto has never been impressed before. It gives you a gift: two crystal shards, a glowing spore, and forty gold. You earned this. You absolutely earned this.', 5200);
+          offerLoot(engine, 'Explorer\'s Bonus', [makeItem('crystal_shard'), makeItem('crystal_shard'), makeItem('glowing_spore')], 40);
+        }
+      }
       // QA S3-5: warn an unarmed party before the final boss so the
       // unwinnable-unarmed fight doesn't come as a surprise.
       if (roomId === 'r25' && !party.some((p: any) => p.equipment?.weapon)) {
@@ -372,7 +394,11 @@ export function updateDungeon(engine: any, dt: number) {
       // The boss arena narrates itself via its cutscene trigger instead.
       if (!engine.combat.inCombat) {
         const text = engine.roomNarration[roomId];
-        if (text) void engine.narrate(`f50_room_${roomId}`, text, 5200);
+        // floor-scoped TTS id — each floor's room lines live in their own
+        // audio namespace (f50_room_*, f49_room_*) so a narration never
+        // plays another floor's voice-over.
+        const prefix = engine.floorNumber === 49 ? 'f49' : `f${engine.floorNumber}`;
+        if (text) void engine.narrate(`${prefix}_room_${roomId}`, text, 5200);
         maybeAmbush(engine, roomId, leader.pos);
         perceptionRoll(engine, roomId, leader);
       }

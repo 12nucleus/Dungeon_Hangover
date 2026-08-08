@@ -25,6 +25,7 @@ import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDe
 import { type NPCDef, type DialogueAction } from './npc';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { QuestLog, QUESTS } from './quest';
+import { shopStockFor, shopPriceFor } from './shop';
 import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes/index';
 
 import { IsoCamera } from './engine/IsoCamera';
@@ -147,8 +148,15 @@ export class GameEngine {
   /** current dialogue tree node (persists across clicks; null = fresh) */
   public dialogueNodeId: string | null = null;
 
-  // ── dice-roll visual (BG3-style) ──────────────────────
-  /** last visual dice roll (HUD animates a 3D die for ~2s) */
+  // ── shop (Floor 49 Spore Merchant) ──────────────────────
+  /** true while the shop panel is open */
+  public shopOpen = false;
+  /** the stock currently on the shelves (flags may gate premium items) */
+  public shopStock: { baseId: string; price: number; levelReq?: number; requiresFlag?: string; pitch: string }[] = [];
+  /** which NPC runs the shop (for the panel header) */
+  public shopNpcName = '';
+
+  // ── dice-roll visual (BG3-style) ──────────────────────  /** last visual dice roll (HUD animates a 3D die for ~2s) */
   public diceShow: { die: string; total: number; reason: string; at: number } | null = null;
   private diceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -196,6 +204,8 @@ export class GameEngine {
   public bonfireSpots: GridPos[] = [];
   public bonfireLit = false;
   public defeatedSpecialMobs = new Set<string>();
+  /** monster bark voices already played this floor (reset on goToFloor) */
+  public mobsBarked = new Set<string>();
   /** ids of destroyed props — persisted so rests/loads keep them gone */
   public destroyedProps = new Set<string>();
   /** player-curated item-bar keys (baseIds, max 6) — persisted */
@@ -338,6 +348,7 @@ export class GameEngine {
   public bossCutscenePlayed = false;
   public bossRatCutscenePlayed = false;
   public gribnabCutscenePlayed = false;
+  public sporeMotherCutscenePlayed = false;
   public introPlayed = false;
   public introActive = false;
   public titleIdle = false;
@@ -480,16 +491,16 @@ export class GameEngine {
     }, 0);
   }
 
-  /** PERFORMANCE (Fix A): the heavy half of init() that requires
-   *  this.world. Deferred via setTimeout in init() so the splash paints
-   *  fast. Contains: world build, fog grid, pickables, highlight pools,
-   *  selection ring, click ping, destructibles, vision cones, traps,
-   *  combat + units, setupDungeon, cutscene host + director, title
-   *  scene, splash audio listener, composer, input, RAF loop. */
-  private _initWorldAndDressing() {
-    const w = this.container.clientWidth, h = this.container.clientHeight;
-
-    // world — the authored Floor 50 sewer cellar
+  /**
+   * Rebuild everything a floor owns: world, explored grid, bonfires,
+   * destructibles, traps, combat roster + units, and the dungeon dressing.
+   * Called from _initWorldAndDressing (initial build) and goToFloor (transition).
+   * When `partyUnits` is given (floor transition), those units are KEPT and
+   * only this floor's enemies are spawned fresh — the party's level, XP,
+   * skills and equipment carry over, only their position resets.
+   */
+  private buildLevel(partyUnits?: Unit[]) {
+    // world
     this.world = new VoxelWorld(levelForFloor(this.floorNumber), this.runSeed & 0xffff);
     this.scene.add(this.world.group);
 
@@ -506,6 +517,7 @@ export class GameEngine {
     }
 
     // find bonfire prop
+    this.bonfireGroup = null;
     for (const child of this.world.group.children) {
       if ((child as any).userData?.isBonfire) {
         this.bonfireGroup = child as THREE.Group;
@@ -517,6 +529,172 @@ export class GameEngine {
     this.world.group.traverse((o) => { if (o instanceof THREE.InstancedMesh) this.pickables.push(o); });
     this.pickables.push(this.world.water);
     this.scene.add(this.particles.points);
+
+    // destructible props (crates/barrels/vases) — placements come from the level
+    const destLevel = levelForFloor(this.floorNumber);
+    const destSpots = (destLevel.destructibles ?? []).map((d) => [d.defId, d.x, d.z] as [string, number, number]);
+    this.props = new DestructibleManager(this.world, destSpots);
+    this.scene.add(this.props.group);
+
+    // traps — placements come from the level (per-run seed)
+    this.trapManager = new TrapManager(this.world);
+    const trapLevel = levelForFloor(this.floorNumber);
+    const trapSpots = typeof trapLevel.traps === 'function'
+      ? trapLevel.traps(this.runSeed).map((t) => [t.defId, t.x, t.z] as [string, number, number])
+      : (trapLevel.traps ?? []).map((t) => [t.defId, t.x, t.z] as [string, number, number]);
+    this.trapManager.init(trapSpots);
+    this.scene.add(this.trapManager.group);
+
+    // combat + units
+    this.combat = new Combat(this.world);
+    // monster barks: every combat start plays one bark per new monster type
+    // (voice designer assets npc/<mob>_bark.mp3). The wrap covers every
+    // aggro path — detection, ambush, cutscene — from a single seam.
+    const origStart = this.combat.start.bind(this.combat);
+    this.combat.start = () => {
+      for (const u of this.combat.units) {
+        if (u.team !== 'enemy' || !u.alive || u.bossGroup) continue;
+        const bid = u.npcId ?? u.name.replace(/\s+/g, '_').toLowerCase();
+        if (!bid || this.mobsBarked.has(bid)) continue;
+        this.mobsBarked.add(bid);
+        this.speakDialogue?.(bid, 'bark');
+      }
+      return origStart();
+    };
+    // room leashes: every enemy's AI movement stays inside its spawn room
+    // (+ margin) for the whole fight, so mob groups can't leak into a
+    // neighbouring room mid-combat and trigger another room's cutscene/aggro.
+    this.combat.leashFor = (u) => this.combatLeashFor(u);
+    this.onBossParley = (outcome) => this.handleGribnabParley(outcome);
+    if (partyUnits && partyUnits.length) {
+      // floor transition: keep the carried party, spawn only this floor's enemies.
+      // Both rosters reset a shared uid counter, so remap the fresh enemy ids
+      // to guarantee no collision with the carried party units.
+      const L = levelForFloor(this.floorNumber);
+      const enemies = L.makeRoster ? L.makeRoster(this.runSeed).filter((u) => u.team === 'enemy') : [];
+      const taken = new Set(partyUnits.map((u) => u.id));
+      let eid = 0;
+      for (const e of enemies) {
+        let id = `f${this.floorNumber}e${eid++}`;
+        while (taken.has(id)) id = `f${this.floorNumber}e${eid++}`;
+        e.id = id;
+        taken.add(id);
+      }
+      this.combat.units = [...partyUnits, ...enemies];
+      for (const u of this.combat.units) this.addUnit(u);
+    } else {
+      this.spawnUnits();
+    }
+    this.setupDungeon(levelForFloor(this.floorNumber));
+    const first = this.combat.units.find((u) => u.alive) ?? this.combat.units[0];
+    if (first) this.iso.focus(this.unitWorld(first.pos));
+  }
+
+  /**
+   * FLOOR TRANSITION: climb to floor `n`. Keeps ALL party progression
+   * (units + level/XP/skills/equipment, inventory, gold, flags, quests) and
+   * only resets positional state (party spawn, explored grid, per-floor
+   * room-visit flags). Disposes the old floor first, then rebuilds.
+   */
+  public goToFloor(n: number) {
+    if (this.disposed) return;
+    if (!FLOORS[n]) { this.pushLog?.(`No such floor: ${n} — staying put.`, 'system'); return; }
+
+    // snapshot the party so progression survives the rebuild
+    const party = (this.combat?.units ?? []).filter((u) => u.team === 'party').map((u) => ({
+      ...u,
+      pos: { ...u.pos },
+      conditions: [],
+      cooldowns: {},
+      initiative: 0,
+      hasAction: true,
+      hasBonus: true,
+      attackUsed: false,
+      movementLeft: u.moveRange,
+    }));
+
+    this.floorNumber = n;
+    // full interaction-state reset — a transition may arrive mid-animation-queue
+    // (e.g. climbing while kill-logs still drain); anything left busy would
+    // block the new floor's triggers forever.
+    this.busy = false;
+    this.cinematic = false;
+    this.bossCineActive = false;
+    this.targeting = null;
+    this.pendingSmash = null;
+    this.jumpMode = false;
+    this.sneaking = false;
+    this.showDialogue = null;
+    this.dialogueNodeId = null;
+    this.activeInteractable = null;
+    this.pendingLoot = null;
+    this.lootQueue = [];
+    this.cutsceneSkip = false;
+    // clear per-floor positional flags (room visits collide between floors)
+    for (const f of [...this.flags]) {
+      if (f.startsWith('visited_')) this.flags.delete(f);
+    }
+    this.mobsBarked = new Set();
+    this.defeatedSpecialMobs = new Set();
+    this.destroyedProps = new Set();
+    this.bonfireLit = false;
+    this.bonfirePos = null;
+    this.doorMeshes = [];
+    this.blockerMeshes = [];
+    this.rubbleMeshes = [];
+    this.ironDoor = null;
+    this.goldenChest = null;
+    this.goldenChestOpen = false;
+    this.secretChestMesh = null;
+    this.leverMesh = null;
+    this.weaponRack = null;
+    this.rackClub = null;
+    this.aggroGraceUntil = performance.now() / 1000 + 2;
+    this.introGraceUntil = performance.now() / 1000 + 2;
+
+    // teardown extras disposeFloor doesn't own: hand-authored NPC rigs,
+    // authored door/blocker meshes, and the floor-50 dressing group
+    for (const n of this.npcs) {
+      if (n.rig?.group?.parent) n.rig.group.parent.remove(n.rig.group);
+      if (n.proxy?.parent) n.proxy.parent.remove(n.proxy);
+    }
+    this.npcs = [];
+    for (const d of this.doorMeshes) if (d.mesh?.parent) d.mesh.parent.remove(d.mesh);
+    for (const b of this.blockerMeshes) if (b.mesh?.parent) b.mesh.parent.remove(b.mesh);
+    if ((this as any).dressingGroup) {
+      this.scene.remove((this as any).dressingGroup);
+      (this as any).dressingGroup = null;
+    }
+
+    this.disposeFloor();
+    // teleport the party to the new floor's spawn (they arrive together)
+    const L = levelForFloor(n);
+    const spawn = L.structures?.partySpawn ?? { x: 0, z: 0 };
+    for (const u of party) u.pos = { ...spawn };
+    this.buildLevel(party);
+    // arrival narration for the new floor
+    if (n === 49) {
+      void this.narrate('f49_arrival', 'You climb. You climb away from the bath, the soap, the ducks, all of it. You climb toward something GREEN. Something glowing. Something ALIVE. The air changes. The air becomes warm. The air becomes wet. The air smells like earth and judgment. Welcome to Floor 49. The mushrooms have been expecting you. They are not sure they approve.', 5800);
+      this.questLog?.start?.('through_grotto');
+    }
+    this.emitSnapshot();
+  }
+
+  /** PERFORMANCE (Fix A): the heavy half of init() that requires
+   *  this.world. Deferred via setTimeout in init() so the splash paints
+   *  fast. Contains: world build, fog grid, pickables, highlight pools,
+   *  selection ring, click ping, destructibles, vision cones, traps,
+   *  combat + units, setupDungeon, cutscene host + director, title
+   *  scene, splash audio listener, composer, input, RAF loop.
+   *
+   *  The floor-dependent half lives in buildLevel() so floor transitions
+   *  (goToFloor) can rebuild the world + roster without re-running the
+   *  one-time scene rigging (highlight pools, ring, cones, input, RAF). */
+  private _initWorldAndDressing() {
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+
+    // floor-dependent world build (world, fog, props, traps, units, dressing)
+    this.buildLevel();
 
     // highlight pools
     this.hlMats = {
@@ -550,12 +728,6 @@ export class GameEngine {
     this.clickPing = new THREE.Mesh(pingGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
     this.clickPing.renderOrder = 3;
     this.scene.add(this.clickPing);
-
-    // destructible props (crates/barrels/vases) — placements come from the level
-    const destLevel = levelForFloor(this.floorNumber);
-    const destSpots = (destLevel.destructibles ?? []).map((d) => [d.defId, d.x, d.z] as [string, number, number]);
-    this.props = new DestructibleManager(this.world, destSpots);
-    this.scene.add(this.props.group);
 
     // vision cones ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ pre-built geometry reused per frame
     const coneShape = new THREE.Shape();
@@ -598,26 +770,6 @@ export class GameEngine {
     }
     this.playerCone.renderOrder = 0;
     this.scene.add(this.playerCone);
-
-    // traps — placements come from the level (per-run seed for floor 50)
-    this.trapManager = new TrapManager(this.world);
-    const trapLevel = levelForFloor(this.floorNumber);
-    const trapSpots = typeof trapLevel.traps === 'function'
-      ? trapLevel.traps(this.runSeed).map((t) => [t.defId, t.x, t.z] as [string, number, number])
-      : (trapLevel.traps ?? []).map((t) => [t.defId, t.x, t.z] as [string, number, number]);
-    this.trapManager.init(trapSpots);
-    this.scene.add(this.trapManager.group);
-
-    // combat + units
-    this.combat = new Combat(this.world);
-    // room leashes: every enemy's AI movement stays inside its spawn room
-    // (+ margin) for the whole fight, so mob groups can't leak into a
-    // neighbouring room mid-combat and trigger another room's cutscene/aggro.
-    this.combat.leashFor = (u) => this.combatLeashFor(u);
-    this.onBossParley = (outcome) => this.handleGribnabParley(outcome);
-    this.spawnUnits();
-    this.setupDungeon(levelForFloor(this.floorNumber));
-    this.iso.focus(this.unitWorld(this.combat.units[0].pos));
 
     // wire the cutscene director ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ every cinematic runs through this one
     // object (the engine only implements the CutsceneHost API; all scene
@@ -852,6 +1004,61 @@ export class GameEngine {
 
   public addGold(n: number) { this.gold += n; this.emitSnapshot(); }
 
+  /** spend gold if affordable — returns false when the party is broke */
+  public spendGold(n: number): boolean {
+    if (this.gold < n) return false;
+    this.gold -= n;
+    this.emitSnapshot();
+    return true;
+  }
+
+  // ── shop (Floor 49 Spore Merchant) ──────────────────────
+  public openShop(npcName: string) {
+    this.shopStock = shopStockFor(this);
+    this.shopNpcName = npcName;
+    this.shopOpen = true;
+    // the shop replaces the dialogue overlay — the merchant keeps talking
+    // through the panel header instead
+    this.showDialogue = null;
+    this.dialogueNodeId = null;
+    this.stopDialogueVo?.();
+    this.audio?.play?.('ui_click', 0.6);
+    this.emitSnapshot();
+  }
+
+  public closeShop() {
+    this.shopOpen = false;
+    this.shopStock = [];
+    this.audio?.play?.('ui_click', 0.5);
+    this.emitSnapshot();
+  }
+
+  /** buy one stock item — checks gold + level req, pays, adds to inventory */
+  public buyShopItem(baseId: string): boolean {
+    const s = this.shopStock.find((x) => x.baseId === baseId);
+    if (!s) return false;
+    const price = shopPriceFor(s, this);
+    const leader = this.combat?.living('party')[0];
+    if (s.levelReq && leader && leader.level < s.levelReq) {
+      this.pushLog(`🔒 Myke: "That's for people who've survived longer than you, chief. Come back with some scars."`, 'system');
+      this.audio?.play?.('ui_click', 0.6);
+      this.emitSnapshot();
+      return false;
+    }
+    if (!this.spendGold(price)) {
+      this.pushLog('🪙 Myke: "Money talks. Yours is doing a very quiet mumble."', 'system');
+      this.audio?.play?.('ui_click', 0.6);
+      this.emitSnapshot();
+      return false;
+    }
+    const it = makeItem(baseId);
+    this.inventory.push(it);
+    this.pushLog(`🛒 You bought ${it.icon} ${it.name} for ${price} gold. Myke pockets the coin with a sad, experienced smile.`, 'system');
+    this.audio?.play?.('dice', 0.8);
+    this.emitSnapshot();
+    return true;
+  }
+
   public healGreg(n: number) {
     const g = this.combat?.living('party')[0];
     if (g) g.hp = Math.min(effMaxHp(g), g.hp + n);
@@ -874,6 +1081,12 @@ export class GameEngine {
   public applyCondition(unitId: string, condId: string, rounds: number) {
     const u = this.combat?.byId(unitId);
     if (!u) return;
+    // Spore Wisdom (Spore Madness quest reward): 20% of the time the spores
+    // recognise one of their own and decline to bother the party.
+    if (this.flags?.has?.('spore_wisdom') && u.team === 'party' && condId !== 'hallucinating' && Math.random() < 0.2) {
+      this.pushLog('🍄 Spore Wisdom: the spores recognise one of their own. They decline to bother you.', 'system');
+      return;
+    }
     if (!u.conditions.some((c) => c.id === condId)) {
       u.conditions.push({ id: condId, name: CONDITIONS[condId]?.name ?? condId, roundsLeft: rounds });
     } else {
@@ -1015,15 +1228,43 @@ export class GameEngine {
       v.rig.group.userData.baseY = wp.y;
       v.walker = null;
     }
+    this.revealAround(tile);
+    const wp = this.unitWorld(tile);
+    this.iso.focus(wp);
+    this.iso.desiredTarget?.copy(wp);
+    this.emitSnapshot();
+  }
+
+  /** teleport the WHOLE party (hidden tunnel shortcuts) */
+  public teleportParty(tile: GridPos) {
+    let i = 0;
+    for (const u of this.combat.units) {
+      if (u.team !== 'party' || !u.alive) continue;
+      const t = { x: tile.x + (i % 2), z: tile.z + Math.floor(i / 2) };
+      i++;
+      u.pos = { ...t };
+      const v = this.visuals.get(u.id);
+      if (v) {
+        const wp = this.unitWorld(t);
+        v.rig.group.position.copy(wp);
+        v.rig.group.userData.baseY = wp.y;
+        v.walker = null;
+      }
+    }
+    this.revealAround(tile);
+    const wp = this.unitWorld(tile);
+    this.iso.focus(wp);
+    this.iso.desiredTarget?.copy(wp);
+    this.emitSnapshot();
+  }
+
+  /** mark the 3×3 tiles around a point explored + reveal fog */
+  private revealAround(tile: GridPos) {
     this.explored[tile.x] ??= [];
     for (let x = tile.x - 1; x <= tile.x + 1; x++) for (let z = tile.z - 1; z <= tile.z + 1; z++) {
       if (x >= 0 && z >= 0 && x < WORLD_SIZE && z < WORLD_SIZE) this.explored[x][z] = true;
     }
     this.fogDirty = true;
-    const wp = this.unitWorld(tile);
-    this.iso.focus(wp);
-    this.iso.desiredTarget?.copy(wp);
-    this.emitSnapshot();
   }
 
   /** mark a rect explored (goblin map) */
@@ -1085,7 +1326,8 @@ export class GameEngine {
     // Gribnab's bath chamber (room 25) each fire their own cutscene
     const arena = st.arenaRect;
     const inArena = !!arena && party.some((p) => GameEngine.inRect(p.pos, arena));
-    const inBath = party.some((p) => GameEngine.inRect(p.pos, st.bossRoom));
+    const bossRoom = st.bossRoom;
+    const inBath = !!bossRoom && party.some((p) => GameEngine.inRect(p.pos, bossRoom));
     // the reveal cutscenes only fire while their boss is actually alive — a
     // dead Baron/Gribnab must never re-trigger the VO on re-entry, even if a
     // respawn re-armed the flag
@@ -1110,6 +1352,21 @@ export class GameEngine {
     if (inBath && gribAlive && this.flags.has('gribnab_door_open') && !this.gribnabCutscenePlayed) {
       this.gribnabCutscenePlayed = true;
       void this.playGribnabCutscene();
+      return;
+    }
+    // floor 49 — the Spore Mother's throne room fires her reveal cutscene
+    const motherAlive = this.combat.units.some((u) => u.team === 'enemy' && u.name === 'The Spore Mother' && u.alive);
+    if (inArena && motherAlive && !this.sporeMotherCutscenePlayed) {
+      this.sporeMotherCutscenePlayed = true;
+      const arenaId = st.arenaRect
+        ? this.roomOf?.((st.arenaRect.x0 + st.arenaRect.x1) >> 1, (st.arenaRect.z0 + st.arenaRect.z1) >> 1)
+        : null;
+      if (arenaId && !this.flags.has(`visited_${arenaId}`)) {
+        this.setFlag(`visited_${arenaId}`);
+        const text = this.roomNarration?.[arenaId];
+        if (text) void this.narrate(`f49_room_${arenaId}`, text, 5200);
+      }
+      void this.playSporeMotherCutscene();
       return;
     }
 
@@ -1352,6 +1609,11 @@ export class GameEngine {
   public async playBossRatCutscene() {
     if (!this.cutsceneDirector) return;
     await this.cutsceneDirector.play('boss_rat');
+  }
+
+  public async playSporeMotherCutscene() {
+    if (!this.cutsceneDirector) return;
+    await this.cutsceneDirector.play('spore_mother');
   }
   public async playGribnabCutscene() {
     if (!this.cutsceneDirector) return;
@@ -2663,6 +2925,31 @@ export class GameEngine {
     if (hero) this.equipItem(hero.id, itemId, slotHint);
   }
 
+  /** recruit a party companion (the Mushroom Child / Sporefriend) — builds a
+   *  party unit + its visuals so it fights alongside the hero from now on. */
+  public addCompanion(name: string, title: string, scheme: any, maxHp: number) {
+    const hero = this.combat?.living('party')[0];
+    if (!hero) return;
+    const u: Unit = {
+      id: `companion_${Date.now()}`,
+      name, title, team: 'party', klass: 'goblin',
+      level: Math.max(1, hero.level), xp: 0, skillPoints: 0,
+      equipment: {}, maxHp, hp: maxHp, ac: 12,
+      abilities: { str: 10, dex: 12, con: 12, int: 6, wis: 10, cha: 10 },
+      proficiency: Math.max(2, hero.proficiency),
+      moveRange: 5, pos: { ...hero.pos }, alive: true,
+      knownSkills: ['spore_throw', 'shove'], equippedSkills: ['spore_throw'],
+      unlockedNodes: [], bonusAC: 0, bonusMove: 0, cooldowns: {},
+      hasAction: true, hasBonus: true, movementLeft: 5, initiative: 0,
+      conditions: [], scheme, weapon: 'unarmed', xpValue: 0,
+      classes: [], hotbarLoadout: ['spore_throw', 'shove', null, null, null, null, null, null, null, null, null, null],
+    };
+    this.combat.units.push(u);
+    this.addUnit(u);
+    this.pushLog(`🍄 ${name} joins the party! It bounces twice, thrilled.`, 'system');
+    this.emitSnapshot();
+  }
+
   /** discard an item from the party bag entirely (inventory drop button). */
   dropItem(itemId: string) {
     const idx = this.inventory.findIndex((i) => i.id === itemId);
@@ -3576,6 +3863,26 @@ export class GameEngine {
         stage: q.stage,
         desc: q.desc,
       })),
+      showShop: this.shopOpen,
+      shopNpcName: this.shopNpcName,
+      shopDiscount: this.flags.has('vendor_favor'),
+      shopStock: this.shopOpen
+        ? this.shopStock.map((s) => {
+            const b = ITEM_BASES[s.baseId];
+            const leader = this.combat?.living('party')[0];
+            return {
+              baseId: s.baseId,
+              name: b?.name ?? s.baseId,
+              icon: b?.icon ?? '❓',
+              tier: b?.tier ?? 1,
+              kind: b?.kind ?? 'trinket',
+              price: shopPriceFor(s, this),
+              levelReq: s.levelReq,
+              canBuy: !s.levelReq || (leader ? leader.level >= s.levelReq : true),
+              pitch: s.pitch,
+            };
+          })
+        : [],
       runStats: { ...this.runStats },
       showDialogue: this.showDialogue,
       diceShow: this.diceShow ? { ...this.diceShow } : null,

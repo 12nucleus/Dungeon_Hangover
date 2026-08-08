@@ -314,6 +314,70 @@ export const SKILLS: Record<string, SkillDef> = {
     attackAbility: 'wis', damageDice: '2d6', damageType: 'force',
     selfCentered: true, fxColor: 0x8a5a2a, fx: 'buff',
   },
+  // ── floor 49 — the Fungal Grotto ──
+  entangle: {
+    id: 'entangle', name: 'Entangle', icon: '🌿', kind: 'melee',
+    desc: '2 piercing; 50% chance the vines hold you — Bound (can\'t move) 1 round.',
+    range: 1, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'str', damageDice: '1d6', damageType: 'piercing',
+    appliesCondition: 'rooted', appliesRounds: 1, appliesChance: 0.5,
+    fxColor: 0x4ade80, fx: 'slash',
+  },
+  spore_throw: {
+    id: 'spore_throw', name: 'Spore Pop', icon: '🫧', kind: 'ranged',
+    desc: '1d4 poison; 25% Nauseated.',
+    range: 5, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'con', damageDice: '1d4', damageType: 'poison',
+    appliesCondition: 'nauseated', appliesRounds: 2, appliesChance: 0.25,
+    fxColor: 0x9ad86a, fx: 'arcane',
+  },
+  spore_burst: {
+    id: 'spore_burst', name: 'Spore Burst', icon: '💥', kind: 'aoe',
+    desc: '2d4 poison to everything within 2 tiles; 25% Poisoned.',
+    range: 0, aoeRadius: 2, cost: 'action', cooldown: 2, selfCentered: true,
+    attackAbility: 'con', damageDice: '2d4', damageType: 'poison',
+    appliesCondition: 'poisoned', appliesRounds: 3, appliesChance: 0.25,
+    fxColor: 0xb06af0, fx: 'arcane',
+  },
+  root_grab: {
+    id: 'root_grab', name: 'Root Grab', icon: '🕸️', kind: 'ranged',
+    desc: '2 bludgeoning + mycelial roots snatch you — Bound (can\'t move) 2 rounds.',
+    range: 6, aoeRadius: 0, cost: 'action', cooldown: 2,
+    attackAbility: 'wis', damageDice: '1d4', damageType: 'bludgeoning',
+    appliesCondition: 'rooted', appliesRounds: 2,
+    fxColor: 0x9ad86a, fx: 'arcane',
+  },
+  dream_whisper: {
+    id: 'dream_whisper', name: 'Dream Whisper', icon: '🌙', kind: 'ranged',
+    desc: 'The Spire whispers. 1 psychic; the target is Hallucinating 2 rounds.',
+    range: 6, aoeRadius: 0, cost: 'action', cooldown: 3,
+    attackAbility: 'wis', damageDice: '1d4', damageType: 'force',
+    appliesCondition: 'hallucinating', appliesRounds: 2,
+    fxColor: 0xc084fc, fx: 'arcane',
+  },
+  mycelial_heal: {
+    id: 'mycelial_heal', name: 'Mycelial Network', icon: '🌐', kind: 'heal',
+    desc: 'The grotto feeds her. Below 50% HP, once: heals 2d4+2.',
+    range: 0, aoeRadius: 0, cost: 'action', cooldown: 0, selfOnly: true,
+    attackAbility: 'con', damageDice: '', damageType: 'force',
+    healDice: '2d4+2', hpBelowPct: 0.5, oncePerFight: true,
+    fxColor: 0x9ad86a, fx: 'heal',
+  },
+  summon_spores: {
+    id: 'summon_spores', name: 'Summon Spores', icon: '🍄', kind: 'buff',
+    desc: 'The throne splits open — 2 Small Mushrooms burst forth. (CD 3)',
+    range: 0, aoeRadius: 0, cost: 'action', cooldown: 3, selfOnly: true,
+    attackAbility: 'con', damageDice: '', damageType: 'force',
+    summonId: 'small_mushroom', fxColor: 0xb06af0, fx: 'buff',
+  },
+  tongue_lash: {
+    id: 'tongue_lash', name: 'Tongue Lash', icon: '👅', kind: 'melee',
+    desc: '2d4+1 bludgeoning; 50% the frog\'s tongue pins you — Bound (can\'t move) 1 round.',
+    range: 1, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'str', damageDice: '2d4+1', damageType: 'bludgeoning',
+    appliesCondition: 'rooted', appliesRounds: 1, appliesChance: 0.5,
+    fxColor: 0xff8ac0, fx: 'bash',
+  },
 };
 
 export const CONDITIONS: Record<string, { name: string; desc: string }> = {
@@ -523,12 +587,21 @@ export const SUMMON_TEMPLATES: Record<string, () => Unit> = {
     weapon: 'dagger',
   }),
   door_wall: () => mkSummon({
-    name: 'The Door', title: 'Conjured Wall', team: 'party', klass: 'goblin', pos: { x: 0, z: 0 },
-    maxHp: 30, hp: 30, ac: 16, level: 1,
-    abilities: { str: 10, dex: 6, con: 16, int: 6, wis: 6, cha: 6 },
+    name: 'Door Wall', title: 'Animated Wall', team: 'enemy', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 12, hp: 12, ac: 14, level: 1,
+    abilities: { str: 16, dex: 6, con: 14, int: 2, wis: 8, cha: 4 },
     knownSkills: [], moveRange: 0, xpValue: 0, turnsLeft: 2, dormant: false,
     scheme: { skin: 0x8a5a2a, cloth: 0x5a3a1a, accent: 0xe8b46a, hair: 0x3a2a1a, hood: false, bulk: 1, monster: 'skeleton' },
     weapon: 'dagger',
+  }),
+  // ── floor 49 — the Spore Mother's children (explode on death) ──
+  small_mushroom: () => mkSummon({
+    name: 'Small Mushroom', title: 'Spore Child', team: 'enemy', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 2, hp: 2, ac: 9, level: 1,
+    abilities: { str: 4, dex: 10, con: 8, int: 2, wis: 8, cha: 4 },
+    knownSkills: ['spore_throw', 'shove'], moveRange: 4, xpValue: 5, turnsLeft: 0, dormant: false,
+    scheme: { skin: 0xe8e0d0, cloth: 0x49b6ff, accent: 0xe8e0d0, hair: 0x2a2a3a, hood: false, bulk: 0.7, monster: 'mushroom' },
+    weapon: 'unarmed',
   }),
 };
 
@@ -730,6 +803,200 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
     moveRange: 5, xpValue: 300, bathPos: { ...sp.bossBathTile },
     scheme: { ...gribnabScheme }, weapon: 'club', dormant: true, bossGroup: true, dropKey: 'golden',
     deathDrops: { itemIds: ['drowned_majesty', 'soap_crown'], gold: 50 },
+  }));
+
+  return units;
+}
+
+// ══════════════════════════════════════════════════════════
+// FLOOR 49 — THE FUNGAL GROTTO roster
+// ══════════════════════════════════════════════════════════
+
+export interface Floor49Spawns {
+  party: GridPos;
+  /** world-coord rects of every room that holds enemies */
+  rooms: Record<string, Rect>;
+  /** the Spore Mother's throne room (her arena + cutscene trigger) */
+  sporeThrone: Rect;
+  /** her seat — where she sits before the fight */
+  bossPos: GridPos;
+}
+
+const vineCrawlerScheme = { skin: 0x3a7a3a, cloth: 0x6ac86a, accent: 0x2a5a2a, hair: 0x1a3a1a, hood: false, monster: 'crawler' as const };
+const smallMushroomScheme = { skin: 0xe8e0d0, cloth: 0x49b6ff, accent: 0xe8e0d0, hair: 0x2a2a3a, hood: false, monster: 'mushroom' as const };
+const guardianMushroomScheme = { skin: 0xe0d8c4, cloth: 0x36d17a, accent: 0xe0d8c4, hair: 0x2a3a2a, hood: false, monster: 'mushroom' as const, bulk: 1.35 };
+const caveFishScheme = { skin: 0x3a7a9a, cloth: 0x9ad8ff, accent: 0x6ad0f0, hair: 0x1a3a5a, hood: false, monster: 'fish' as const };
+const giantFrogScheme = { skin: 0x4a9a4a, cloth: 0xc8e8a0, accent: 0x2a6a3a, hair: 0x1a3a2a, hood: false, monster: 'frog' as const, bulk: 1.3 };
+const sporeMotherScheme = { skin: 0x4a3a6a, cloth: 0x9a5cf0, accent: 0xe0d8c4, hair: 0xffd23a, hood: false, monster: 'mushroom' as const, bulk: 2.0 };
+const mimicScheme = { skin: 0xc8a030, cloth: 0x8a6a1a, accent: 0xe8e0d0, hair: 0x3a2a1a, hood: false, monster: 'mushroom' as const, bulk: 1.2 };
+const giantSlumberScheme = { skin: 0x6a8a3a, cloth: 0xa8c86a, accent: 0x4a6a2a, hair: 0x2a3a1a, hood: false, monster: 'mushroom' as const, bulk: 2.4 };
+
+
+/**
+ * Floor-49 monster roster. NOTE for floor transitions: the engine's
+ * goToFloor() keeps the party units from the previous floor and spawns only
+ * this roster's ENEMY half — the bundled Greg is for fresh-game dev/testing.
+ */
+export function createFloor49Roster(sp: Floor49Spawns, seed: number): Unit[] {
+  uid = 0;
+  summonUid = 100000;
+  const rng = mulberry32(seed ^ 0xf49a1);
+  const jitter = () => {
+    const dx = Math.round(rng() * 2 - 1), dz = Math.round(rng() * 2 - 1);
+    return { dx, dz };
+  };
+  const center = (r: Rect): GridPos => ({ x: (r.x0 + r.x1) >> 1, z: (r.z0 + r.z1) >> 1 });
+  const spot = (r: Rect): GridPos => {
+    const c = center(r);
+    const { dx, dz } = jitter();
+    return { x: c.x + dx, z: c.z + dz };
+  };
+  const units: Unit[] = [];
+
+  // the party (dev/test convenience — real runs carry Greg over from 50)
+  units.push(mkUnit({
+    name: 'Greg', title: 'Human', team: 'party', klass: 'fighter', pos: { ...sp.party },
+    maxHp: 24, hp: 24, ac: 10, level: 1, xp: 0,
+    abilities: { str: 16, dex: 12, con: 14, int: 9, wis: 11, cha: 12 },
+    knownSkills: ['shove'],
+    conditions: [{ id: 'hungover', name: CONDITIONS.hungover.name, roundsLeft: 99 }],
+    scheme: { skin: 0xd9a066, cloth: 0xffffff, accent: 0xffeb3b, hair: 0x4a2f1a, hood: false, style: 'normal', naked: true },
+    weapon: 'unarmed', xpValue: 0, equipment: {},
+  }));
+
+  // R3 — 2 vine crawlers (the vine tunnel)
+  for (let i = 0; i < 2; i++) {
+    units.push(mkUnit({
+      name: 'Vine Crawler', title: 'Living Vine', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r3),
+      maxHp: 6, hp: 6, ac: 11, level: 2,
+      abilities: { str: 10, dex: 13, con: 10, int: 3, wis: 9, cha: 4 },
+      knownSkills: ['entangle'], moveRange: 6, xpValue: 25,
+      scheme: { ...vineCrawlerScheme }, weapon: 'unarmed', dormant: true, groupId: 'r3_vines',
+      npcId: 'vine_crawler',
+      onHit: { condition: 'rooted', chance: 0.5, rounds: 1, saveAbility: 'dex', saveDC: 11 },
+    }));
+  }
+  // R6 — the guardian + 3 exploding small mushrooms
+  units.push(mkUnit({
+    name: 'Mushroom Guardian', title: 'The Grotto\'s Bouncer', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r6),
+    maxHp: 15, hp: 15, ac: 12, level: 3,
+    abilities: { str: 13, dex: 9, con: 13, int: 5, wis: 11, cha: 6 },
+    knownSkills: ['spore_burst', 'spore_throw', 'shove'], moveRange: 5, xpValue: 60,
+    scheme: { ...guardianMushroomScheme }, weapon: 'unarmed', dormant: true, groupId: 'r6_guardian',
+    npcId: 'mushroom_guardian',
+  }));
+  for (let i = 0; i < 3; i++) {
+    units.push(mkUnit({
+      name: 'Small Mushroom', title: 'Spore Child', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r6),
+      maxHp: 2, hp: 2, ac: 9, level: 1,
+      abilities: { str: 4, dex: 10, con: 8, int: 2, wis: 8, cha: 4 },
+      knownSkills: ['spore_throw', 'shove'], moveRange: 4, xpValue: 10,
+      scheme: { ...smallMushroomScheme }, weapon: 'unarmed', dormant: true, groupId: 'r6_guardian',
+      npcId: 'small_mushroom',
+    }));
+  }
+  // R8 — one cave fish (the deep pools)
+  units.push(mkUnit({
+    name: 'Cave Fish', title: 'Blind Pool Swimmer', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r8),
+    maxHp: 5, hp: 5, ac: 10, level: 1,
+    abilities: { str: 7, dex: 13, con: 9, int: 2, wis: 8, cha: 4 },
+    knownSkills: ['bite'], moveRange: 6, xpValue: 20,
+    scheme: { ...caveFishScheme }, weapon: 'unarmed', dormant: true, groupId: 'r8_fish',
+    npcId: 'cave_fish',
+  }));
+  // R9 — the flooded cave: 2 fish + 1 giant frog
+  units.push(mkUnit({
+    name: 'Cave Fish', title: 'Blind Pool Swimmer', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r9),
+    maxHp: 5, hp: 5, ac: 10, level: 1,
+    abilities: { str: 7, dex: 13, con: 9, int: 2, wis: 8, cha: 4 },
+    knownSkills: ['bite'], moveRange: 6, xpValue: 20,
+    scheme: { ...caveFishScheme }, weapon: 'unarmed', dormant: true, groupId: 'r9_frogs',
+    npcId: 'cave_fish',
+  }));
+  units.push(mkUnit({
+    name: 'Giant Frog', title: 'The Tongue That Waits', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r9),
+    maxHp: 12, hp: 12, ac: 11, level: 3,
+    abilities: { str: 14, dex: 12, con: 12, int: 3, wis: 9, cha: 5 },
+    knownSkills: ['tongue_lash', 'bite'], moveRange: 6, xpValue: 50,
+    scheme: { ...giantFrogScheme }, weapon: 'unarmed', dormant: true, groupId: 'r9_frogs',
+    npcId: 'giant_frog',
+  }));
+
+  // R11 — the rotting tree's roots: 2 crawlers
+  for (let i = 0; i < 2; i++) {
+    units.push(mkUnit({
+      name: 'Vine Crawler', title: 'Root of the Rotting Tree', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r11),
+      maxHp: 6, hp: 6, ac: 11, level: 2,
+      abilities: { str: 10, dex: 13, con: 10, int: 3, wis: 9, cha: 4 },
+      knownSkills: ['entangle'], moveRange: 6, xpValue: 25,
+      scheme: { ...vineCrawlerScheme }, weapon: 'unarmed', dormant: true, groupId: 'r11_roots',
+      npcId: 'vine_crawler',
+      onHit: { condition: 'rooted', chance: 0.5, rounds: 1, saveAbility: 'dex', saveDC: 11 },
+    }));
+  }
+  // R14 — the MUSHROOM MIMIC: a chest that bites. Provoke-only (bossGroup
+  // skips proximity aggro — the interactable wakes it).
+  units.push(mkUnit({
+    name: 'Mushroom Mimic', title: 'The Chest That Bites', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r14),
+    maxHp: 12, hp: 12, ac: 12, level: 3,
+    abilities: { str: 13, dex: 10, con: 12, int: 5, wis: 8, cha: 6 },
+    knownSkills: ['bite', 'shove'], moveRange: 4, xpValue: 55,
+    scheme: { ...mimicScheme }, weapon: 'unarmed', dormant: true, bossGroup: true, groupId: 'r14_mimic',
+    npcId: 'mushroom_mimic',
+  }));
+  // R15 — spore-grounds: 3 grave mushrooms
+  for (let i = 0; i < 3; i++) {
+    units.push(mkUnit({
+      name: 'Small Mushroom', title: 'Grave Cap', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r15),
+      maxHp: 2, hp: 2, ac: 9, level: 1,
+      abilities: { str: 4, dex: 10, con: 8, int: 2, wis: 8, cha: 4 },
+      knownSkills: ['spore_throw', 'shove'], moveRange: 4, xpValue: 10,
+      scheme: { ...smallMushroomScheme }, weapon: 'unarmed', dormant: true, groupId: 'r15_graves',
+      npcId: 'small_mushroom',
+    }));
+  }
+  // R17 — the mycelial highway: 2 crawlers on patrol
+  for (let i = 0; i < 2; i++) {
+    units.push(mkUnit({
+      name: 'Vine Crawler', title: 'Highway Patrol', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r17),
+      maxHp: 6, hp: 6, ac: 11, level: 2,
+      abilities: { str: 10, dex: 13, con: 10, int: 3, wis: 9, cha: 4 },
+      knownSkills: ['entangle'], moveRange: 6, xpValue: 25,
+      scheme: { ...vineCrawlerScheme }, weapon: 'unarmed', dormant: true, groupId: 'r17_highway',
+      npcId: 'vine_crawler',
+      onHit: { condition: 'rooted', chance: 0.5, rounds: 1, saveAbility: 'dex', saveDC: 11 },
+    }));
+  }
+  // R18 — the SLEEPING GIANT's escort: a guardian + 3 children. Provoke-only.
+  units.push(mkUnit({
+    name: 'Mushroom Guardian', title: 'The Giant\'s Gills', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r18),
+    maxHp: 15, hp: 15, ac: 12, level: 3,
+    abilities: { str: 13, dex: 9, con: 13, int: 5, wis: 11, cha: 6 },
+    knownSkills: ['spore_burst', 'spore_throw', 'shove'], moveRange: 5, xpValue: 60,
+    scheme: { ...giantSlumberScheme }, weapon: 'unarmed', dormant: true, bossGroup: true, groupId: 'r18_giant',
+    npcId: 'mushroom_guardian',
+  }));
+  for (let i = 0; i < 3; i++) {
+    units.push(mkUnit({
+      name: 'Small Mushroom', title: 'The Giant\'s Child', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r18),
+      maxHp: 2, hp: 2, ac: 9, level: 1,
+      abilities: { str: 4, dex: 10, con: 8, int: 2, wis: 8, cha: 4 },
+      knownSkills: ['spore_throw', 'shove'], moveRange: 4, xpValue: 10,
+      scheme: { ...smallMushroomScheme }, weapon: 'unarmed', dormant: true, bossGroup: true, groupId: 'r18_giant',
+      npcId: 'small_mushroom',
+    }));
+  }
+
+  // R7 — the SPORE MOTHER (final boss; woken by the throne cutscene)
+  units.push(mkUnit({
+    name: 'The Spore Mother', title: 'The Dreamer of the Grotto', team: 'enemy', klass: 'goblin', pos: { ...sp.bossPos },
+    maxHp: 40, hp: 40, ac: 13, level: 5,
+    abilities: { str: 15, dex: 8, con: 15, int: 10, wis: 14, cha: 12 },
+    knownSkills: ['spore_burst', 'summon_spores', 'root_grab', 'dream_whisper', 'mycelial_heal', 'shove'],
+    moveRange: 4, xpValue: 300,
+    scheme: { ...sporeMotherScheme }, weapon: 'unarmed', dormant: true, bossGroup: true, groupId: 'spore_mother',
+    npcId: 'spore_mother',
+    deathDrops: { itemIds: ['spore_crown', 'mycelial_staff'], gold: 30 },
   }));
 
   return units;

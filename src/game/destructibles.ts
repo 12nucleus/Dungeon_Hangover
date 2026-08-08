@@ -36,6 +36,9 @@ export const DESTRUCTIBLE_DEFS: Record<string, DestructibleDef> = {
   // Greg's starter satchel at the dungeon wake — always drops the starting kit
   // (rusty dagger, lit torch, healing potion) via the 'starting' loot source.
   starting_bag: { id: 'starting', name: 'Bag of Supplies', icon: '🎒', hp: 3, model: 'sack', palette: paletteOf('sack') },
+  // ── floor 49 — fungal grotto ──
+  spore_sac: { id: 'vase', name: 'Spore Sac', icon: '🫧', hp: 3, model: 'spore_sac', palette: paletteOf('spore_sac') },
+  spore_throne: { id: 'vase', name: 'Mushroom Throne', icon: '🍄', hp: 20, model: 'mushroom_throne', palette: paletteOf('mushroom_throne') },
 };
 
 // ── placement (hand-authored) ────────────────────────────────

@@ -198,6 +198,29 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   sewer_water_flask: B({ kind: 'consumable', name: 'Sewer Water', icon: '🧪', tier: 1, healDice: '5', value: 1, consumeCondition: { id: 'nauseated', chance: 0.5, rounds: 3 }, desc: '50% heal 5 HP, 50% Nauseated. The sewer plays fair.' }),
   bubble_bath: B({ kind: 'consumable', name: 'Bubble Bath', icon: '🫧', tier: 2, healDice: '0', value: 15, desc: 'Pour it at your feet: Slippery for 2 rounds. Gribnab would be proud.' }),
   rubber_duck: B({ kind: 'consumable', name: 'Rubber Duck', icon: '🦆', tier: 1, healDice: '0', value: 3, desc: 'Squeeze it. All enemies become Distracted for 1 round. It works every time.' }),
+  // ── floor 49 — fungal grotto ──
+  mushroom_staff: B({ kind: 'weapon', slot: 'weapon', name: 'Mushroom Staff', icon: '🍄', tier: 1, weaponKind: 'staff', damageDice: '1d6', damageType: 'bludgeoning', value: 22, onHitCondition: { id: 'nauseated', chance: 0.15, rounds: 2 }, desc: 'A staff grown, not carved. It whispers spore recipes at you. 15% Nauseated on hit.' }),
+  spore_dagger: B({ kind: 'weapon', slot: 'weapon', name: 'Spore Dagger', icon: '🗡️', tier: 1, weaponKind: 'dagger', damageDice: '1d4+1', damageType: 'piercing', value: 26, onHitCondition: { id: 'poisoned', chance: 0.25, rounds: 2 }, desc: 'The blade is covered in fine purple dust. Do not lick it. 25% Poisoned on hit.' }),
+  vine_whip: B({ kind: 'weapon', slot: 'weapon', name: 'Vine Whip', icon: '🌿', tier: 1, weaponKind: 'dagger', damageDice: '1d4', damageType: 'piercing', value: 18, onHitCondition: { id: 'rooted', chance: 0.1, rounds: 1 }, desc: 'A living lash. It grabs things. 10% Rooted (Bound) on hit.' }),
+  fungal_blade: B({ kind: 'weapon', slot: 'weapon', name: 'Fungal Blade', icon: '⚔️', tier: 2, weaponKind: 'sword', damageDice: '1d8', damageType: 'slashing', value: 55, levelReq: 2, onHitCondition: { id: 'poisoned', chance: 0.25, rounds: 2 }, desc: 'A sword that grew around a sword. It blooms where it cuts. 25% Poisoned on hit.' }),
+  mycelial_staff: B({ kind: 'weapon', slot: 'weapon', name: 'Mycelial Staff', icon: '🪄', tier: 2, weaponKind: 'staff', damageDice: '1d8+1', damageType: 'bludgeoning', value: 95, levelReq: 3, onHitCondition: { id: 'hallucinating', chance: 0.2, rounds: 1 }, desc: 'Pulsing with the Spire\'s dreams. 20% Hallucinating on hit. The dreams are not your dreams.' }),
+  spore_crown: B({ kind: 'armor', slot: 'head', name: 'Spore Crown', icon: '👑', tier: 2, acBonus: 1, hpBonus: 4, value: 70, levelReq: 3, desc: 'A crown of living fungi. It hums. +1 AC, +4 HP. Smells like earth and ambition.' }),
+  mushroom_cap: B({ kind: 'armor', slot: 'head', name: 'Mushroom Cap', icon: '🍄', tier: 1, acBonus: 1, value: 12, desc: 'A wide, friendly mushroom cap worn as a hat. +1 AC. Keeps the rain (and the spores) off.' }),
+  vine_cloak: B({ kind: 'armor', slot: 'chest', name: 'Vine Cloak', icon: '🧥', tier: 1, acBonus: 1, value: 20, desc: 'A cloak of woven vines. It rustles when you move. +1 AC.' }),
+  frog_skin_cloak: B({ kind: 'armor', slot: 'chest', name: 'Frog Skin Cloak', icon: '🧥', tier: 1, acBonus: 1, hpBonus: 2, value: 24, desc: 'Slippery and green. It came off a very large, very surprised frog. +1 AC, +2 HP.' }),
+  waterlogged_boots: B({ kind: 'armor', slot: 'boots', name: 'Waterlogged Boots', icon: '👢', tier: 1, acBonus: 1, value: 16, desc: 'Heavy, wet, and full of tiny fish. They do not mind. +1 AC.' }),
+  moon_cap: B({ kind: 'consumable', name: 'Moon Cap', icon: '🌙', tier: 2, healDice: '20', value: 30, desc: 'A mushroom that only grows in moonlight it has never seen. Heals 20 HP.' }),
+  spore_heart: B({ kind: 'consumable', name: 'Spore Heart', icon: '❤️‍🩹', tier: 3, healDice: '999', value: 120, desc: 'The heart of the Spore Mother. It still beats. Eating it heals you fully. It is the only way.' }),
+  hallucinogenic_spore: B({ kind: 'consumable', name: 'Hallucinogenic Spore', icon: '🫧', tier: 1, healDice: '0', consumeCondition: { id: 'hallucinating', chance: 1, rounds: 2 }, value: 10, desc: 'A puff of purple dust. The walls become very honest with you for 2 turns.' }),
+  cave_fish_meat: B({ kind: 'consumable', name: 'Cave Fish Meat', icon: '🐟', tier: 1, healDice: '10', value: 9, consumeCondition: { id: 'nauseated', chance: 0.25, rounds: 2 }, desc: 'Heals 10 HP. 25% Nauseated. It tasted like it was already upset.' }),
+  crystal_shard: B({ kind: 'trinket', name: 'Crystal Shard', icon: '💎', tier: 1, value: 12, desc: 'A warm shard of grotto crystal. It glows when it is quiet. Crafting material.' }),
+  glowing_spore: B({ kind: 'trinket', name: 'Glowing Spore', icon: '✨', tier: 1, value: 4, desc: 'A mote of bioluminescence in a glass vial. Crafting material.' }),
+  // ── floor 49 expansion: quest items + vendor / crafting bits ──
+  mycologist_satchel: B({ kind: 'trinket', slot: 'trinket', name: "Mycologist's Satchel", icon: '🎒', tier: 2, hpBonus: 1, value: 45, desc: '+1 max HP, and POCKETS. So many pockets. The Hermit Shroom says it is for science. It is mostly for mushrooms.' }),
+  vine_fiber: B({ kind: 'trinket', name: 'Vine Fiber', icon: '🧶', tier: 1, value: 6, desc: 'A strand of vine that still twitches when you hold it. The vine remembers being alive. Crafting material.' }),
+  frog_tongue: B({ kind: 'trinket', name: 'Giant Frog Tongue', icon: '👅', tier: 1, value: 18, desc: 'A surprisingly long tongue. It is still warm. The frog is not. Myke the Spore Merchant will pay handsomely for this.' }),
+  seventh_cap: B({ kind: 'trinket', name: 'The Seventh Cap', icon: '🍄', tier: 2, value: 45, desc: 'A mushroom cap of impossible colour — every colour at once, depending on how you squint. The circle is missing its seventh member. It wants to go home.' }),
+  giant_cap: B({ kind: 'consumable', name: "Giant's Cap", icon: '🌕', tier: 2, healDice: '30', value: 45, desc: 'The cap of the Sleeping Giant. It dreams of the surface, of wind, of things that are not caves. Heals 30 HP.' }),
 };
 
 let iid = 0;

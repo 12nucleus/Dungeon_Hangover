@@ -6,8 +6,9 @@ import { playIntroCutscene } from './intro';
 import { playTitleSequence } from './title';
 import { playBossRatCutscene } from './bossRat';
 import { playGribnabCutscene } from './gribnab';
+import { playSporeMotherCutscene } from './sporeMother';
 
-export type CutsceneId = 'intro' | 'title' | 'boss_rat' | 'gribnab';
+export type CutsceneId = 'intro' | 'title' | 'boss_rat' | 'gribnab' | 'spore_mother';
 
 /**
  * DIRECTOR — the one object the engine creates & talks to.
@@ -41,6 +42,7 @@ export class CutsceneDirector {
       else if (id === 'intro') await playIntroCutscene(this.host);
       else if (id === 'boss_rat') await playBossRatCutscene(this.host);
       else if (id === 'gribnab') await playGribnabCutscene(this.host);
+      else if (id === 'spore_mother') await playSporeMotherCutscene(this.host);
     } finally {
       this.activeId = null;
     }

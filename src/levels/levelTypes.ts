@@ -9,7 +9,11 @@ export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'crystal_blue' 
   | 'valve' | 'pipe' | 'sign' | 'bunk' | 'footlocker' | 'dice_table' | 'nest' | 'drain' | 'wrench' | 'plunger'
   | 'pipe_fitting' | 'toolbox' | 'chest' | 'mirror' | 'compass' | 'fountain' | 'well' | 'cauldron' | 'weapon_rack'
   | 'altar' | 'throne' | 'banner' | 'duck' | 'towel'
-  | 'armor_stand' | 'shield_rack' | 'bookshelf' | 'rug' | 'tapestry' | 'chandelier' | 'barrel';
+  | 'armor_stand' | 'shield_rack' | 'bookshelf' | 'rug' | 'tapestry' | 'chandelier' | 'barrel'
+  // ── floor 49 — fungal grotto ──
+  | 'giant_mushroom' | 'glow_mushroom_blue' | 'glow_mushroom_green' | 'glow_mushroom_purple'
+  | 'spore_sac' | 'offering_bowl' | 'crystal_light' | 'pool' | 'waterfall' | 'vine' | 'vine_bridge'
+  | 'mushroom_throne' | 'mushroom_bed' | 'mushroom_cap';
 
 export interface PropPlacement {
   kind: PropKind;
@@ -39,13 +43,13 @@ export interface LevelStructures {
   checkpoint?: GridPos;     // starter-room bonfire — light it to set the respawn point
   /** every bonfire on the floor, checkpoint first — kindling moves the active checkpoint */
   bonfires?: GridPos[];
-  bossDoor: GridPos;        // locked door tile (blocked until the iron key opens it)
-  bossBath: GridPos;        // boss starts here, sitting in its bath
-  bossRoom: Rect;           // entering this rect triggers the boss cutscene
-  goldenChest: GridPos;     // locked chest — opened by the golden key the boss drops
-  secretLever: GridPos;     // pull (when adjacent) to collapse the rubble wall
-  secretRubble: GridPos[];  // tiles blocked by rubble until the lever is pulled
-  secretChest: GridPos;     // free bonus chest inside the secret room
+  bossDoor?: GridPos;        // locked door tile (blocked until the iron key opens it)
+  bossBath?: GridPos;        // boss starts here, sitting in its bath
+  bossRoom?: Rect;           // entering this rect triggers the boss cutscene
+  goldenChest?: GridPos;     // locked chest — opened by the golden key the boss drops
+  secretLever?: GridPos;     // pull (when adjacent) to collapse the rubble wall
+  secretRubble?: GridPos[];  // tiles blocked by rubble until the lever is pulled
+  secretChest?: GridPos;     // free bonus chest inside the secret room
   hermitChamber?: GridPos;
   hiddenTreasures?: GridPos[];
   mezzanines?: Rect[];

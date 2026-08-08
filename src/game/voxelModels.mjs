@@ -1172,6 +1172,268 @@ export function propBarrel(seed = 0.5) {
   v.add(0, 5, 0, WOOD_D);
   return { name: 'barrel', voxels: v.list(), cube, blocks: false };
 }
+// ─────────────────────────────────────────────────────────────
+// FLOOR 49 — FUNGAL GROTTO props (bioluminescent mushrooms, spore
+// sacs, pools, a waterfall, a vine bridge and the Spore Mother's
+// mushroom throne). Every glowing kind ships a colored point light +
+// halo + drifting spore particles via the `glow`/`particles` fields,
+// so the whole grotto reads as alive without any engine changes.
+// ─────────────────────────────────────────────────────────────
+
+/** one tall glowing mushroom (stem + dome cap + bright gill ring) */
+function singleMushroom(R, capColor, stemColor, H, capR, seedJitter) {
+  const v = new Vox();
+  const cube = 0.055;
+  const capHi = mix(capColor, 0xffffff, 0.45), capD = shade(capColor, 0.7);
+  const STEM = stemColor, STEM_D = shade(stemColor, 0.78), GILL = mix(capColor, 0xffffff, 0.2);
+  const lean = (R() - 0.5) * seedJitter;
+  const cx = Math.round(lean * 2), cz = Math.round(lean * 1.5);
+  v.col(cx, cz, 0, H, 1.2, 1.2, STEM);
+  v.col(cx, cz, 0, 2, 1.5, 1.5, STEM_D);
+  for (let x = -Math.ceil(capR); x <= Math.ceil(capR); x++) for (let z = -Math.ceil(capR); z <= Math.ceil(capR); z++) {
+    const d = Math.hypot(x, z) / capR;
+    if (d <= 1.02) {
+      const yy = H + Math.round((1 - d * d) * 2.6);
+      v.add(cx + x, yy, cz + z, d > 0.82 ? capD : (((x + z) & 1) ? capColor : capHi));
+    }
+  }
+  for (let x = -Math.floor(capR); x <= Math.floor(capR); x++) for (let z = -Math.floor(capR); z <= Math.floor(capR); z++) {
+    if (Math.hypot(x, z) <= capR - 0.4) v.add(cx + x, H - 1, cz + z, GILL);
+  }
+  return { v, cube, maxTop: H + 3, cap: capColor, capHi };
+}
+
+/** glowing mushroom — three hue variants for the bioluminescent palette */
+function glowMushroom(seed, capColor) {
+  const R = rng(Math.floor(seed * 1000) + 41);
+  const STEM = 0xe8e0d0, STEM_D = 0xc7bda6;
+  const H = 7 + Math.floor(R() * 4), capR = 2.6 + R() * 0.8;
+  const m = singleMushroom(R, capColor, STEM, H, capR, 2.5);
+  // companion mini at the foot
+  singleMushroom(R, capColor, STEM, 4, 1.8, 2).v.list().forEach((c) => m.v.add(c.x, c.y, c.z, c.c));
+  return {
+    name: 'glow_mushroom', voxels: m.v.list(), cube: m.cube,
+    glow: { color: mix(capColor, 0xffffff, 0.35), intensity: 4.2, dist: 7, decay: 2, y: m.maxTop * m.cube * 0.65, flicker: 0.35 },
+    particles: { type: 'spore', color: m.capHi, y: m.maxTop * m.cube, spread: 0.28, rate: 0.7, count: 5 },
+    anim: 'sway',
+  };
+}
+export function propGlowMushroomBlue(seed = 0.5) { const m = glowMushroom(seed, 0x49b6ff); m.name = 'glow_mushroom_blue'; return m; }
+export function propGlowMushroomGreen(seed = 0.5) { const m = glowMushroom(seed, 0x36d17a); m.name = 'glow_mushroom_green'; return m; }
+export function propGlowMushroomPurple(seed = 0.5) { const m = glowMushroom(seed, 0x8a5cf0); m.name = 'glow_mushroom_purple'; return m; }
+
+/** GIANT mushroom — 2.5× the regular cap, the grotto's landmarks */
+let maxGiantTop = 0;
+export function propGiantMushroom(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 53);
+  const v = new Vox();
+  const cube = 0.06;
+  const STEM = 0xe0d8c4, STEM_D = 0xb8ae94;
+  const cap = [0x49b6ff, 0x8a5cf0, 0x36d17a, 0xff8ac0][Math.floor(R() * 4)];
+  const capHi = mix(cap, 0xffffff, 0.5), capD = shade(cap, 0.68);
+  const H = 16 + Math.floor(R() * 4), capR = 6 + R() * 1.5;
+  v.col(0, 0, 0, H, 2.4, 2.4, STEM);
+  v.col(0, 0, 0, 3, 3.2, 3.2, STEM_D);
+  v.col(0, H - 3, 0, H - 1, 2.0, 2.0, STEM_D);
+  for (let x = -Math.ceil(capR); x <= Math.ceil(capR); x++) for (let z = -Math.ceil(capR); z <= Math.ceil(capR); z++) {
+    const d = Math.hypot(x, z) / capR;
+    if (d <= 1.02) {
+      const yy = H + Math.round((1 - d * d) * 4.4);
+      v.add(x, yy, z, d > 0.84 ? capD : (((x + z * 3) & 1) ? cap : capHi));
+      maxGiantTop = Math.max(maxGiantTop, yy);
+    }
+  }
+  // gill ring + glowing spots
+  for (let x = -Math.floor(capR); x <= Math.floor(capR); x++) for (let z = -Math.floor(capR); z <= Math.floor(capR); z++) {
+    if (Math.hypot(x, z) <= capR - 0.5) v.add(x, H - 2, z, mix(cap, 0xffffff, 0.25));
+  }
+  for (let s = 0; s < 9; s++) if (R() < 0.8) v.add(Math.round((R() - 0.5) * capR), H + 2, Math.round((R() - 0.5) * capR), capHi);
+  return {
+    name: 'giant_mushroom', voxels: v.list(), cube,
+    glow: { color: mix(cap, 0xffffff, 0.3), intensity: 7, dist: 11, decay: 1.9, y: maxGiantTop * cube * 0.62, flicker: 0.28 },
+    particles: { type: 'spore', color: capHi, y: maxGiantTop * cube, spread: 0.45, rate: 0.9, count: 10 },
+    anim: 'sway',
+  };
+}
+
+/** SPORE SAC — a pulsing, translucent-looking bladder that bursts */
+export function propSporeSac(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 61);
+  const v = new Vox();
+  const cube = 0.055;
+  const body = 0x9ad86a, bodyHi = mix(0x9ad86a, 0xffffff, 0.5), bodyD = shade(0x9ad86a, 0.72);
+  v.ellipsoid(0, 5, 0, 3.2, 5, 3.2, body);
+  v.ellipsoid(0, 7, 0, 2.2, 3, 2.2, bodyHi);
+  v.ellipsoid(0, 3, 0, 2.4, 2.4, 2.4, bodyD);
+  // stem + mossy foot
+  v.col(0, 0, 0, 3, 1.2, 1.2, 0x6a8a4a);
+  v.col(0, 0, 0, 1, 2.6, 2.6, 0x4a6a3a);
+  // translucent speckles
+  for (let a = 0; a < 16; a++) if (R() < 0.6) v.add(Math.round((R() - 0.5) * 4), 3 + Math.floor(R() * 6), Math.round((R() - 0.5) * 4), R() < 0.5 ? bodyHi : 0xffffff);
+  return {
+    name: 'spore_sac', voxels: v.list(), cube,
+    glow: { color: 0x9ad86a, intensity: 3.4, dist: 5, decay: 2, y: 8 * cube, flicker: 0.5 },
+    particles: { type: 'spore', color: 0xffffff, y: 9 * cube, spread: 0.4, rate: 1.2, count: 8 },
+    anim: 'pulse',
+  };
+}
+
+/** OFFERING BOWL — a shallow stone bowl on a pedestal (the circle ritual) */
+export function propOfferingBowl(seed = 0.5) {
+  const v = new Vox();
+  const cube = 0.055;
+  const STONE = 0x8a8580, STONE_D = 0x6a6660, INNER = 0x3a3834;
+  v.col(0, 0, 0, 4, 1.6, 1.6, STONE_D);
+  v.col(0, 0, 0, 1, 2.4, 2.4, STONE);
+  v.ring(0, 4, 5, 3.6, 3.6, STONE);
+  v.ellipsoid(0, 5, 0, 2.8, 0.8, 2.8, INNER);
+  v.ellipsoid(0, 6, 0, 2.6, 0.6, 2.6, 0x2a2824);
+  return { name: 'offering_bowl', voxels: v.list(), cube };
+}
+
+/** CRYSTAL LIGHT — a warm beacon (the grotto's "take the crystal" reward) */
+export function propCrystalLight(seed = 0.5) {
+  const m = crystalCluster(seed, 0xf0b46a, 0xffd98a);
+  m.name = 'crystal_light';
+  return m;
+}
+
+/** POOL — a flat glowing pool disc (drinkable / hazard pools) */
+export function propPool(seed = 0.5) {
+  const v = new Vox();
+  const cube = 0.05;
+  const WATER = 0x3a9ad8, WATER_HI = 0x7ad4ff;
+  for (let x = -6; x <= 6; x++) for (let z = -6; z <= 6; z++) {
+    const d = Math.hypot(x, z) / 6;
+    if (d <= 1.02) {
+      v.add(x, 0, z, d > 0.9 ? 0x4a4a50 : WATER);
+      if (d < 0.85 && ((x + z) & 1)) v.add(x, 1, z, WATER_HI);
+    }
+  }
+  return {
+    name: 'pool', voxels: v.list(), cube,
+    glow: { color: 0x7ad4ff, intensity: 2.6, dist: 6, decay: 2, y: 1.4 * cube, flicker: 0.5 },
+    anim: 'pulse',
+  };
+}
+
+/** WATERFALL — a vertical cascade backdrop (wall-mounted, hang from ceiling) */
+export function propWaterfall(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 71);
+  const v = new Vox();
+  const cube = 0.055;
+  const W = 0x7ad4ff, W_D = 0x3a86c8, W_HI = 0xc8f0ff;
+  for (let y = 0; y <= 26; y++) {
+    for (let x = -4; x <= 4; x++) {
+      const n = Math.round(Math.sin(y * 0.7 + x * 1.3) * 1.5);
+      v.add(x, y, 0, (x + n) % 3 === 0 ? W_HI : (x % 2 ? W : W_D));
+    }
+    if (R() < 0.4) v.add(Math.round((R() - 0.5) * 7), y, 1, W_HI);
+  }
+  // splash pool at the base
+  v.ellipsoid(0, 0, 0, 5.5, 0.8, 2.5, W);
+  return {
+    name: 'waterfall', voxels: v.list(), cube,
+    glow: { color: 0x7ad4ff, intensity: 4, dist: 8, decay: 2, y: 14 * cube, flicker: 0.3 },
+    particles: { type: 'sparkle', color: 0xffffff, y: 1 * cube, spread: 0.5, rate: 1.5, count: 12 },
+    hang: true,
+  };
+}
+
+/** VINE — a hanging vine cluster (wall/ceiling dressing) */
+export function propVine(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 79);
+  const v = new Vox();
+  const cube = 0.055;
+  const V = 0x4a9a4a, V_D = 0x2a6a3a, V_HI = 0x6ac86a;
+  for (let i = 0; i < 6; i++) {
+    const x = Math.round((R() - 0.5) * 6);
+    const len = 8 + Math.floor(R() * 9);
+    for (let y = 0; y < len; y++) v.add(x + (y > 3 ? Math.round((R() - 0.5) * 2) : 0), y, 0, y % 3 === 0 ? V_HI : V);
+    if (R() < 0.7) v.add(x, len, 1, V_D);  // tendril curl
+    v.add(x + 1, 1 + Math.floor(R() * 4), 0, V_D); // leaf
+  }
+  return { name: 'vine', voxels: v.list(), cube, hang: true };
+}
+
+/** VINE BRIDGE — plank spans with vine rails (r6 → r7) */
+export function propVineBridge(seed = 0.5) {
+  const v = new Vox();
+  const cube = 0.05;
+  const PLANK = 0x9a6a3a, PLANK_D = 0x7a4e28, VINE = 0x4a9a4a;
+  for (let x = -5; x <= 5; x++) {
+    v.add(x, 0, -1, PLANK); v.add(x, 0, 0, PLANK); v.add(x, 0, 1, PLANK);
+    if (x % 2 === 0) v.add(x, 1, 0, PLANK_D);
+  }
+  for (let x = -5; x <= 5; x++) { v.add(x, 2, -2, VINE); v.add(x, 2, 2, VINE); v.add(x, 3, -2, VINE); v.add(x, 3, 2, VINE); }
+  for (let x = -5; x <= 5; x += 2) { v.add(x, 2, 0, VINE); }
+  return { name: 'vine_bridge', voxels: v.list(), cube };
+}
+
+/** MUSHROOM THRONE — the Spore Mother's seat (a fat cap cluster) */
+export function propMushroomThrone(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 89);
+  const v = new Vox();
+  const cube = 0.06;
+  const cap = 0x9a5cf0, capHi = mix(cap, 0xffffff, 0.5), capD = shade(cap, 0.65);
+  const STEM = 0x4a3a5a;
+  // seat: a fat dome
+  v.ellipsoid(0, 5, 0, 6, 5, 6, capD);
+  v.ellipsoid(0, 8, 0, 5.2, 3, 5.2, cap);
+  v.ellipsoid(0, 10, 0, 4, 2, 4, capHi);
+  // backrest: a taller mushroom cap behind
+  v.col(0, 0, 0, 10, 3, 3, STEM);
+  v.ellipsoid(0, 14, -3, 7, 4, 4, cap);
+  v.ellipsoid(0, 16, -3, 6, 2.5, 3, capHi);
+  // armrests: two small caps
+  for (const s of [-1, 1]) { v.col(s * 6, 0, 0, 7, 1.4, 1.4, STEM); v.ellipsoid(s * 6, 8, 0, 2.6, 2, 2.6, cap); }
+  // glow spots
+  for (let a = 0; a < 12; a++) if (R() < 0.7) v.add(Math.round((R() - 0.5) * 8), 8 + Math.floor(R() * 6), Math.round((R() - 0.5) * 7), capHi);
+  return {
+    name: 'mushroom_throne', voxels: v.list(), cube,
+    glow: { color: mix(cap, 0xffffff, 0.35), intensity: 6, dist: 10, decay: 1.9, y: 13 * cube, flicker: 0.35 },
+    particles: { type: 'spore', color: capHi, y: 13 * cube, spread: 0.5, rate: 1, count: 8 },
+    anim: 'pulse',
+  };
+}
+
+/** MUSHROOM BED — a soft cap-shaped bed (rest in the grotto) */
+export function propMushroomBed(seed = 0.5) {
+  const v = new Vox();
+  const cube = 0.055;
+  const cap = 0x49b6ff, capHi = mix(cap, 0xffffff, 0.5), capD = shade(cap, 0.7);
+  const STEM = 0xe0d8c4;
+  v.col(0, 0, 0, 4, 2.4, 2.4, STEM);
+  v.ellipsoid(0, 4, 0, 7, 3, 4.5, capD);
+  v.ellipsoid(0, 5, 0, 6.4, 2, 4, cap);
+  v.ellipsoid(0, 6, 0, 5, 1.2, 3, capHi);
+  return {
+    name: 'mushroom_bed', voxels: v.list(), cube,
+    glow: { color: cap, intensity: 2.6, dist: 5, decay: 2, y: 5 * cube, flicker: 0.4 },
+    anim: 'pulse',
+  };
+}
+
+/** MUSHROOM CAP — a single small cap (room dressing + the circle's 7) */
+export function propMushroomCap(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 97);
+  const v = new Vox();
+  const cube = 0.055;
+  const cap = [0x49b6ff, 0x8a5cf0, 0x36d17a, 0xff8ac0, 0xffc84a][Math.floor(R() * 5)];
+  const capHi = mix(cap, 0xffffff, 0.5), capD = shade(cap, 0.7);
+  const STEM = 0xe8e0d0;
+  v.col(0, 0, 0, 5, 1.1, 1.1, STEM);
+  v.ellipsoid(0, 5, 0, 3.2, 2.4, 3.2, capD);
+  v.ellipsoid(0, 6, 0, 2.6, 1.6, 2.6, cap);
+  v.ellipsoid(0, 7, 0, 1.8, 0.9, 1.8, capHi);
+  if (R() < 0.8) v.add(0, 4, 0, 0xffffff);
+  return {
+    name: 'mushroom_cap', voxels: v.list(), cube,
+    glow: { color: mix(cap, 0xffffff, 0.4), intensity: 2.4, dist: 4.5, decay: 2, y: 6 * cube, flicker: 0.45 },
+    anim: 'sway',
+  };
+}
+
 export const PROP_BUILDERS = {
   stalagmite: propStalagmite,
   stalactite: propStalactite,
@@ -1228,6 +1490,21 @@ export const PROP_BUILDERS = {
   shield_rack: propShieldRack,
   bookshelf: propBookshelf,
   rug: propRug,
+  // ── floor 49 — fungal grotto ──
+  giant_mushroom: propGiantMushroom,
+  glow_mushroom_blue: propGlowMushroomBlue,
+  glow_mushroom_green: propGlowMushroomGreen,
+  glow_mushroom_purple: propGlowMushroomPurple,
+  spore_sac: propSporeSac,
+  offering_bowl: propOfferingBowl,
+  crystal_light: propCrystalLight,
+  pool: propPool,
+  waterfall: propWaterfall,
+  vine: propVine,
+  vine_bridge: propVineBridge,
+  mushroom_throne: propMushroomThrone,
+  mushroom_bed: propMushroomBed,
+  mushroom_cap: propMushroomCap,
   tapestry: propTapestry,
   chandelier: propChandelier,
   barrel: propBarrel,
@@ -1417,7 +1694,52 @@ export const DESTRUCTIBLE_BUILDERS = {
   chest: destrChest,
   sack: destrSack,
   urn: destrUrn,
+  // ── floor 49 — fungal grotto ──
+  spore_sac: destrSporeSac,
+  mushroom_throne: destrMushroomThrone,
 };
+
+/** a pulsing spore bladder — bursts with a pop (2 dmg + poison cloud) */
+export function destrSporeSac(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 211);
+  const v = new Vox();
+  const cube = 0.055;
+  const body = 0x9ad86a, bodyHi = mix(0x9ad86a, 0xffffff, 0.5), bodyD = shade(0x9ad86a, 0.72);
+  v.ellipsoid(0, 5, 0, 3.0, 4.6, 3.0, body);
+  v.ellipsoid(0, 7, 0, 2.0, 2.8, 2.0, bodyHi);
+  v.col(0, 0, 0, 3, 1.1, 1.1, 0x6a8a4a);
+  v.col(0, 0, 0, 1, 2.4, 2.4, 0x4a6a3a);
+  for (let a = 0; a < 14; a++) if (R() < 0.6) v.add(Math.round((R() - 0.5) * 4), 3 + Math.floor(R() * 6), Math.round((R() - 0.5) * 4), R() < 0.5 ? bodyHi : 0xffffff);
+  return {
+    name: 'spore_sac', voxels: v.list(), cube,
+    palette: [0x9ad86a, 0x6a8a4a, 0xffffff, 0x4a6a3a],
+    glow: { color: 0x9ad86a, intensity: 3.2, dist: 5, decay: 2, y: 8 * cube, flicker: 0.5 },
+    anim: 'pulse',
+  };
+}
+
+/** the Spore Mother's throne — a fat purple cap cluster (smash it to weaken her) */
+export function destrMushroomThrone(seed = 0.5) {
+  const R = rng(Math.floor(seed * 1000) + 223);
+  const v = new Vox();
+  const cube = 0.06;
+  const cap = 0x9a5cf0, capHi = mix(cap, 0xffffff, 0.5), capD = shade(cap, 0.65);
+  const STEM = 0x4a3a5a;
+  v.ellipsoid(0, 5, 0, 6, 5, 6, capD);
+  v.ellipsoid(0, 8, 0, 5.2, 3, 5.2, cap);
+  v.ellipsoid(0, 10, 0, 4, 2, 4, capHi);
+  v.col(0, 0, 0, 10, 3, 3, STEM);
+  v.ellipsoid(0, 14, -3, 7, 4, 4, cap);
+  v.ellipsoid(0, 16, -3, 6, 2.5, 3, capHi);
+  for (const s of [-1, 1]) { v.col(s * 6, 0, 0, 7, 1.4, 1.4, STEM); v.ellipsoid(s * 6, 8, 0, 2.6, 2, 2.6, cap); }
+  for (let a = 0; a < 12; a++) if (R() < 0.7) v.add(Math.round((R() - 0.5) * 8), 8 + Math.floor(R() * 6), Math.round((R() - 0.5) * 7), capHi);
+  return {
+    name: 'mushroom_throne', voxels: v.list(), cube,
+    palette: [0x9a5cf0, 0x4a3a5a, 0xe0d8c4, 0x6a3ac0],
+    glow: { color: mix(cap, 0xffffff, 0.35), intensity: 6, dist: 10, decay: 1.9, y: 13 * cube, flicker: 0.35 },
+    anim: 'pulse',
+  };
+}
 
 // ══════════════════════════════════════════════════════════════
 //  MONSTERS — orc / goblin / hobgoblin. Authored ONCE here as

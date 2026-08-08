@@ -67,6 +67,10 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (slain?.name === 'Baron Gnaw') {
         engine.setFlag?.('boss_rat_dead');
       }
+      if (slain?.name === 'The Spore Mother') {
+        engine.setFlag?.('spore_mother_dead');
+        engine.pushLog('The Spore Mother falls. The throne crumbles. The mushrooms DIM. You killed a dream. You killed a BEAUTIFUL dream. You had to. But it was beautiful.', 'system');
+      }
       if (slain?.team === 'enemy' && slain?.name !== 'Gribnab') engine.runStats.kills += 1;
       // guaranteed item/gold drops (Baron Gnaw → finger + rusty key, Gribnab → loot)
       if (slain?.deathDrops) {
@@ -317,6 +321,40 @@ export function destroyProp(engine: any, prop: any) {
   const wp = engine.props.worldPos(prop);
   if (prop.def.id === 'starting') {
     void engine.narrate('f50_sack', "A sack. It contains a dagger that's seen better centuries, a potion of questionable provenance, and a torch. This is your inheritance. Spend it wisely.", 4600);
+  }
+  // ── floor 49 — fungal grotto destructible hooks ──
+  if (prop.def.id === 'spore_throne') {
+    engine.setFlag?.('spore_throne_destroyed');
+    engine.pushLog('The mushroom throne CRUMBLES! The Spore Mother howls — her mycelial network is severed!', 'system');
+    // the mother is weakened: she loses max HP and her fight-start heal
+    const mother = engine.combat.units.find((u: any) => u.name === 'The Spore Mother' && u.alive);
+    if (mother) {
+      mother.maxHp = Math.max(10, mother.maxHp - 15);
+      mother.hp = Math.min(mother.hp, mother.maxHp);
+      engine.pushLog('The Spore Mother staggers. She has lost her throne — and 15 of her hit points.', 'system');
+    }
+  }
+  if (prop.def.id === 'spore_sac') {
+    // the sac bursts: 2 poison damage to everyone adjacent + a poison cloud
+    engine.pushLog('The spore sac POPS! A cloud of angry spores erupts!', 'system');
+    const wp2 = engine.props.worldPos(prop);
+    FX.debris(engine.particles, wp2.clone().add(new THREE.Vector3(0, 0.5, 0)), prop.def.palette, 20);
+    for (const u of engine.combat.units) {
+      if (!u.alive) continue;
+      if (Math.abs(u.pos.x - (prop as any).pos.x) > 1 || Math.abs(u.pos.z - (prop as any).pos.z) > 1) continue;
+      u.hp = Math.max(0, u.hp - 2);
+      spawnFloater(engine, u.id, '💨 -2', 'dmg');
+      engine.pushLog(`${u.name} is caught in the spore cloud! 2 poison damage.`, 'hit');
+      if (u.hp <= 0 && u.alive) {
+        u.alive = false;
+        spawnFloater(engine, u.id, '💀', 'death');
+      }
+      if (Math.random() < 0.4 && u.team === 'party' && !u.conditions.some((c: any) => c.id === 'poisoned')) {
+        u.conditions.push({ id: 'poisoned', name: 'Poisoned', roundsLeft: 2 });
+        spawnFloater(engine, u.id, '❄ Poisoned', 'debuff');
+      }
+    }
+    return;   // sacs drop nothing
   }
   const { items, gold } = engine.props.destroy(prop);
   // remember the prop is gone so rests / reloads keep the dungeon cleared

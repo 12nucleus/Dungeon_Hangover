@@ -5,11 +5,13 @@
 // ─────────────────────────────────────────────────────────────
 import type { LevelDef } from './levelTypes';
 import { floor50Level } from './floor50';
+import { floor49Level } from './floor49';
 
 export const START_FLOOR = 50;
 
 export const FLOORS: Record<number, LevelDef> = {
   [START_FLOOR]: floor50Level,
+  49: floor49Level,
 };
 
 export function levelForFloor(n: number): LevelDef {

@@ -82,6 +82,80 @@ CHARACTERS = {
         ),
         "sample_text": "The finger is mine. The ring is mine. Everything is mine.",
     },
+    # ── floor 49 — the Fungal Grotto cast ──
+    "hermit_shroom": {
+        "instruct": (
+            "A very old mushroom man, ancient gentle melancholy voice, a weary "
+            "grandfather who has seen everything and is sad about most of it, "
+            "soft deliberate speech with a husky cracked warmth, slow and "
+            "kind, Gandalf after four thousand years of customer service."
+        ),
+        "sample_text": "You drank the water. Good. Bad. Both. Now you can see what is real.",
+    },
+    "spore_merchant": {
+        "instruct": (
+            "A fast-talking mushroom salesman with a used-car-lot voice, "
+            "cheerful oily sincere about being insincere, brisk patter, big "
+            "enthusiasm, slight wheeze, a tiny carnival barker who has never "
+            "once told the truth and is very proud of it."
+        ),
+        "sample_text": "Welcome to Myke's Pre-Owned Adventuring Supplies! Everything is pre-owned. Some of it is pre-death.",
+    },
+    "spore_mother": {
+        "instruct": (
+            "A chorus of dead mushrooms speaking as one, deep layered resonant "
+            "unhurried, a vast motherly voice that hums underneath itself, "
+            "slightly ominous slightly sad, the sound of a forest making a "
+            "decision."
+        ),
+        "sample_text": "We are the garden. We are the rot. We are what grows when nothing else will.",
+    },
+    "vine_crawler": {
+        "instruct": (
+            "A hissing rattling plant voice, dry vines grinding together, "
+            "short hungry bursts with whispers between rustles, alien and "
+            "slightly wet."
+        ),
+        "sample_text": "Eat the grass. The grass is a lie. The grass eats back.",
+    },
+    "mushroom_guardian": {
+        "instruct": (
+            "A gruff territorial brute, deep and blunt like a bouncer with a "
+            "mossy accent, short sentences, no nonsense, slight growl, thick "
+            "and mushroomy."
+        ),
+        "sample_text": "No fungus on the dance floor. The floor is moss. The moss is closed.",
+    },
+    "small_mushroom": {
+        "instruct": (
+            "A tiny squeaky high-pitched voice, overflowing with misplaced "
+            "confidence, speaks very fast and very earnestly like a small child "
+            "giving a presentation about spores."
+        ),
+        "sample_text": "I contain multitudes. I contain so many spores. Please do not hit me.",
+    },
+    "cave_fish": {
+        "instruct": (
+            "A wet bubbly voice, blubbery and slow, words escaping underwater, "
+            "confused but determined, lots of bubbles."
+        ),
+        "sample_text": "Blub. I have not seen light in forty years and I am fine with that.",
+    },
+    "giant_frog": {
+        "instruct": (
+            "A deep booming amphibian croak with a theatrical drawl, slow smug "
+            "self-important, a monarch who is also a puddle, wet and resonant."
+        ),
+        "sample_text": "Ribbit. That was not a question. That was a warning.",
+    },
+    "mushroom_mimic": {
+        "instruct": (
+            "A chest with dreams, theatrical overdramatic voice with a clicky "
+            "woody resonance, speaks like a villain in a play who has been "
+            "rehearsing for three hundred years."
+        ),
+        "sample_text": "Finally. FINALLY. Three hundred years I have sat here pretending to be furniture.",
+    },
 }
 
 

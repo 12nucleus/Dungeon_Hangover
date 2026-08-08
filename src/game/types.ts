@@ -36,7 +36,7 @@ export interface CharacterScheme {
   bulk?: number;        // group scale (goblins ~0.85, bosses ~1.15)
   orc?: boolean;        // green-skin features: pointed ears, tusks, brow
   style?: 'normal' | 'chibi';  // normal proportions or chibi stubby
-  monster?: 'rat' | 'bat' | 'skeleton' | 'leech' | 'blob';  // beast/undead rigs (characters.ts)
+  monster?: 'rat' | 'bat' | 'skeleton' | 'leech' | 'blob' | 'mushroom' | 'crawler' | 'fish' | 'frog';  // beast/undead rigs (characters.ts)
   kind?: 'wizard' | 'barmaid' | 'bouncer' | 'barkeep';  // distinct tavern NPC silhouettes
   /**
    * "naked" rebuilds the rig as underwear only — no shirt, no pants, no boots,
@@ -93,6 +93,7 @@ export interface SkillDef {
   fx: ParticleFX;
   appliesCondition?: string; // condition id applied on failed save / hit
   appliesRounds?: number;    // duration of appliesCondition (default 3)
+  appliesChance?: number;    // 0..1 — chance the rider condition lands (default 1)
   selfCentered?: boolean;    // AoE radiates from the caster
   targetsAllies?: boolean;   // heal / buff
   selfOnly?: boolean;        // caster-only (second wind, arcane shield)
@@ -192,6 +193,8 @@ export interface Unit {
   // ── dungeon encounter fields (optional) ──
   dormant?: boolean;      // not yet aggroed — excluded from combat until its group activates
   groupId?: string;       // enemies sharing a groupId aggro together
+  /** voice-id for the monster bark audio (npc/<id>_bark.mp3) */
+  npcId?: string;
   bossGroup?: boolean;    // only activated by the boss cutscene, never by proximity
   dropKey?: 'iron' | 'golden';  // guaranteed key drop on death
   flying?: boolean;       // hovers above the floor (bats)
@@ -278,6 +281,12 @@ export interface UISnapshot {
   interactPrompt?: string | null;
   /** quest log entries for the J panel */
   quests?: { id: string; name: string; stage: string; desc: string }[];
+  /** vendor shop panel (Floor 49 Spore Merchant) */
+  showShop?: boolean;
+  shopNpcName?: string;
+  /** Myke's loyalty card is active (Frog Tongue Shortage reward) */
+  shopDiscount?: boolean;
+  shopStock?: { baseId: string; name: string; icon: string; tier: number; kind: string; price: number; levelReq?: number; canBuy: boolean; pitch: string }[];
   /** big center-screen combat phase flash (keyed by id — re-mounts on change) */
   phaseBanner?: { text: string; cls: string; id: number } | null;
   /** run recap counters (victory screen) */

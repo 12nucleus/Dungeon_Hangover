@@ -111,12 +111,112 @@ export const QUEST_SOAP_CONUNDRUM: QuestDef = {
   doneNode: 'done',
 };
 
+// ══════════════════════════════════════════════════════════════
+// FLOOR 49 — THE FUNGAL GROTTO quests
+// ══════════════════════════════════════════════════════════════
+
+// MAIN QUEST — THROUGH THE GROTTO (started on arrival, completed at the exit)
+export const QUEST_THROUGH_GROTTO: QuestDef = {
+  id: 'through_grotto',
+  name: 'Through the Grotto',
+  giverNpcId: '',
+  desc: 'Navigate the Fungal Grotto: cross the spore fields, defeat (or outsmart) the Spore Mother, and find the staircase behind the waterfall. The Spire is dreaming — keep climbing.',
+  rewardItemIds: [],
+  rewardGold: 50,
+  xpReward: 150,
+  waitingNode: '',
+  hasItemNode: '',
+  doneNode: '',
+};
+
+// SIDE QUEST 1 — MYCOLOGIST'S REQUEST (Hermit Shroom, r4)
+export const QUEST_MYCOLOGIST: QuestDef = {
+  id: 'mycologist_request',
+  name: "The Mycologist's Request",
+  giverNpcId: '',
+  desc: 'The Hermit Shroom wants 5 Glowing Mushrooms — for science, it insists. Bring them back to the pool.',
+  requiredItemId: 'glowing_mushroom',
+  rewardItemIds: ['moon_cap', 'glowing_spore'],
+  rewardGold: 25,
+  xpReward: 100,
+  waitingNode: '',
+  hasItemNode: '',
+  doneNode: '',
+};
+
+// SIDE QUEST 2 — THE MUSHROOM CHILD (offering bowl, r5)
+export const QUEST_MUSHROOM_CHILD: QuestDef = {
+  id: 'mushroom_child',
+  name: 'The Mushroom Child',
+  giverNpcId: '',
+  desc: 'Seven mushrooms, seven colors, and a small mushroom that wants a parent. Place a Glowing Mushroom in the offering bowl — you are a mushroom parent now.',
+  rewardItemIds: [],
+  rewardGold: 0,
+  xpReward: 75,
+  waitingNode: '',
+  hasItemNode: '',
+  doneNode: '',
+};
+
+// SIDE QUEST 3 — SPORE MADNESS (breathe deep, r2; finish at the shrine in r3)
+// The narrator DARES you. You take the dare. Of course you take the dare.
+export const QUEST_SPORE_MADNESS: QuestDef = {
+  id: 'spore_madness',
+  name: 'Spore Madness',
+  giverNpcId: '',
+  desc: 'The spores are everywhere. You can see them. You can breathe them. You probably should not breathe them. Breathe them anyway. Then let the hallucination guide you to the hidden shrine.',
+  rewardItemIds: ['glowing_spore'],
+  rewardGold: 10,
+  xpReward: 100,
+  waitingNode: '',
+  hasItemNode: '',
+  doneNode: '',
+};
+
+// SIDE QUEST 4 — THE FROG TONGUE SHORTAGE (Myke the Spore Merchant, r1)
+// The supply chain is a frog. The frog is no longer supplying.
+export const QUEST_FROG_TONGUE: QuestDef = {
+  id: 'frog_tongue_shortage',
+  name: 'The Frog Tongue Shortage',
+  giverNpcId: 'spore_merchant',
+  desc: 'Myke the Spore Merchant had a supplier. The supplier was a frog. The frog is now a problem with a tongue. Bring Myke the Giant Frog Tongue and 3 Cave Fish Meat and he will make it worth your while. He swears. He swears on his mother. His mother is a mushroom. She cannot hear him.',
+  requiredItemId: 'frog_tongue',
+  rewardItemIds: ['mycologist_satchel'],
+  rewardGold: 40,
+  xpReward: 100,
+  waitingNode: '',
+  hasItemNode: '',
+  doneNode: '',
+};
+
+// SIDE QUEST 5 — SEVEN IS A PARTY (the circle, r5; the cap is in the rot tree, r11)
+// The circle is incomplete. The circle is SAD. Fix it. For the circle.
+export const QUEST_SEVEN_IS_A_PARTY: QuestDef = {
+  id: 'seven_is_a_party',
+  name: 'Seven Is A Party',
+  giverNpcId: '',
+  desc: 'The mushroom circle has seven places and six mushrooms. Someone (a hermit. a mushroom hermit. a HERMIT MUSHROOM) stole the seventh. Find The Seventh Cap in the hollow of the rotting tree and put it back. The circle will throw a party. You are invited. You were ALWAYS invited.',
+  requiredItemId: 'seventh_cap',
+  rewardItemIds: ['giant_cap'],
+  rewardGold: 20,
+  xpReward: 100,
+  waitingNode: '',
+  hasItemNode: '',
+  doneNode: '',
+};
+
 /** All registered quests, keyed by id. */
 export const QUESTS: Record<string, QuestDef> = {
   hermit_finger: QUEST_HERMIT_FINGER,
   other_hermit_quest: QUEST_OTHER_HERMIT,
   cursed_gold: QUEST_CURSED_GOLD,
   soap_conundrum: QUEST_SOAP_CONUNDRUM,
+  through_grotto: QUEST_THROUGH_GROTTO,
+  mycologist_request: QUEST_MYCOLOGIST,
+  mushroom_child: QUEST_MUSHROOM_CHILD,
+  spore_madness: QUEST_SPORE_MADNESS,
+  frog_tongue_shortage: QUEST_FROG_TONGUE,
+  seven_is_a_party: QUEST_SEVEN_IS_A_PARTY,
 };
 
 /** A per-game quest log: quest id → state. */

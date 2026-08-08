@@ -9,8 +9,8 @@ import type { CutsceneHost } from './types';
 import { NPCS } from '../npc';
 
 export async function playGribnabCutscene(h: CutsceneHost) {
-  if (!h.structures) return;
   const st = h.structures;
+  if (!st || !st.bossBath) return;
   h.busy = true;
   h.bossCineActive = true;
   h.introSkipped = false;

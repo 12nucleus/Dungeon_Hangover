@@ -48,17 +48,27 @@ export interface GameEngineLike {
   deactivateTrap?(defId: string): void;
   /** the floor-clear victory flow */
   winGame?(): void;
+  /** climb to another registered floor (keeps party progression) */
+  goToFloor?(n: number): void;
+  /** recruit a party companion (Sporefriend…) — builds the unit + visuals */
+  addCompanion?(name: string, title: string, scheme: Record<string, unknown>, maxHp: number): void;
+  /** wake every dormant enemy with this groupId and start the fight (ambushes) */
+  aggroGroup?(groupId: string): void;
+  /** teleport the whole party to a tile (hidden tunnel shortcuts) */
+  teleportParty?(tile: GridPos): void;
   /** per-run recap counters (vault gold, …) */
   runStats: { kills: number; deaths: number; questsDone: number; secretsFound: number; startedAt: number };
   /** current gold (dice table wagers) */
   gold: number;
-  questLog: { fail(questId: string): void };
+  questLog: { fail(questId: string): void; get(questId: string): { stage: string } | undefined };
+  startQuest(questId: string): void;
+  completeQuest(questId: string): void;
   readonly flags: Set<string>;
   /** minimal combat surface used by content hooks */
   combat?: {
     inCombat?: boolean;
-    living(team: 'party' | 'enemy'): { id: string; pos: GridPos; hp: number; maxHp: number }[];
-    units: { id: string; name: string; alive: boolean; dormant?: boolean; groupId?: string }[];
+    living(team: 'party' | 'enemy'): { id: string; pos: GridPos; hp: number; maxHp: number; conditions?: { id: string }[] }[];
+    units: { id: string; name: string; alive: boolean; dormant?: boolean; bossGroup?: boolean; groupId?: string; hp?: number; maxHp?: number }[];
     turnOrder: string[];
   };
   /** unit visuals (kill-a-baby animation) */

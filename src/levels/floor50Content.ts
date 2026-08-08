@@ -962,7 +962,8 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       visibleIf: (e) => e.hasFlag('gribnab_dead') || e.hasFlag('gribnab_befriended'),
       run: (e) => {
         void e.narrate('f50_departure', 'The staircase is cold. The staircase is stone. The staircase goes UP. You climb away from the bath. You climb away from the soap. You climb toward Floor 49. You climb toward the LIGHT.', 5600);
-        e.winGame?.();
+        // real floor transition — the run continues one floor up
+        e.goToFloor?.(49);
       },
     });
   }

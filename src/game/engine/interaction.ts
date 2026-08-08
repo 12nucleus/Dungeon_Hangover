@@ -756,6 +756,10 @@ function visibleChoice(engine: any, c: { visibleIf?: ChoiceCondition }): boolean
   const v = c.visibleIf;
   if (!v) return true;
   if (v.item && !hasItemInInventory(engine, v.item)) return false;
+  if (v.item && (v.minCount ?? 1) > 1) {
+    const have = engine.inventory.reduce((n: number, i: any) => n + (i.id === v.item || (i as any)._baseId === v.item ? 1 : 0), 0);
+    if (have < (v.minCount ?? 1)) return false;
+  }
   if (v.flag && !engine.flags?.has(v.flag)) return false;
   if (v.notFlag && engine.flags?.has(v.notFlag)) return false;
   if (v.ability) {
@@ -931,6 +935,10 @@ export function executeDialogueAction(engine: any, action: DialogueAction, npc: 
         engine.pushLog('😔 The house wins. Your 5 gold is gone. The dice glint smugly.', 'system');
       }
       engine.emitSnapshot();
+      break;
+    }
+    case 'openShop': {
+      if (engine.openShop) engine.openShop(npc.name);
       break;
     }
     case 'bossParley': {

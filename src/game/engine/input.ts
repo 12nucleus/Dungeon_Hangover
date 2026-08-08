@@ -153,6 +153,8 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
     }
     // Esc closes the dialogue overlay first — pausing under it is confusing
     if (engine.showDialogue) { engine.closeDialogue(); return; }
+    // ...then the shop (it replaces the dialogue overlay when open)
+    if (engine.shopOpen) { engine.closeShop(); return; }
     if (engine.showInventory) { engine.showInventory = false; engine.emitSnapshot(); return; }
     if (engine.showStats) { engine.showStats = false; engine.emitSnapshot(); return; }
     if (engine.showQuestLog) { engine.showQuestLog = false; engine.emitSnapshot(); return; }

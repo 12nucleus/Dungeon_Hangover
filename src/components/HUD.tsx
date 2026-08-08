@@ -5,6 +5,7 @@ import { SKILLS } from '@/game/skills';
 import { ALL_CLASS_SKILLS } from '@/game/classSkills';
 import { effMaxHp } from '@/game/stats';
 import { InventoryPanel } from './InventoryPanel';
+import { ShopPanel } from './ShopPanel';
 import { SkillTreePanel } from './SkillTreePanel';
 import { CharacterCreationPanel } from './CharacterCreationPanel';
 import { CharacterStatsPanel } from './CharacterStatsPanel';
@@ -448,6 +449,9 @@ export function HUD({ snap, engine }: Props) {
           )}
         </div>
       )}
+
+      {/* ══ SHOP (Myke the Spore Merchant) ══ */}
+      {snap.showShop && phase !== 'menu' && snap.shopStock && snap.shopStock.length >= 0 && <ShopPanel snap={snap} engine={engine!} />}
 
       {/* ══ DIALOGUE OVERLAY ══ — never mount over the victory/defeat recap
           (QA S2-8: the dead boss's truce dialogue stayed clickable on the

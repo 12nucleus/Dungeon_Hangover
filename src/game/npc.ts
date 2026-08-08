@@ -29,12 +29,15 @@ export type DialogueAction =
   | { type: 'completeQuest'; questId: string }
   | { type: 'setFlag'; flag: string }
   | { type: 'gamble' }
+  | { type: 'openShop' }
   | { type: 'bossParley'; outcome: 'fight' | 'truce' }
   | { type: 'endConvo' };
 
 /** gate a dialogue choice on inventory / flags / an ability check */
 export interface ChoiceCondition {
   item?: string;
+  /** require at least N copies of `item` (default 1) */
+  minCount?: number;
   flag?: string;
   notFlag?: string;
   ability?: { stat: Ability; min: number };
@@ -284,10 +287,198 @@ export const GRIBNAB: NPCDef = {
   },
 };
 
+// ══════════════════════════════════════════════════════════════
+// FLOOR 49 — THE FUNGAL GROTTO cast
+// (voices designed by scripts/gen_voice_design.py)
+// ══════════════════════════════════════════════════════════════
+
+// ── THE HERMIT SHROOM (r4) — a mushroom old man. Speaks only while
+//    you are hallucinating. Wise, sad, knows the Spire is a dream. ──
+export const HERMIT_SHROOM: NPCDef = {
+  id: 'hermit_shroom',
+  name: 'The Hermit Shroom',
+  title: 'The Oldest Mushroom in the Grotto',
+  scheme: { skin: 0xd8c8a0, cloth: 0x8a7a5a, accent: 0x6a5a3a, hair: 0xc8b890, hood: false, monster: 'mushroom', bulk: 0.95 },
+  entryNode: 'asleep',
+  dialogue: {
+    asleep: {
+      caption: 'A mushroom the size of a grandfather, leaning on the pool. His eyes are closed. His gills are breathing.',
+      text: "...zzz... the Spire dreams of... zzz... a monkey with a... zzz... The mushroom man is asleep. Or ignoring you. With mushrooms it is genuinely hard to tell.",
+      choices: [
+        { label: 'Wake him', next: 'awake', visibleIf: { flag: 'pool_drank' } },
+        { label: 'Let him sleep', action: { type: 'endConvo' } },
+      ],
+    },
+    awake: {
+      caption: 'His eyes open. They are the colour of the pool. They have seen too much, and forgiven none of it.',
+      text: "You drank the water. Good. Bad. Both. Now you can SEE. The Spire is REAL. The Spire is ALIVE. The Spire is DREAMING. And in its dream it made me. It made all of this. The mushrooms. The spores. The GROTTO. All dreams. All Spire dreams.",
+      actions: [{ type: 'setFlag', flag: 'did_talk_hermit_r4' }, { type: 'startQuest', questId: 'through_grotto' }, { type: 'startQuest', questId: 'mycologist_request' }],
+      choices: [
+        { label: 'How do I wake it up?', next: 'climb' },
+        { label: 'What about the mushrooms?', next: 'science' },
+        { label: 'I should go. (Leave)', action: { type: 'endConvo' } },
+      ],
+    },
+    climb: {
+      text: "You do not wake it. You CLIMB. You climb to the DREAMER. You climb to the thing that dreams. You climb to Floor 1. You climb to the PARAGON. And you ask it: are you dreaming? And if it says yes... then maybe. Maybe we can ALL wake up.",
+      choices: [
+        { label: 'What about the mushrooms?', next: 'science' },
+        { label: 'I should go. (Leave)', action: { type: 'endConvo' } },
+      ],
+    },
+    science: {
+      caption: 'He gestures at the caps around the pool with a trembling, mycelial hand.',
+      text: "The mushrooms. Ah. The mushrooms are the reason I am still here. Five glowing mushrooms, and I can finish my life's work. My taxonomy. My GREAT work: which of these bastards wants to kill you, and which just wants to be your friend. Bring me five. For science.",
+      choices: [
+        { label: 'I will bring you five.', action: { type: 'endConvo' } },
+        { label: 'How do I wake it up?', next: 'climb' },
+      ],
+    },
+  },
+};
+
+// ── MYKE THE SPORE MERCHANT (r1) — the only honest businessman in
+//    the grotto. Everything is pre-owned. Some of it is pre-death. ──
+export const SPORE_MERCHANT: NPCDef = {
+  id: 'spore_merchant',
+  name: 'Myke the Spore Merchant',
+  title: 'Proprietor, Myke\'s Pre-Owned Adventuring Supplies',
+  scheme: { skin: 0xe0d8c4, cloth: 0x4a9a4a, accent: 0xffd23a, hair: 0x2a2a3a, hood: false, monster: 'mushroom', bulk: 1.15 },
+  entryNode: 'intro',
+  dialogue: {
+    intro: {
+      caption: 'A mushroom in a tiny vest and an enormous hat. He smells like coins and optimism.',
+      text: "Welcome! Welcome to Myke's Pre-Owned Adventuring Supplies! Everything is pre-owned. Some of it is pre-death. The prices are fair, the warranties are a lie, and the questions are FREE. That's the one thing I can't mark up.",
+      choices: [
+        { label: '🛒 Browse the wares', action: { type: 'openShop' } },
+        { label: 'What happened to the last owner of this gear?', next: 'last_owner' },
+        { label: 'What\'s with the tongue situation?', next: 'tongue_intro', visibleIf: { notFlag: 'vendor_favor' } },
+        { label: 'Bye, Myke.', action: { type: 'endConvo' } },
+      ],
+    },
+    last_owner: {
+      text: "Who, the gear? Oh, he's fine. He's FINE. He retired. To a very nice... arrangement... underground. Look, here's the thing about adventurers in this grotto: they either retire to a very nice arrangement underground, or they buy MORE gear from me. It's a beautiful business model.",
+      choices: [
+        { label: '🛒 Browse the wares', action: { type: 'openShop' } },
+        { label: 'Bye, Myke.', action: { type: 'endConvo' } },
+      ],
+    },
+    tongue_intro: {
+      text: "The tongue situation. HA. My supplier was a frog. A big frog. A beautiful, tongue-based business model. Then the big frog met someone like you, and now the big frog is a big PROBLEM, and I have no supplier, and my premium shelf has been gathering dust and judgment. Bring me the frog's tongue and three cave fish. I'll make it worth your while. I swear on my mother. She's a mushroom. She cannot hear me.",
+      choices: [
+        { label: 'Deal. (Accept the quest)', actions: [{ type: 'startQuest', questId: 'frog_tongue_shortage' }, { type: 'setFlag', flag: 'frog_tongue_quest' }] },
+        { label: "I've got the tongue right here.", next: 'tongue_deliver', visibleIf: { item: 'frog_tongue' } },
+        { label: 'I\'ll think about it.', action: { type: 'endConvo' } },
+      ],
+    },
+    tongue_deliver: {
+      caption: 'Myke holds the tongue up to the light like a sommelier.',
+      text: "Oh, it's BEAUTIFUL. Look at the grip on that thing. He used this tongue to eat the last three suppliers. Now the fish. Three of them. They were the supply chain's supply chain.",
+      actions: [{ type: 'takeItem', itemId: 'frog_tongue' }, { type: 'setFlag', flag: 'tongue_delivered' }],
+      choices: [
+        { label: 'Here are the fish. (3 Cave Fish Meat)', actions: [
+          { type: 'takeItem', itemId: 'cave_fish_meat' }, { type: 'takeItem', itemId: 'cave_fish_meat' }, { type: 'takeItem', itemId: 'cave_fish_meat' },
+          { type: 'completeQuest', questId: 'frog_tongue_shortage' },
+          { type: 'setFlag', flag: 'vendor_favor' },
+        ], visibleIf: { item: 'cave_fish_meat', minCount: 3 } },
+        { label: 'I\'m short on fish. Give me a minute.', action: { type: 'endConvo' } },
+      ],
+    },
+  },
+};
+
+// ── THE SPORE MOTHER (r7 boss) — her cutscene speaks these nodes. ──
+export const SPORE_MOTHER_NPC: NPCDef = {
+  id: 'spore_mother',
+  name: 'The Spore Mother',
+  title: 'The Dreamer of the Grotto',
+  scheme: { skin: 0x4a3a6a, cloth: 0x9a5cf0, accent: 0xe0d8c4, hair: 0xffd23a, hood: false, monster: 'mushroom', bulk: 2.0 },
+  entryNode: 'wake',
+  dialogue: {
+    wake: {
+      caption: 'Her voice is a chorus of dead mushrooms, and the chorus is ALARMED.',
+      text: "We are the garden. We are the rot. We are what grows when nothing else will. You are meat. You will be soil. ...What? No. No, you may not 'just pass through'. You may be COMPOST through. That is the only through.",
+    },
+    wake_broken: {
+      caption: 'She looks at the splinters of her throne. The dreaming stops. The waking begins.',
+      text: "You... you BROKE it. The throne. The DREAM. You smashed a thousand years of quiet breathing because it was in your WAY. Oh, you magnificent idiot. You have made this SO personal. I am going to grow in your teeth.",
+    },
+  },
+};
+
+// ── monster barks — one-line combat cries, spoken in their own
+//    designed voices. Spawned via unit.npcId on combat start. ──
+const mobScheme = (monster: 'mushroom' | 'crawler' | 'fish' | 'frog', skin: number, cloth: number) =>
+  ({ skin, cloth, accent: 0x222222, hair: 0x111111, hood: false, monster });
+
+export const MOB_VINE_CRAWLER: NPCDef = {
+  id: 'vine_crawler', name: 'Vine Crawler', title: 'Living Vine', scheme: mobScheme('crawler', 0x3a7a3a, 0x6ac86a), entryNode: 'bark',
+  dialogue: {
+    bark: {
+      text: 'Eat the grass. The grass is a LIE. The grass eats BACK. ...That is us. We are the grass. That was the point.',
+    },
+  },
+};
+export const MOB_MUSHROOM_GUARDIAN: NPCDef = {
+  id: 'mushroom_guardian', name: 'Mushroom Guardian', title: "The Grotto's Bouncer", scheme: mobScheme('mushroom', 0xe0d8c4, 0x36d17a), entryNode: 'bark',
+  dialogue: {
+    bark: {
+      text: 'NO FUNGUS ON THE DANCE FLOOR. The floor is MOSS. The moss is CLOSED. You are CLOSED.',
+    },
+  },
+};
+export const MOB_SMALL_MUSHROOM: NPCDef = {
+  id: 'small_mushroom', name: 'Small Mushroom', title: 'Spore Child', scheme: mobScheme('mushroom', 0xe8e0d0, 0x49b6ff), entryNode: 'bark',
+  dialogue: {
+    bark: {
+      text: 'I contain multitudes. I contain SO MANY SPORES. Please do not hit me. I am very small and very full of vengeance.',
+    },
+  },
+};
+export const MOB_CAVE_FISH: NPCDef = {
+  id: 'cave_fish', name: 'Cave Fish', title: 'Blind Pool Swimmer', scheme: mobScheme('fish', 0x3a7a9a, 0x9ad8ff), entryNode: 'bark',
+  dialogue: {
+    bark: {
+      text: 'Blub. Blub blub. I have not seen light in forty years and I am FINE with that. The light is overrated. The light is where the FROGS live.',
+    },
+  },
+};
+export const MOB_GIANT_FROG: NPCDef = {
+  id: 'giant_frog', name: 'Giant Frog', title: 'The Tongue That Waits', scheme: mobScheme('frog', 0x4a9a4a, 0xc8e8a0), entryNode: 'bark',
+  dialogue: {
+    bark: {
+      text: 'Ribbit. That was not a question. That was a WARNING. I have a tongue the length of your life story and I am NOT afraid to use it.',
+    },
+  },
+};
+export const MOB_MUSHROOM_MIMIC: NPCDef = {
+  id: 'mushroom_mimic', name: 'Mushroom Mimic', title: 'The Chest That Bites', scheme: mobScheme('mushroom', 0xc8a030, 0x8a6a1a), entryNode: 'bark',
+  dialogue: {
+    bark: {
+      text: 'Finally. FINALLY. Three hundred years I have sat here pretending to be furniture, waiting for someone to OPEN me. Do you know what it is like to be a chest with DREAMS? Now. Where were we. AH yes. Biting.',
+    },
+  },
+};
+
+// (mob barks aren't spawned NPCs — they're combat units with unit.npcId —
+// but registering keeps them discoverable)
+
 /** All registered NPCs, keyed by id. */
 export const NPCS: Record<string, NPCDef> = {
   hermit: HERMIT,
   other_hermit: OTHER_HERMIT,
   scrag: SCRAG,
   gribnab: GRIBNAB,
+  // ── floor 49 cast (voices designed by scripts/gen_voice_design.py) ──
+  hermit_shroom: HERMIT_SHROOM,
+  spore_merchant: SPORE_MERCHANT,
+  spore_mother: SPORE_MOTHER_NPC,
+  // monster barks — combat units carry unit.npcId; registering keeps them
+  // discoverable and gives the voice designer their bark lines
+  vine_crawler: MOB_VINE_CRAWLER,
+  mushroom_guardian: MOB_MUSHROOM_GUARDIAN,
+  small_mushroom: MOB_SMALL_MUSHROOM,
+  cave_fish: MOB_CAVE_FISH,
+  giant_frog: MOB_GIANT_FROG,
+  mushroom_mimic: MOB_MUSHROOM_MIMIC,
 };

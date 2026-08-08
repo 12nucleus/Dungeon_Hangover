@@ -864,7 +864,7 @@ export class Combat {
         let amount = dmg.total;
         if (s.id === 'sacred_flame' && success) amount = 0;
         else if (success) amount = Math.floor(amount / 2);
-        if (!success && s.appliesCondition && !t.conditions.some((c) => c.id === s.appliesCondition)) {
+        if (!success && s.appliesCondition && (s.appliesChance ?? 1) > Math.random() && !t.conditions.some((c) => c.id === s.appliesCondition)) {
           t.conditions.push({ id: s.appliesCondition, name: CONDITIONS[s.appliesCondition].name, roundsLeft: 2 });
           ev.push({ type: 'float', unitId: t.id, text: `❄ ${CONDITIONS[s.appliesCondition].name}`, cls: 'debuff' });
         }
@@ -945,7 +945,7 @@ export class Combat {
       if (sneakCrit) ev.push({ type: 'log', text: '🎯 Sneak attack — guaranteed crit!', kind: 'crit' });
       this.applyDamage(ev, t, amount, weapon?.damageType ?? s.damageType, crit);
       // skill rider condition on a landed hit (soap splash → slippery, …)
-      if (t.alive && s.appliesCondition && !t.conditions.some((x) => x.id === s.appliesCondition)) {
+      if (t.alive && s.appliesCondition && (s.appliesChance ?? 1) > Math.random() && !t.conditions.some((x) => x.id === s.appliesCondition)) {
         t.conditions.push({ id: s.appliesCondition, name: CONDITIONS[s.appliesCondition].name, roundsLeft: s.appliesRounds ?? 2 });
         ev.push({ type: 'float', unitId: t.id, text: `❄ ${CONDITIONS[s.appliesCondition].name}`, cls: 'debuff' });
       }

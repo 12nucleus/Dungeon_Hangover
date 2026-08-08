@@ -43,7 +43,9 @@ export function lightBonfire(engine: any, idx = 0) {
   // kindling a fire moves the checkpoint (respawn + save) to THAT fire
   engine.bonfirePos = { ...spot };
   spawnBonfireFlame(engine);
-  void engine.narrate('f50_bonfire', "The bonfire catches. The warmth is immediate. The warmth is the first good thing that has happened to you since you woke up. The warmth is the first good thing that has happened to you in WEEKS.", 4600);
+  void engine.narrate(`f${engine.floorNumber}_bonfire`, engine.floorNumber === 49
+    ? 'The bonfire catches. The warmth is immediate. The warmth is the first good thing to happen in this soggy, glowing, judgemental garden. The mushrooms watch it enviously. Fire is the only thing they fear — and they have a LOT of opinions about you having it.'
+    : 'The bonfire catches. The warmth is immediate. The warmth is the first good thing that has happened to you since you woke up. The warmth is the first good thing that has happened to you in WEEKS.', 4600);
   engine.pushLog('The bonfire roars to life. This place feels safer now...', 'system');
   engine.audio.play('ui_click', 0.6);
   engine.audio.play('bonfire_lit', 1.0);
@@ -242,6 +244,7 @@ export function respawn(engine: any) {
   // dead Baron/Gribnab must not replay the reveal VO on the next visit
   engine.bossRatCutscenePlayed = !engine.combat.units.some((u: any) => u.team === 'enemy' && u.name === 'Baron Gnaw' && u.alive);
   engine.gribnabCutscenePlayed = !engine.combat.units.some((u: any) => u.team === 'enemy' && u.name === 'Gribnab' && u.alive);
+  engine.sporeMotherCutscenePlayed = !engine.combat.units.some((u: any) => u.team === 'enemy' && u.name === 'The Spore Mother' && u.alive);
   engine.selectedId = engine.combat.units.find((u: any) => u.team === 'party')?.id ?? null;
   // the party TELPORTED to the bonfire — the tactical camera only re-centers on
   // movement clicks, so snap it to the leader here or it stays staring at the

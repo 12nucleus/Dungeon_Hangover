@@ -84,6 +84,14 @@ function shade(hex: number, f: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
+// blend two hex colors (t=0 → a, t=1 → b)
+function mix(hexA: number, hexB: number, t: number): number {
+  const r = Math.round(((hexA >> 16) & 255) + (((hexB >> 16) & 255) - ((hexA >> 16) & 255)) * t);
+  const g = Math.round(((hexA >> 8) & 255) + (((hexB >> 8) & 255) - ((hexA >> 8) & 255)) * t);
+  const b = Math.round((hexA & 255) + ((hexB & 255) - (hexA & 255)) * t);
+  return (r << 16) | (g << 8) | b;
+}
+
 class Vox {
   private geos: THREE.BufferGeometry[] = [];
   private C: number;
@@ -1013,10 +1021,201 @@ function buildBlobRig(scheme: CharacterScheme): Rig {
   };
 }
 
+// ── floor 49 — fungal grotto monsters ───────────────────────
+// All four follow the anim contract (full part set: torso/head/legL/legR/
+// armL/armR/handL/handR) so the shared updateRig solver, ragdoll death and
+// revive-reset all work unchanged. Mushrooms + frogs carry the `hop` flag
+// for a squash-and-stretch hop in updateRig; crawlers waddle like the leech.
+
+function buildMushroomRig(scheme: CharacterScheme): Rig {
+  const C = 0.075;
+  const SUB = 3;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+  const skin = scheme.skin, skinD = shade(skin, 0.7), skinHi = mix(skin, 0xffffff, 0.5);
+  const cap = scheme.cloth, capD = shade(cap, 0.65), capHi = mix(cap, 0xffffff, 0.5);
+  const stem = scheme.accent, eye = scheme.hair;
+  const part = (name: string, x: number, y: number, z: number, build: Build) => {
+    const v = new Vox(C, SUB); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+  };
+
+  // stalk + big wobbly cap — reads as a walking mushroom, not a blob
+  part('torso', 0, 0.3, 0, (v) => {
+    v.col(0, 0, 0, 6, 1.7, 1.7, stem);                 // stem
+    v.col(0, 0, 0, 2, 2.2, 2.2, shade(stem, 0.8));      // bulbous foot
+    v.ellip(0, 8, 0, 4.4, 3.2, 4.4, capD);          // cap dome
+    v.ellip(0, 10, 0, 3.6, 2.2, 3.6, cap);
+    v.ellip(0, 12, 0, 2.6, 1.2, 2.6, capHi);        // shiny top
+    // gill skirt under the cap
+    for (let a = 0; a < 14; a++) {
+      const aa = (a / 14) * Math.PI * 2;
+      v.add(Math.round(Math.cos(aa) * 3.6), 6, Math.round(Math.sin(aa) * 3.6), mix(cap, 0xffffff, 0.3));
+    }
+    // glowing spots on the cap
+    for (let s = 0; s < 5; s++) v.add(Math.round((s - 2) * 1.4), 9, Math.round(Math.sin(s * 2.7) * 2.4), skinHi);
+  });
+  // a worried little face on the cap front
+  part('head', 0, 0.34, 0.5, (v) => {
+    v.add(-1.4, 1, 2.2, eye); v.add(1.4, 1, 2.2, eye);   // eyes
+    v.add(-1.4, 2, 2.2, 0xffffff); v.add(1.4, 2, 2.2, 0xffffff);
+    v.add(0, 0, 2.6, eye);                              // small frown mouth
+    v.add(-1, -1, 2.2, skinD); v.add(1, -1, 2.2, skinD); // cheeks
+  });
+  // tiny stubby feet + nub arms (the waddle)
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.3, 0.1, -0.1, (v) => {
+    v.fill(0, -1, 0, 0, 0, 1, skinD); v.add(0, -2, 1, shade(skinD, 0.7));
+  });
+  for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.4, 0.28, 0.1, (v) => {
+    v.fill(0, -1, 0, 0, 0, 1, skinD); v.add(0, -2, 1, skinD);
+  });
+  for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.4, 0.1, 0.14, (v) => { v.add(0, 0, 0, skinD); });
+
+  group.userData.hop = true;
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: Math.random() * 3, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: 0.1, torso: 0.3, head: 0.34, eye: 0.4, hair: 0.34, arm: 0.28, hand: 0.1, weapon: 0.34 },
+  };
+}
+
+function buildCrawlerRig(scheme: CharacterScheme): Rig {
+  const C = 0.075;
+  const SUB = 3;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+  const skin = scheme.skin, skinD = shade(skin, 0.78), skinD2 = shade(skin, 0.6);
+  const vine = scheme.cloth, vineHi = mix(vine, 0xffffff, 0.5), eye = scheme.hair;
+  const part = (name: string, x: number, y: number, z: number, build: Build) => {
+    const v = new Vox(C, SUB); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+  };
+
+  // a segmented vine-worm, low to the ground (like the leech but leafy)
+  part('torso', 0, 0.12, 0, (v) => {
+    v.ellip(0, 0, 0, 1.3, 0.9, 4.4, skin);
+    v.ellip(0, -0.5, 0.7, 1.0, 0.35, 3.4, vine);        // pale vine underbelly
+    for (let z = -3; z <= 3; z++) v.fill(-1, 0.4, z, 1, 0.8, z, skinD);  // segments
+    v.add(0, -0.2, -4.8, skinD2); v.add(0, -0.4, -5.1, skinD2);
+    // little leaves along the back
+    for (let z = -2; z <= 2; z += 2) { v.add(-1, 0.9, z, vineHi); v.add(1, 0.9, z, vineHi); }
+  });
+  part('head', 0, 0.14, 0.36, (v) => {
+    v.ellip(0, 0, 0, 1.0, 0.85, 1.1, skin);
+    v.fill(-0.7, -0.4, 0.7, 0.7, 0.1, 1.3, vine);       // mouth
+    v.add(-0.5, 0.5, 0.6, eye); v.add(0.5, 0.5, 0.6, eye);
+    v.add(-0.6, 0.8, 0.3, vineHi); v.add(0.6, 0.8, 0.3, vineHi);  // antennae leaves
+  });
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.16, 0.1, -0.1, (v) => {
+    v.fill(0, -1, 0, 0, 0, 1, skinD); v.add(0, -2, 1, skinD2);
+  });
+  for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.14, 0.12, 0.3, (v) => {
+    v.fill(0, -1, 0, 0, 0, 1, skinD); v.add(0, -2, 1, skinD2);
+  });
+  for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.14, 0.05, 0.34, (v) => { v.add(0, 0, 0, skinD); });
+
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: Math.random() * 3, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: 0.1, torso: 0.12, head: 0.14, eye: 0.16, hair: 0.12, arm: 0.1, hand: 0.05, weapon: 0.14 },
+  };
+}
+
+function buildFishRig(scheme: CharacterScheme): Rig {
+  const C = 0.075;
+  const SUB = 3;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+  const skin = scheme.skin, skinD = shade(skin, 0.7), belly = scheme.cloth, fin = scheme.accent, eye = scheme.hair;
+  const part = (name: string, x: number, y: number, z: number, build: Build) => {
+    const v = new Vox(C, SUB); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+  };
+
+  // sleek cave fish — body + tail sweep in one torso piece
+  part('torso', 0, 0.14, 0, (v) => {
+    v.ellip(0, 0, 0, 2.2, 1.5, 3.4, skin);
+    v.ellip(0, -0.6, 0.4, 1.7, 0.7, 2.6, belly);
+    // tail fin sweeping back
+    for (let z = -3; z >= -6; z--) {
+      const w = 1 + (z + 6) * 0.35;
+      for (let x = -Math.ceil(w); x <= Math.ceil(w); x++) v.add(x, Math.round((z + 6) * 0.4), z, fin);
+    }
+    // dorsal fin
+    for (let y = 1; y <= 3; y++) for (let x = -1; x <= 1; x++) v.add(x, y, -1, fin);
+    // glowing side stripe
+    for (let z = 0; z <= 3; z++) v.add(0, 0, z, mix(skin, 0xffffff, 0.55));
+  });
+  part('head', 0, 0.14, 0.36, (v) => {
+    v.ellip(0, 0, 0, 1.5, 1.3, 1.3, skin);
+    v.add(-0.8, 0.3, 1.2, eye); v.add(0.8, 0.3, 1.2, eye);
+    v.add(0, -0.6, 1.2, 0x2a2020);                       // mouth
+    v.add(-0.7, 0.7, 1.0, 0xffffff); v.add(0.7, 0.7, 1.0, 0xffffff);
+  });
+  // pectoral fins as arms, belly fins as legs
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.2, 0.08, -0.1, (v) => {
+    v.fill(0, -1, 0, 0, 0, 1, fin); v.add(0, -2, 1, skinD);
+  });
+  for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.3, 0.14, 0.2, (v) => {
+    v.ellip(s * 1.5, 0, 0, 1.6, 0.5, 0.5, fin);
+  });
+  for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.3, 0.06, 0.24, (v) => { v.add(0, 0, 0, skinD); });
+
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: Math.random() * 3, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: 0.08, torso: 0.14, head: 0.14, eye: 0.18, hair: 0.14, arm: 0.14, hand: 0.06, weapon: 0.14 },
+  };
+}
+
+function buildFrogRig(scheme: CharacterScheme): Rig {
+  const C = 0.075;
+  const SUB = 3;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+  const skin = scheme.skin, skinD = shade(skin, 0.7), skinHi = mix(skin, 0xffffff, 0.4);
+  const belly = scheme.cloth, eye = scheme.hair;
+  const part = (name: string, x: number, y: number, z: number, build: Build) => {
+    const v = new Vox(C, SUB); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+  };
+
+  // crouched frog: wide body, big eyes, huge back legs
+  part('torso', 0, 0.2, 0, (v) => {
+    v.ellip(0, 2, 0, 3.4, 2.2, 3.4, skin);           // body
+    v.ellip(0, 1, 1.2, 2.6, 1.4, 2.0, belly);        // pale belly
+    v.ellip(0, 4, -0.6, 3.0, 1.4, 2.6, skinHi);      // back hump
+    for (let s = 0; s < 6; s++) v.add(Math.round((s - 2.5) * 1.2), 1, Math.round(Math.sin(s * 1.9) * 2.4), skinD);
+  });
+  part('head', 0, 0.34, 0.5, (v) => {
+    v.ellip(0, 1, 0, 3.0, 1.6, 1.6, skin);
+    v.add(-1.8, 2.6, 1.2, eye); v.add(1.8, 2.6, 1.2, eye);  // bulging eyes
+    v.add(-1.8, 3.6, 1.2, 0xffffff); v.add(1.8, 3.6, 1.2, 0xffffff);
+    v.fill(-1.6, -0.6, 1.4, 1.6, 0.2, 2.4, shade(skinD, 0.8));  // wide mouth
+    v.add(0, 0.4, 2.2, 0xffffff);                        // tongue tip
+  });
+  // huge haunch legs (folded for a jump), short front arms
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.8, 0.12, -0.6, (v) => {
+    v.ellip(0, 1, 0, 1.8, 1.6, 1.8, skinD);
+    v.fill(0, -1, 1, 0, 0, 2, skin);
+    v.add(0, -2, 2.4, shade(skinD, 0.6));                // webbed foot
+  });
+  for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.5, 0.2, 0.5, (v) => {
+    v.fill(0, -1, 0, 0, 0, 1, skin); v.add(0, -2, 1, skinD);
+  });
+  for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.5, 0.08, 0.55, (v) => { v.add(0, 0, 0, skinD); });
+
+  group.userData.hop = true;
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: Math.random() * 3, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: 0.12, torso: 0.2, head: 0.34, eye: 0.4, hair: 0.34, arm: 0.2, hand: 0.08, weapon: 0.34 },
+  };
+}
+
 function buildSkeletonRig(scheme: CharacterScheme, weapon?: WeaponKind): Rig {
   const C = 0.1;
-  const SUB = 4;
-  const group = new THREE.Group();
+  const SUB = 4;  const group = new THREE.Group();
   const parts: Record<string, THREE.Mesh> = {};
   const bone = scheme.skin, boneD = shade(bone, 0.78), cloth = scheme.cloth, eye = scheme.hair;
   const part = (name: string, x: number, y: number, z: number, build: Build) => {
@@ -1363,6 +1562,10 @@ export function buildCharacter(scheme: CharacterScheme, weapon?: WeaponKind): Ri
   if (scheme.monster === 'skeleton') return buildSkeletonRig(scheme, weapon);
   if (scheme.monster === 'leech') return buildLeechRig(scheme);
   if (scheme.monster === 'blob') return buildBlobRig(scheme);
+  if (scheme.monster === 'mushroom') return buildMushroomRig(scheme);
+  if (scheme.monster === 'crawler') return buildCrawlerRig(scheme);
+  if (scheme.monster === 'fish') return buildFishRig(scheme);
+  if (scheme.monster === 'frog') return buildFrogRig(scheme);
   if (scheme.kind === 'wizard') return buildHumanoidRig(scheme, weapon, { robe: true, beard: true, hat: true, stars: true, leftHand: true });
   if (scheme.kind === 'barmaid') return buildHumanoidRig(scheme, weapon, { dress: true, apron: true, bun: true, tray: true });
   if (scheme.kind === 'bouncer') return buildHumanoidRig(scheme, weapon, { bald: true, vest: true });
@@ -1995,9 +2198,11 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
       }
     }
 
-  const bob = walking ? Math.abs(Math.sin(a.t * 11)) * 0.07 : idle * 0.02;
+  // hop monsters (mushrooms, frogs): a bigger walk bounce + squash-and-stretch
+  // so they read as hopping, not waddling. Idle keeps the gentle breathing bob.
+  const hop = rig.group.userData.hop ? 2.4 : 1;
+  const bob = walking ? Math.abs(Math.sin(a.t * 11)) * 0.07 * hop : idle * 0.02;
   a.bob = bob;
-
   const TO = P?.torso ?? 0.78;
   const HO = P?.head ?? 1.28;
   const EO = P?.eye ?? 1.3;
@@ -2024,7 +2229,7 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   } else {
     p.torso.position.y = TO + bob - DROP;
   }
-  p.torso.scale.y = 1 + idle * 0.02;
+  p.torso.scale.y = 1 + (walking && rig.group.userData.hop ? Math.sin(a.t * 22) * 0.06 : idle * 0.02);
   p.torso.rotation.x = torsoX;                            // hunch / lean
   p.torso.rotation.y = torsoY;                            // torso twist
   p.torso.rotation.z = torsoZ;                            // torso side-lean
