@@ -213,7 +213,7 @@ const lane = (x0: number, z0: number, x1: number, z1: number): GridPos[] => {
 const structures: LevelStructures = {
   partySpawn,
   checkpoint,
-  bonfires: [checkpoint, { x: 120, z: 66 }],   // spawn fire + Scrag's fire (r9, next to the guard)
+  bonfires: [checkpoint, { x: 120, z: 66 }, { x: 148, z: 132 }, { x: 128, z: 52 }],   // spawn fire + Scrag's fire (r9) + r24 antechamber (last comfort before Gribnab) + r18 intersection (north-cluster hub)
   bossDoor,
   bossBath,
   bossRoom: roomRectOf('r25')!,
@@ -552,6 +552,12 @@ putW('rubble', R1.x0 + 2, R1.z1 + 1, 0.5);
 // Scrag's bonfire (r9 — the guarded door, next to the guard) — the second
 // savepoint; kindling it moves the respawn checkpoint here
 putW('bonfire', 120, 66, 0.5);
+// r24 Throne Antechamber fire — the last comfort before Gribnab's bath;
+// kindling it saves the run with the boss one room away
+putW('bonfire', 148, 132, 0.5);
+// r18 Intersection fire — the north-cluster hub (connects 15/11/9/19/20 +
+// the room-1 shortcut); kindling it turns the north into a safe base
+putW('bonfire', 128, 52, 0.5);
 // stalagmites sparse in water rooms
 put('stalagmite', sc(12), sc(36), 0.5);
 put('stalagmite', sc(28), sc(53), 0.7);
