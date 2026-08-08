@@ -4,6 +4,7 @@
 // Engine internals will be made public in step 6 (engine.ts rewrite).
 // ─────────────────────────────────────────────────────────────
 import { SKILLS } from '../skills';
+import { levelForFloor } from '../../levels';
 import type { GridPos } from '../types';
 import { unitWorld } from './visuals';
 
@@ -112,8 +113,41 @@ export function executeCheatCommand(engine: any, cmd: string) {
       engine.fogDirty = true;
       reply('Map revealed — fog of war cleared!');
       break;
+    case 'gotofloor':
+    case 'floor49':
+    case 'f49': {
+      const n = op === 'gotofloor' ? parseInt(arg ?? '49', 10) : 49;
+      const target = isNaN(n) ? 49 : n;
+      if (!engine.combat?.units?.length) {
+        reply('Start a run first — there is no party to move.');
+        break;
+      }
+      if (target === engine.floorNumber) {
+        reply(`Already on floor ${target}.`);
+        break;
+      }
+      const L = levelForFloor(target);
+      if (!L) {
+        reply(`Floor ${target} is not built yet — try gotofloor 49.`);
+        break;
+      }
+      engine.busy = false;
+      engine.cinematic = false;
+      engine.bossCineActive = false;
+      engine.introSkipped = true;
+      engine.cutsceneSkip = true;
+      engine.cutsceneDirector?.requestSkip?.();
+      engine.goToFloor(target);
+      // jump straight into the floor (works even from the tavern/menu)
+      engine.phase = 'explore';
+      engine.busy = false;
+      engine.cinematic = false;
+      engine.emitSnapshot?.();
+      reply(`Warped to floor ${target} — ${L.name}.`);
+      break;
+    }
     case 'help':
-      reply('Commands: noaggro, godmode, superhero, heal, killall, boss, gold [amt], levelup, help');
+      reply('Commands: noaggro, godmode, superhero, heal, killall, boss, gold [amt], levelup, reveal, gotofloor [n], help');
       break;
     default:
       reply(`Unknown command: "${op}". Type "help" for available commands.`);
