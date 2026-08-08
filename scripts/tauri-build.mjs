@@ -2,8 +2,8 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 
-const cargoBin = 'C:\\Users\\Nucleus\\.cargo\\bin';
-const nodeBin = 'C:\\Users\\Nucleus\\AppData\\Local\\pi-node\\current';
+const cargoBin = 'G:\\devtools\\cargo\\bin';
+const nodeBin = 'G:\\devtools\\node\\current';
 const base = process.env.PATH ?? '';
 const PATH = [cargoBin, nodeBin, base].join(';');
 const env = {
