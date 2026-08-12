@@ -619,13 +619,13 @@ export class GameEngine {
     if (!FLOORS[n]) { this.pushLog?.(`No such floor: ${n} — staying put.`, 'system'); return; }
 
     // snapshot the party so progression survives the rebuild. Temporary
-    // companions (aiControlled, e.g. the Hermit) stay on their own floor —
+    // companions (quest-bound, e.g. the Hermit) stay on their own floor —
     // they drop out at the staircase.
-    const hadCompanion = (this.combat?.units ?? []).some((u) => u.team === 'party' && u.aiControlled && u.alive);
+    const hadCompanion = (this.combat?.units ?? []).some((u) => u.team === 'party' && u.companion && u.alive);
     if (hadCompanion) {
       this.pushLog?.('👋 The Hermit stops at the foot of the stairs. "This is as far as I go. The Spire remembers me. I would rather not be remembered twice."', 'system');
     }
-    const party = (this.combat?.units ?? []).filter((u) => u.team === 'party' && !u.aiControlled).map((u) => ({
+    const party = (this.combat?.units ?? []).filter((u) => u.team === 'party' && !u.companion).map((u) => ({
       ...u,
       pos: { ...u.pos },
       conditions: [],
@@ -3171,7 +3171,7 @@ export class GameEngine {
 
   /** The Hermit departs (staircase / run end). */
   public dismissCompanion() {
-    const u = this.combat.units.find((x) => x.team === 'party' && x.aiControlled && x.name === 'The Hermit');
+    const u = this.combat.units.find((x) => x.team === 'party' && x.companion && x.name === 'The Hermit');
     if (!u) return;
     u.alive = false;
     this.combat.units = this.combat.units.filter((x) => x !== u);

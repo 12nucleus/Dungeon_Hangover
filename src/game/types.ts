@@ -228,6 +228,8 @@ export interface Unit {
   turnsLeft?: number;
   /** AI-driven party member (companions): acts automatically in combat */
   aiControlled?: boolean;
+  /** temporary quest-bound companion — departs at the next floor transition */
+  companion?: boolean;
   // ── idle patrolling (M8) ──
   /** home tile the mob patrols around (anchor point) */
   home?: GridPos;
