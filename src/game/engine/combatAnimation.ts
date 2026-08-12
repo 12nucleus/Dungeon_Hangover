@@ -664,21 +664,48 @@ function inEnemyCone(engine: any, p: GridPos, enemy: any): boolean {
   return Math.abs(diff) <= 35 * Math.PI / 180;
 }
 
-/** drop a weapon from a dying unit's visual — let it tumble */
+/** drop a weapon from a dying unit's visual — tumble it via rapier physics
+ *  (with a hand-rolled ballistic fallback if physics isn't ready) */
 function dropWeapon(engine: any, v: any) {
   const wpn = v.rig.parts.weapon as unknown as THREE.Object3D | undefined;
   if (!wpn || !wpn.parent) return;
   const baseY = (v.rig.group.userData.baseY as number) ?? wpn.getWorldPosition(new THREE.Vector3()).y;
   engine.scene.attach(wpn);
   const dir = Math.random() * Math.PI * 2, spd = 0.8 + Math.random() * 1.2;
+  const vx = Math.cos(dir) * spd, vz = Math.sin(dir) * spd, vy = 1.5 + Math.random() * 1.8;
+  const spin = new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10);
+  const restY = baseY + 0.04;
+
+  // try physics first — real gravity + tumble + a floor patch to land on
+  let physicsOwned = false;
+  if (engine.physics?.ready) {
+    const bb = new THREE.Box3().setFromObject(wpn);
+    const size = bb.getSize(new THREE.Vector3());
+    const center = bb.getCenter(new THREE.Vector3());
+    engine.physics.spawnGround(
+      { x: center.x, y: baseY - 0.02, z: center.z },
+      { x: 3, y: 0.05, z: 3 },
+    );
+    const body = engine.physics.spawnDynamic(
+      wpn,
+      { x: Math.max(0.06, size.x / 2), y: Math.max(0.06, size.y / 2), z: Math.max(0.06, size.z / 2) },
+      center,
+      new THREE.Vector3(vx, vy, vz),
+      spin,
+    );
+    physicsOwned = !!body;
+  }
+
+  // keep the mesh in droppedWeapons so disposeFloor still removes + disposes
+  // it; settled:true lets the hand-rolled loop skip physics-owned weapons.
   engine.droppedWeapons.push({
     obj: wpn,
-    vx: Math.cos(dir) * spd,
-    vz: Math.sin(dir) * spd,
-    vy: 1.5 + Math.random() * 1.8,
-    spin: new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10),
-    restY: baseY + 0.04,
-    settled: false,
+    vx: physicsOwned ? 0 : vx,
+    vz: physicsOwned ? 0 : vz,
+    vy: physicsOwned ? 0 : vy,
+    spin: physicsOwned ? new THREE.Vector3() : spin,
+    restY,
+    settled: physicsOwned,
   });
   delete (v.rig.parts as { weapon?: THREE.Mesh }).weapon;
 }

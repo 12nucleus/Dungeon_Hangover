@@ -22,6 +22,7 @@ import { SaveManager, SettingsManager, type GameSettings, type SaveData, type Sa
 import { canUnlock, treeFor } from './skilltree';
 import { TrapManager } from './traps';
 import { SurfaceSystem } from './surfaces';
+import { PhysicsWorld } from './physics';
 import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot, Ability } from './types';
 import { type NPCDef, type DialogueAction } from './npc';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -86,6 +87,7 @@ export class GameEngine {
   public visuals = new Map<string, UnitVisual>();
   public droppedWeapons: DroppedWeapon[] = [];
   public surfaces = new SurfaceSystem();
+  public physics = new PhysicsWorld();
   private surfaceTickAt = 0;
   public pickables: THREE.Object3D[] = [];
   public unitProxies: THREE.Object3D[] = [];
@@ -452,6 +454,7 @@ export class GameEngine {
 
   // -- setup -------------------------------------------------
   init() {
+    void this.physics.init();
     const w = this.container.clientWidth, h = this.container.clientHeight;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setSize(w, h);
@@ -3243,6 +3246,9 @@ export class GameEngine {
   // would crash. After this fix, memory stays flat at ~150 MB.
   // ──────────────────────────────────────────────────────────────
   public disposeFloor() {
+    // 0. Loose-body physics (weapon drops) — free the bodies before the
+    //    meshes they reference are disposed below.
+    this.physics.dispose();
     // 1. Voxel terrain — the biggest contributor.
     if (this.world) {
       this.scene.remove(this.world.group);
@@ -3576,6 +3582,7 @@ export class GameEngine {
       this.fpHiddenId = null;
     }
     this.world.update(dt);
+    this.physics.step(dt);
     this.updateDroppedWeapons(dt);
     this.tickSurfaces(dt);
     if (this.structures) this.updateDungeon(dt);
