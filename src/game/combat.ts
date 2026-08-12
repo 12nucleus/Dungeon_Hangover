@@ -139,6 +139,11 @@ export class Combat {
     const prev = new Map<string, string>();
     const q: GridPos[] = [{ ...unit.pos }];
     prev.set(key(unit.pos.x, unit.pos.z), '');
+    // friendly units are passable — the companion must never block the leader
+    // from walking forward; only enemies (or, for enemies, party units) block.
+    const blocked = (x: number, z: number) => this.units.some((u) =>
+      u.alive && u.id !== unit.id && u.pos.x === x && u.pos.z === z
+      && (unit.team !== 'party' || u.team !== 'party'));
     while (q.length) {
       const c = q.shift()!;
       if (c.x === tx && c.z === tz) {
@@ -154,7 +159,7 @@ export class Combat {
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = c.x + dx, nz = c.z + dz;
         if (!this.world.isWalkable(nx, nz)) continue;
-        if (this.occupied(nx, nz, unit.id)) continue;
+        if (blocked(nx, nz)) continue;
         if (Math.abs(this.world.heightAt(nx, nz) - this.world.heightAt(c.x, c.z)) > 1) continue;
         const k = key(nx, nz);
         if (prev.has(k)) continue;

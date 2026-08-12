@@ -551,8 +551,9 @@ putW('towel', R25.x0, R25.z0, 0.5);
 putW('wine_bottle', mid(R25), R25.z0 + 1, 0.5);
 putW('duck', R25.x0 + 2, R25.z0 + 3, 0.5); putW('duck', R25.x0 + 4, R25.z0 + 5, 0.6);
 putW('duck', R25.x1 - 2, R25.z0 + 2, 0.7); putW('duck', R25.x1 - 1, R25.z0 + 6, 0.8);
-// shortcut debris at r1's south edge (clear_debris_19)
-putW('rubble', R1.x0 + 2, R1.z1 + 1, 0.5);
+// shortcut debris at r1's south edge (clear_debris_19) — the debris lane is
+// the x=63 corridor tile (r1.x0+3), NOT x+2 (a wall the rubble would drop on)
+putW('rubble', R1.x0 + 3, R1.z1 + 1, 0.5);
 // Scrag's bonfire (r9 — the guarded door, next to the guard) — the second
 // savepoint; kindling it moves the respawn checkpoint here
 putW('bonfire', 120, 66, 0.5);

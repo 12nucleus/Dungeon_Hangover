@@ -783,7 +783,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
   {
     const r1 = R('r1');
     out.push({
-      id: 'clear_debris_19', pos: { x: r1.x0 + 2, z: r1.z1 + 1 }, radius: 2,
+      id: 'clear_debris_19', pos: { x: r1.x0 + 3, z: r1.z1 + 1 }, radius: 2,
       label: '[R] Clear the debris (STR)',
       visibleIf: (e) => !e.hasFlag('shortcut_open'),
       run: (e) => {
