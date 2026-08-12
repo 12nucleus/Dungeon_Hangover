@@ -10,7 +10,7 @@ import { setCursedLoot } from './items';
 import { ParticleSystem, FX } from './particles';
 import { updateRig, setWeapon, equip, unequip, unequipAll, itemToEquipVisual, type Rig } from './characters';
 import { Combat } from './combat';
-import { SKILLS, CONDITIONS, createRoster } from './skills';
+import { SKILLS, CONDITIONS, createRoster, SUMMON_TEMPLATES } from './skills';
 import { ALL_CLASS_SKILLS, classPoolSkillIds } from './classSkills';
 import { AudioManager } from './audio';
 import { DestructibleManager, type Destructible } from './destructibles';
@@ -21,6 +21,7 @@ import { rollD20, abilityMod, fmtMod } from './dice';
 import { SaveManager, SettingsManager, type GameSettings, type SaveData, type SaveSlotMeta, SAVE_VERSION_NUMBER } from './save';
 import { canUnlock, treeFor } from './skilltree';
 import { TrapManager } from './traps';
+import { SurfaceSystem } from './surfaces';
 import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot, Ability } from './types';
 import { type NPCDef, type DialogueAction } from './npc';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -35,7 +36,7 @@ import { buildTavernExterior } from './engine/tavernExterior';
 import { buildTavern } from './engine/tavern';
 import { buildSheep } from './engine/sheep';
 import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone, grantKey as grantKeyModule, winGame as winGameModule, grantLoot as grantLootModule } from './engine/dungeonSetup';
-import { smashProp, checkCombatTrigger, enqueue, setAnimScale, triggerTrap as triggerTrapModule, disarmTrap as disarmTrapModule } from './engine/combatAnimation';
+import { smashProp, checkCombatTrigger, enqueue, setAnimScale, spawnFloater, refreshBar, triggerTrap as triggerTrapModule, disarmTrap as disarmTrapModule } from './engine/combatAnimation';
 import { updateFog, updateExploredVisibility, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule, hidePathPreview, type InteractPick } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
 import { respawn as respawnModule, levelUpAtBonfire as levelUpAtBonfireModule } from './engine/camping';
@@ -84,6 +85,8 @@ export class GameEngine {
 
   public visuals = new Map<string, UnitVisual>();
   public droppedWeapons: DroppedWeapon[] = [];
+  public surfaces = new SurfaceSystem();
+  private surfaceTickAt = 0;
   public pickables: THREE.Object3D[] = [];
   public unitProxies: THREE.Object3D[] = [];
   public ray = new THREE.Raycaster();
@@ -612,8 +615,14 @@ export class GameEngine {
     if (this.disposed) return;
     if (!FLOORS[n]) { this.pushLog?.(`No such floor: ${n} — staying put.`, 'system'); return; }
 
-    // snapshot the party so progression survives the rebuild
-    const party = (this.combat?.units ?? []).filter((u) => u.team === 'party').map((u) => ({
+    // snapshot the party so progression survives the rebuild. Temporary
+    // companions (aiControlled, e.g. the Hermit) stay on their own floor —
+    // they drop out at the staircase.
+    const hadCompanion = (this.combat?.units ?? []).some((u) => u.team === 'party' && u.aiControlled && u.alive);
+    if (hadCompanion) {
+      this.pushLog?.('👋 The Hermit stops at the foot of the stairs. "This is as far as I go. The Spire remembers me. I would rather not be remembered twice."', 'system');
+    }
+    const party = (this.combat?.units ?? []).filter((u) => u.team === 'party' && !u.aiControlled).map((u) => ({
       ...u,
       pos: { ...u.pos },
       conditions: [],
@@ -3132,6 +3141,50 @@ export class GameEngine {
     this.enqueue(this.combat.throwItem(u, item, tx, tz));
   }
 
+  /** Recruit the Hermit as a temporary companion: converts the static NPC
+   *  into a following, AI-controlled party unit. Sets `hermit_joined`. */
+  public joinCompanion(npcId = 'hermit') {
+    if (this.flags.has('hermit_joined')) return;
+    const tpl = SUMMON_TEMPLATES['hermit_companion'];
+    if (!tpl) return;
+    const entry = this.npcs.find((n) => n.npcId === npcId);
+    const leader = this.combat?.living('party')[0];
+    const near = entry?.pos ?? leader?.pos ?? { x: 0, z: 0 };
+    const unit = this.combat.summon(tpl(), near);
+    if (!unit) return;
+    // remove the static NPC rig + proxy so there aren't two Hermits
+    if (entry) {
+      if (entry.rig?.group?.parent) entry.rig.group.parent.remove(entry.rig.group);
+      if (entry.proxy?.parent) entry.proxy.parent.remove(entry.proxy);
+      this.unitProxies = this.unitProxies.filter((p) => p !== entry.proxy);
+      this.npcs = this.npcs.filter((n) => n.npcId !== npcId);
+    }
+    this.addUnit(unit);
+    this.setFlag('hermit_joined');
+    this.pushLog('🌿 The Hermit falls in behind you, cane in hand. "Try not to die. I have not finished needing you."', 'system');
+    this.audio.play('heal', 0.6, 1.2);
+    this.emitSnapshot();
+  }
+
+  /** The Hermit departs (staircase / run end). */
+  public dismissCompanion() {
+    const u = this.combat.units.find((x) => x.team === 'party' && x.aiControlled && x.name === 'The Hermit');
+    if (!u) return;
+    u.alive = false;
+    this.combat.units = this.combat.units.filter((x) => x !== u);
+    const v = this.visuals.get(u.id);
+    if (v) {
+      if (v.rig.group?.parent) v.rig.group.parent.remove(v.rig.group);
+      if (v.proxy?.parent) v.proxy.parent.remove(v.proxy);
+      if (v.bar?.parentElement) v.bar.remove();
+      this.unitProxies = this.unitProxies.filter((p) => p !== v.proxy);
+      this.visuals.delete(u.id);
+    }
+    this.setFlag('hermit_left');
+    this.pushLog('👋 The Hermit stops at the foot of the stairs. "This is as far as I go. The Spire remembers me. I would rather not be remembered twice."', 'system');
+    this.emitSnapshot();
+  }
+
   public hotkeySkill(i: number) {
     const a = this.combat.active ?? this.byId(this.selectedId ?? '') ?? this.combat.living('party')[0];
     if (!a || a.team !== 'party') return;
@@ -3391,6 +3444,37 @@ export class GameEngine {
   public buildTavernExterior(): THREE.Group { return buildTavernExterior(this.propAnims); }
   public buildSheep(): THREE.Group { return buildSheep(); }
 
+  /** surfaces: advance elemental tiles, spawn FX, damage units standing in
+   *  fire/lightning. Cadence-locked (~1s) so a burning room doesn't tick
+   *  every frame. */
+  private tickSurfaces(dt: number) {
+    const active = this.surfaces.tick(dt);
+    if (!active.length) return;
+    const now = performance.now();
+    const tickNow = now - this.surfaceTickAt > 1000;
+    for (const s of active) {
+      const seen = !!this.explored?.[s.x]?.[s.z];
+      if (!seen) continue;
+      const wp = this.world.tileToWorld(s.x, s.z, new THREE.Vector3());
+      if (s.kind === 'burning') {
+        if (Math.random() < 0.6) FX.flame(this.particles, wp.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.2, (Math.random() - 0.5) * 0.5)));
+      } else if (s.kind === 'electrified') {
+        if (Math.random() < 0.3) FX.arcane(this.particles, wp.clone().add(new THREE.Vector3(0, 0.3, 0)));
+      }
+      if (!tickNow) continue;
+      const dmg = s.kind === 'burning' ? 2 : s.kind === 'electrified' ? 3 : 0;
+      if (!dmg) continue;
+      for (const u of this.combat.units) {
+        if (!u.alive || u.pos.x !== s.x || u.pos.z !== s.z) continue;
+        u.hp = Math.max(0, u.hp - dmg);
+        spawnFloater(this, u.id, s.kind === 'burning' ? '🔥 -2' : '⚡ -3', 'dmg');
+        refreshBar(this, u.id);
+        if (u.hp <= 0 && u.alive) { u.alive = false; spawnFloater(this, u.id, '💀', 'death'); }
+      }
+    }
+    if (tickNow) this.surfaceTickAt = now;
+  }
+
   public update(dt: number) {
     // pause — freeze all simulation while the in-game menu is open.
     // The render loop (composer.render) still runs, so the frozen frame shows.
@@ -3493,6 +3577,7 @@ export class GameEngine {
     }
     this.world.update(dt);
     this.updateDroppedWeapons(dt);
+    this.tickSurfaces(dt);
     if (this.structures) this.updateDungeon(dt);
 
     // torch flames only exist in explored rooms; otherwise particles leak light

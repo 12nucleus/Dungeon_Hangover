@@ -31,6 +31,8 @@ export type DialogueAction =
   | { type: 'gamble' }
   | { type: 'openShop' }
   | { type: 'bossParley'; outcome: 'fight' | 'truce' }
+  | { type: 'joinCompanion'; npcId?: string }
+  | { type: 'leaveCompanion' }
   | { type: 'endConvo' };
 
 /** gate a dialogue choice on inventory / flags / an ability check */
@@ -94,7 +96,14 @@ export const HERMIT: NPCDef = {
     },
     accept: {
       text: "I want you to fight a giant rat for my finger. Yes. I'll make it worth your while. I have things. Equipment. Knowledge. I know what's going on here. I know why you're at the bottom. I know why you're in your underwear. Well — I have theories about the underwear.",
-      choices: [{ label: '[Leave]', action: { type: 'endConvo' } }],
+      choices: [
+        { label: 'Come with me. I could use the help.', next: 'join', action: { type: 'joinCompanion', npcId: 'hermit' }, visibleIf: { notFlag: 'hermit_joined' } },
+        { label: '[Leave]', action: { type: 'endConvo' } },
+      ],
+    },
+    join: {
+      text: "You want a man with no eyebrows and a stick to fight a rat the size of a wheelbarrow? ...Fine. I've been meaning to see that rat again anyway. We had a misunderstanding. It bit me. I'll whack things and patch you up. Mostly patch you up.",
+      choices: [{ label: "[Let's go]", action: { type: 'endConvo' } }],
     },
     refuse: {
       text: "Fine. Walk around fingerless, see if I care. I don't. The moss doesn't judge.",

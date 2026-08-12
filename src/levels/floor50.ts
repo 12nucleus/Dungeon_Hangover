@@ -22,7 +22,7 @@ import { WORLD_SIZE } from '../game/world';
 import { buildTerrain } from './gen/dungeonGen';
 import { buildAuthoredMap, validateAuthoredMap, type CorridorSpec, type RoomSpec } from './gen/authoredMap';
 import { createFloor50Roster, type Floor50Spawns } from '../game/skills';
-import { floor50Traps, floor50Destructibles, ROOM_NARRATION, floor50Interactables, floor50Hazards, floor50HiddenTreasures } from './floor50Content';
+import { floor50Traps, floor50Destructibles, ROOM_NARRATION, floor50Interactables, floor50Hazards, floor50Surfaces, floor50HiddenTreasures } from './floor50Content';
 import { mulberry32 } from './gen/dungeonGen';
 
 const S = WORLD_SIZE;
@@ -750,6 +750,7 @@ export const floor50Level: LevelDef = {
   destructibles: destructiblesList,
   makeInteractables: (seed) => floor50Interactables(seed, map.rooms),
   hazards: floor50Hazards(map.rooms),
+  surfaces: floor50Surfaces(map.rooms),
   makeHiddenTreasures: (seed) => floor50HiddenTreasures(seed, map.rooms, map.walk, reserved),
   roomOf: (x, z) => map.roomOf(x, z),
   roomNarration: ROOM_NARRATION,

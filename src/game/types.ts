@@ -226,6 +226,8 @@ export interface Unit {
   vowPartner?: string;
   /** summoned wall/totem lifetime: fades when this hits 0 at its turn start */
   turnsLeft?: number;
+  /** AI-driven party member (companions): acts automatically in combat */
+  aiControlled?: boolean;
   // ── idle patrolling (M8) ──
   /** home tile the mob patrols around (anchor point) */
   home?: GridPos;

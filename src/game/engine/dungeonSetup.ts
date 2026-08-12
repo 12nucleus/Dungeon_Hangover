@@ -203,6 +203,11 @@ export function setupDungeon(engine: any, L: LevelDef) {
   engine.hazardTiles = new Set((L.hazards ?? []).map((h) => `${h.tile.x},${h.tile.z}`));
   engine.hazardKind = new Map((L.hazards ?? []).map((h) => [`${h.tile.x},${h.tile.z}`, h.kind]));
   engine.hazardUsed = new Set();
+  // elemental surfaces (oil / wet) seeded per floor — reset then apply
+  engine.surfaces.reset();
+  for (const s of (L.surfaces ?? [])) {
+    engine.surfaces.apply(s.tile.x, s.tile.z, s.kind);
+  }
   // per-run hidden treasures
   engine.hiddenTreasures = L.makeHiddenTreasures ? L.makeHiddenTreasures(engine.runSeed ?? 0) : [];
 }

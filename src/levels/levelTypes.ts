@@ -3,6 +3,7 @@
 // and the monster roster for one dungeon level.
 import type { GridPos, Unit } from '../game/types';
 import type { Interactable } from '../game/engine/interactables';
+import type { SurfaceKind } from '../game/surfaces';
 
 export type PropKind = 'stalagmite' | 'stalactite' | 'crystal' | 'crystal_blue' | 'crystal_green' | 'boulder' | 'bones' | 'torch' | 'brazier' | 'mushroom' | 'bonfire' | 'webpile' | 'rubble' | 'tent' | 'campfire' | 'bedroll' | 'crate'
   | 'puddle' | 'bucket' | 'scratches' | 'skeleton' | 'body' | 'mat' | 'wine_press' | 'wine_bottle' | 'broken_bottle'
@@ -118,6 +119,8 @@ export interface LevelDef {
   roomNarration?: Record<string, string>;
   /** environmental hazard tiles (shove targets: wine press, bath tub) */
   hazards?: { tile: GridPos; kind: string }[];
+  /** elemental surface tiles (oil / wet / burning…) seeded at floor build */
+  surfaces?: { tile: GridPos; kind: SurfaceKind }[];
   /** per-run hidden-treasure tiles */
   makeHiddenTreasures?: (seed: number) => GridPos[];
 }

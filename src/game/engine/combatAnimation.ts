@@ -177,18 +177,16 @@ export async function animate(engine: any, ev: CombatEvent) {
           };
           engine.emitSnapshot();
         }
-        if (u.team === 'party' && engine.phase === 'combat') showMoveTiles(engine);
-        // M8: enemy turns are driven by the AI — resolve the full turn
-        // (skills + movement, then advance initiative) right here so the
-        // turn actually resolves instead of stalling forever. Guarded on
-        // combat.inCombat (not engine.phase): a stray phase event must never
-        // wedge a live fight. Dead units (DOT-killed at turn start) still
-        // advance the rotation.
-        if (u.team === 'enemy' && engine.combat.inCombat) {
+        const aiParty = u.team === 'party' && u.aiControlled;
+        if (u.team === 'party' && engine.phase === 'combat' && !aiParty) showMoveTiles(engine);
+        // M8: enemy turns AND ai-controlled companions are driven by the AI —
+        // resolve the full turn (skills + movement, then advance initiative)
+        // right here so the turn actually resolves instead of stalling.
+        if ((u.team === 'enemy' || aiParty) && engine.combat.inCombat) {
           if (u.alive) {
             const aiEvents: CombatEvent[] = [];
             for (let i = 0; i < 8; i++) {
-              const step = engine.combat.aiStep();
+              const step = aiParty ? engine.combat.partyAiStep() : engine.combat.aiStep();
               if (!step) break;
               aiEvents.push(...step);
               if (!engine.combat.inCombat) break;   // combat may end mid-turn
@@ -198,7 +196,9 @@ export async function animate(engine: any, ev: CombatEvent) {
           engine.enqueue(engine.combat.endTurn());
         }
       }
-      await delay(170);
+      // enemy turns resolve snappier than party turns — the party's "YOUR
+      // TURN" beat gets a beat of room, the enemy phase never drags.
+      await delay(u.team === 'enemy' ? 60 : 170);
       break;
     }
     case 'phase': {
@@ -268,7 +268,7 @@ export async function animMove(engine: any, unitId: string, path: GridPos[]) {
   for (const p of pts) {
     const from = v.rig.group.position.clone();
     v.targetYaw = Math.atan2(p.x - from.x, p.z - from.z);
-    const dur = 130 * animScale;
+    const dur = 105 * animScale;
     const t0 = performance.now();
     while (performance.now() - t0 < dur && !engine.disposed) {
       const k = (performance.now() - t0) / dur;
@@ -331,6 +331,9 @@ export async function animMelee(engine: any, unitId: string, targetId: string) {
   FX.blood(engine.particles, impact);
   engine.audio.play('sword_hit', 0.85);
   engine.iso.shake = Math.max(engine.iso.shake, 0.14);
+  // hit-stop: a few frames of freeze on impact give the swing weight —
+  // the follow-up 'damage' event lands right after, so the number pops.
+  await delay(45);
 }
 
 export async function smashProp(engine: any, u: Unit, prop: any, skill?: SkillDef) {
@@ -521,6 +524,18 @@ export async function animSkillFx(engine: any, s: SkillDef, at: GridPos, targets
   }
   if (s.aoeRadius > 0 && (s.fx === 'fire' || s.fx === 'ice')) {
     for (const prop of engine.props.inBlast(at, s.aoeRadius)) destroyProp(engine, prop);
+  }
+  // surfaces react to area effects — fire ignites oil (and steams water),
+  // ice freezes wet ground, so the environment changes the battlefield.
+  if (engine.surfaces) {
+    const rad = Math.max(1, s.aoeRadius || 0);
+    if (s.fx === 'fire') engine.surfaces.ignite(at.x, at.z, rad);
+    else if (s.fx === 'ice') {
+      for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) > rad) continue;
+        engine.surfaces.apply(at.x + dx, at.z + dz, 'frozen');
+      }
+    }
   }
   await delay(380);
 }

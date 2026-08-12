@@ -163,6 +163,34 @@ export function floor50Hazards(rooms: Record<string, Rect>): { tile: GridPos; ki
   return out;
 }
 
+/**
+ * Elemental surface tiles. Wet = the flooded rooms (r7, r12, r23);
+ * oil = a slick in the wine cellar (r6) that a fire source will ignite.
+ * These feed the surface-reaction system (fire spreads on oil, water
+ * conducts lightning, ice freezes water…).
+ */
+export function floor50Surfaces(rooms: Record<string, Rect>): { tile: GridPos; kind: SurfaceKind }[] {
+  const out: { tile: GridPos; kind: SurfaceKind }[] = [];
+  const flood = (id: string) => {
+    const r = rooms[id];
+    if (!r) return;
+    for (let x = r.x0; x <= r.x1; x++) for (let z = r.z0; z <= r.z1; z++) {
+      if ((x + z) % 2 === 0) out.push({ tile: { x, z }, kind: 'wet' });
+    }
+  };
+  flood('r7');
+  flood('r12');
+  flood('r23');
+  const wine = rooms.r6;
+  if (wine) {
+    const cx = (wine.x0 + wine.x1) >> 1, cz = (wine.z0 + wine.z1) >> 1;
+    for (let x = cx - 1; x <= cx + 1; x++) for (let z = cz - 1; z <= cz + 1; z++) {
+      out.push({ tile: { x, z }, kind: 'oil' });
+    }
+  }
+  return out;
+}
+
 // ─────────────────────────────────────────────────────────────
 // INTERACTABLES — the walk-up-and-press-E content for every room.
 // Positions are WORLD coordinates (map-local + OFFSET, baked into
@@ -170,6 +198,7 @@ export function floor50Hazards(rooms: Record<string, Rect>): { tile: GridPos; ki
 // ─────────────────────────────────────────────────────────────
 import type { Interactable, GameEngineLike } from '../game/engine/interactables';
 import { rollLootTable, makeItem } from '../game/items';
+import type { SurfaceKind } from '../game/surfaces';
 
 const hasAnySoap = (e: GameEngineLike) =>
   e.hasItemInInventory('goblin_soap') || e.hasItemInInventory('premium_soap') || e.hasItemInInventory('soap_chunk');

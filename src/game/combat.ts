@@ -1369,6 +1369,56 @@ export class Combat {
     }
     return null;
   }
+
+  /** AI for an aiControlled party companion: heal a hurt ally, else attack
+   *  the nearest/weakest foe in reach, else move closer. Never flees. */
+  partyAiStep(): CombatEvent[] | null {
+    const u = this.active;
+    if (!u || u.team !== 'party' || !u.alive || !u.aiControlled) return null;
+    const foes = this.living('enemy');
+    if (!foes.length) return null;
+
+    // 1. heal a badly-wounded ally (self included)
+    const heal = u.equippedSkills.map((id) => skillById(id)).find((s): s is SkillDef => !!s && s.kind === 'heal' && !this.canUse(u, s));
+    if (heal) {
+      const hurt = this.living('party')
+        .filter((a) => a.hp / Math.max(1, effMaxHp(a)) < 0.6)
+        .sort((a, b) => a.hp - b.hp)[0];
+      if (hurt) return this.useSkill(u, heal.id, hurt.id);
+    }
+
+    // 2. attack the weakest foe we can reach with an offensive skill
+    const atk = u.equippedSkills.map((id) => skillById(id)).find((s): s is SkillDef => !!s
+      && (s.kind === 'melee' || s.kind === 'ranged' || s.kind === 'aoe')
+      && !s.targetsAllies && !s.selfOnly && !s.passive && !this.canUse(u, s));
+    if (atk) {
+      const inRange = foes.filter((f) => Combat.dist(u.pos, f.pos) <= Math.max(1, atk.range));
+      if (inRange.length) {
+        const target = inRange.reduce((a, b) => a.hp <= b.hp ? a : b);
+        return this.useSkill(u, atk.id, target.id);
+      }
+    }
+
+    // 3. close distance toward the nearest foe
+    if (u.movementLeft > 0) {
+      const nearest = foes.reduce((a, b) => Combat.dist(u.pos, a.pos) < Combat.dist(u.pos, b.pos) ? a : b);
+      const reach = this.reachable(u, u.movementLeft);
+      let best: GridPos[] | null = null; let bestD = Infinity;
+      for (const [k, path] of reach) {
+        if (!path.length) continue;
+        const [x, z] = k.split(',').map(Number);
+        const d = Combat.dist({ x, z }, nearest.pos);
+        if (d < bestD) { bestD = d; best = path; }
+      }
+      if (best && best.length) {
+        const dest = best[best.length - 1];
+        u.movementLeft -= best.length;
+        u.pos = { ...dest };
+        return [{ type: 'move', unitId: u.id, path: best }];
+      }
+    }
+    return null;
+  }
 }
 
 /**

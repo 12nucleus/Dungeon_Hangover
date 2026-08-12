@@ -977,6 +977,14 @@ export function executeDialogueAction(engine: any, action: DialogueAction, npc: 
       if (engine.onBossParley) engine.onBossParley(action.outcome);
       break;
     }
+    case 'joinCompanion': {
+      if (engine.joinCompanion) engine.joinCompanion(action.npcId);
+      break;
+    }
+    case 'leaveCompanion': {
+      if (engine.dismissCompanion) engine.dismissCompanion();
+      break;
+    }
     case 'endConvo': {
       engine.showDialogue = null;
       engine.dialogueNodeId = null;

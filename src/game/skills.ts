@@ -227,6 +227,21 @@ export const SKILLS: Record<string, SkillDef> = {
     attackAbility: 'str', damageDice: '', damageType: 'bludgeoning',
     fxColor: 0x9aa0a8, fx: 'bash',
   },
+  // ── the Hermit companion (floor 50) ──
+  hermit_cane: {
+    id: 'hermit_cane', name: 'Cane Thwack', icon: '🦯', kind: 'melee',
+    desc: 'The Hermit swings his walking stick with surprising conviction. 1d6+1 bludgeoning.',
+    range: 1, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'str', damageDice: '1d6+1', damageType: 'bludgeoning',
+    fxColor: 0x8a7a5a, fx: 'bash',
+  },
+  hermit_moss_heal: {
+    id: 'hermit_moss_heal', name: 'Moss Poultice', icon: '🌿', kind: 'heal',
+    desc: 'The Hermit presses a damp wad of moss to a wound. Heal 1d6+2.',
+    range: 3, aoeRadius: 0, cost: 'action', cooldown: 1,
+    attackAbility: 'wis', damageDice: '', damageType: 'radiant', healDice: '1d6+2', targetsAllies: true,
+    fxColor: 0x6f9c3f, fx: 'heal',
+  },
   // ── floor 50 — reworked enemy kits (kit identity + readability) ──
   mold_spit: {
     id: 'mold_spit', name: 'Mold Spit', icon: '🫠', kind: 'ranged',
@@ -636,6 +651,16 @@ export const SUMMON_TEMPLATES: Record<string, () => Unit> = {
     knownSkills: ['bone_strike', 'shove'], moveRange: 5, xpValue: 0,
     scheme: { skin: 0xd8d2be, cloth: 0x3a2f28, accent: 0x9a9a9a, hair: 0x8fe3ff, hood: false, bulk: 1.3, monster: 'skeleton' },
     weapon: 'sword',
+  }),
+  // ── the Hermit as a temporary floor-50 companion ──
+  hermit_companion: () => mkSummon({
+    name: 'The Hermit', title: 'Your Companion', team: 'party', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 20, hp: 20, ac: 12, level: 2,
+    abilities: { str: 10, dex: 12, con: 12, int: 14, wis: 16, cha: 10 },
+    knownSkills: ['hermit_cane', 'hermit_moss_heal', 'shove'], moveRange: 6, xpValue: 0,
+    aiControlled: true,
+    scheme: { skin: 0xb8a888, cloth: 0x6a5a3a, accent: 0x2a2a2a, hair: 0xd8c890, hood: false, style: 'normal', kind: 'barkeep', beard: true },
+    weapon: 'staff',
   }),
   // ── skills-audit: party-side terrain summons (lifetime = turnsLeft) ──
   totem: () => mkSummon({
