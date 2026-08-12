@@ -193,28 +193,30 @@ export function Hotbar({ snap, engine }: Props) {
         })}
       </div>
 
-      {/* combat extras — BG3-style phase ring + end turn (locked during the enemy phase) */}
+      {/* combat extras — BG3-style phase ring + end turn (locked during the enemy phase).
+          Free-flow combat: the ring is an INDICATOR + quick-switch, not a gate —
+          clicks already attempt the natural action regardless of phase. */}
       {phase === 'combat' && (
         <div className={`turn-ring ${enemyTurn ? 'locked' : ''}`}>
           <button
             className={`turn-mode ${snap.turnMode === 'walk' ? 'on' : ''}`}
             onClick={() => !enemyTurn && engine.setTurnMode('walk')}
-            title="Phase 1 — Movement: click a tile to walk, jump to hop">
+            title="🚶 Movement — click a tile to walk. Free-flow: you can move any time you have steps left.">
             🚶
           </button>
           <button
             className={`turn-mode ${snap.turnMode === 'action' ? 'on' : ''}`}
             onClick={() => !enemyTurn && engine.setTurnMode('action')}
-            title="Phase 2 — Basic attack with your equipped weapon">
+            title="⚔️ Attack — click an enemy to swing your weapon (free, once per turn).">
             ⚔️
           </button>
           <button
             className={`turn-mode ${snap.turnMode === 'bonus' ? 'on' : ''}`}
             onClick={() => !enemyTurn && engine.setTurnMode('bonus')}
-            title="Phase 3 — Skills (and potions / throws / defend)">
+            title="🔸 Skills — arm a skill, then click a target. Free-flow: act in any order.">
             🔸
           </button>
-          <button className="turn-mode skip" onClick={() => !enemyTurn && engine.skipPhase()} title="Skip to the next phase — walk → attack → skills → end turn">
+          <button className="turn-mode skip" onClick={() => !enemyTurn && engine.skipPhase()} title="⏭ Advance the phase ring (walk → attack → skills → end turn) — or just click to act">
             ⏭
           </button>
           <button

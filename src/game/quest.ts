@@ -5,6 +5,7 @@
 //
 // Tone: Dungeon Crawler Carl — absurd, situational, snarky.
 // ─────────────────────────────────────────────────────────────
+import { MAIN_QUEST_F50 } from '../levels/floor50Text';
 
 export type QuestStage = 'not_started' | 'accepted' | 'in_progress' | 'completed' | 'failed';
 
@@ -115,6 +116,22 @@ export const QUEST_SOAP_CONUNDRUM: QuestDef = {
 // FLOOR 49 — THE FUNGAL GROTTO quests
 // ══════════════════════════════════════════════════════════════
 
+// MAIN QUEST — THE LONGEST MORNING (floor 50; started on new game / load,
+// milestone beats log their stage text, completed at the exit stairs)
+export const QUEST_LONGEST_MORNING: QuestDef = {
+  id: 'the_longest_morning',
+  name: MAIN_QUEST_F50.name,
+  giverNpcId: '',
+  desc: MAIN_QUEST_F50.desc,
+  rewardItemIds: [],
+  rewardGold: 0,
+  xpReward: 150,
+  hidden: false,
+  waitingNode: '',
+  hasItemNode: '',
+  doneNode: '',
+};
+
 // MAIN QUEST — THROUGH THE GROTTO (started on arrival, completed at the exit)
 export const QUEST_THROUGH_GROTTO: QuestDef = {
   id: 'through_grotto',
@@ -211,6 +228,7 @@ export const QUESTS: Record<string, QuestDef> = {
   other_hermit_quest: QUEST_OTHER_HERMIT,
   cursed_gold: QUEST_CURSED_GOLD,
   soap_conundrum: QUEST_SOAP_CONUNDRUM,
+  the_longest_morning: QUEST_LONGEST_MORNING,
   through_grotto: QUEST_THROUGH_GROTTO,
   mycologist_request: QUEST_MYCOLOGIST,
   mushroom_child: QUEST_MUSHROOM_CHILD,

@@ -43,6 +43,13 @@
   /* motion */
   --t-fast: 0.12s ease;
   --t-med: 0.2s ease;
+  --t-snap: 0.08s cubic-bezier(0.2, 0.9, 0.3, 1.25);   /* 80ms tactile button feedback */
+  /* palette — combat feedback (floor-50 readability pass) */
+  --crit: #ffd76b;
+  --crit-hot: #fff3c4;
+  --crit-glow: rgba(255, 190, 70, 0.75);
+  --cold-dead: #7fa8b8;          /* TPK vignette tint — cold, drained, sober */
+  --bar-outline: rgba(0, 0, 0, 0.9);
   /* recipes */
   --panel-shadow: 0 18px 60px rgba(0, 0, 0, 0.8), 0 4px 16px rgba(0, 0, 0, 0.5);
 }
@@ -1724,6 +1731,132 @@ button:focus-visible, [tabindex]:focus-visible {
 }
 .bl-used { margin-left: auto; color: #6eff9a; font-size: 11px; }
 .bl-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+/* ════════════════════════════════════════════════════════════
+   COMBAT-FEEDBACK ART PASS (floor 50 overhaul)
+   Additive / restyle only — every rule below re-skins an existing
+   selector or adds a new full-screen FX layer. Nothing is restructured.
+
+   NOTE for anyone editing: `.fx-float` and `.unit-bar` have their
+   `transform` + `opacity` written INLINE every frame by engine.ts, and CSS
+   animations outrank inline styles — so the pops below animate font-size /
+   text-shadow / filter instead of transform. Do not add transform keyframes
+   to those two selectors.
+   ════════════════════════════════════════════════════════════ */
+
+/* ── crit: a brief gold flash washes the whole screen ── */
+.fx-crit-flash {
+  position: absolute; inset: 0; pointer-events: none; z-index: 8;
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(255, 243, 196, 0.55) 0%, rgba(255, 190, 70, 0.28) 32%, rgba(255, 150, 30, 0.10) 55%, rgba(0, 0, 0, 0) 78%);
+  mix-blend-mode: screen;
+  animation: critFlash 0.34s ease-out forwards;
+  will-change: opacity;
+}
+@keyframes critFlash {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ── total party kill: the world goes cold and colourless ──
+   NOTE: the base rule is INVISIBLE (opacity:0) and the freeze animation only
+   runs when the `.on` modifier is present. The div is mounted unconditionally
+   by GameCanvas, so an always-on backdrop-filter would veil the ENTIRE game
+   (desaturate + darken + blur) — it must stay off by default. */
+.fx-tpk-vignette {
+  position: absolute; inset: 0; pointer-events: none; z-index: 9;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(10, 18, 24, 0) 26%, rgba(8, 14, 20, 0.72) 78%, rgba(3, 6, 10, 0.94) 100%),
+    linear-gradient(180deg, rgba(127, 168, 184, 0.10), rgba(127, 168, 184, 0.04));
+  backdrop-filter: saturate(0.28) brightness(0.82) blur(1px);
+  -webkit-backdrop-filter: saturate(0.28) brightness(0.82) blur(1px);
+  will-change: opacity;
+}
+.fx-tpk-vignette.on {
+  opacity: 1;
+  animation: tpkVignette 1.6s ease-out forwards;
+}
+@keyframes tpkVignette {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── crit floater: bigger, golden, pops then settles (~600ms) ── */
+.fx-float.crit,
+.float.crit {
+  color: var(--crit);
+  font-size: 34px; font-weight: 900; letter-spacing: 1px;
+  -webkit-text-stroke: 1px rgba(60, 30, 0, 0.85);
+  animation: critFloatPop 0.6s cubic-bezier(0.15, 1.5, 0.35, 1) both;
+}
+@keyframes critFloatPop {
+  0%   { font-size: 20px; text-shadow: 0 0 0 rgba(255,190,70,0); filter: brightness(1.9); }
+  22%  { font-size: 46px; text-shadow: 0 0 26px var(--crit-glow), 0 2px 6px rgba(0,0,0,0.95); filter: brightness(1.5); }
+  100% { font-size: 34px; text-shadow: 0 0 14px var(--crit-glow), 0 2px 6px rgba(0,0,0,0.95); filter: brightness(1); }
+}
+
+/* ── phase banner: heavier, faintly gilded, in and out quicker ── */
+.phase-banner { animation: phase-banner-snap 1.9s cubic-bezier(0.15, 1.2, 0.35, 1) forwards; }
+.phase-banner span {
+  font-weight: 900; letter-spacing: 5px;
+  text-shadow: 0 2px 0 #000, 0 0 12px rgba(255, 240, 200, 0.35), 0 0 34px rgba(0, 0, 0, 0.95);
+}
+.phase-banner small { font-weight: 700; text-shadow: 0 1px 0 #000, 0 0 10px rgba(0, 0, 0, 0.9); }
+.phase-banner.party span { text-shadow: 0 2px 0 #000, 0 0 16px rgba(170, 235, 130, 0.45), 0 0 34px rgba(0,0,0,0.95); }
+.phase-banner.enemy span { text-shadow: 0 2px 0 #000, 0 0 16px rgba(255, 130, 80, 0.5), 0 0 34px rgba(0,0,0,0.95); }
+@keyframes phase-banner-snap {
+  0%   { opacity: 0; transform: translateX(-50%) scale(1.24); }
+  7%   { opacity: 1; transform: translateX(-50%) scale(1); }
+  62%  { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) scale(0.94); }
+}
+
+/* ── unit bars: thicker enemy bars with a hard dark outline so they
+      survive a dark sewer floor behind them ── */
+.unit-bar { width: 78px; }
+.ub-name { font-size: 10.5px; font-weight: 700; text-shadow: 0 1px 2px #000, 0 0 4px rgba(0,0,0,0.95); }
+.ub-hp {
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--bar-outline), 0 1px 3px rgba(0,0,0,0.75);
+}
+.ub-hp.enemy {
+  height: 7px;
+  border-color: rgba(255, 150, 120, 0.45);
+  box-shadow: 0 0 0 1.5px var(--bar-outline), 0 1px 4px rgba(0,0,0,0.85);
+}
+.ub-hp.enemy i { background: linear-gradient(180deg, var(--hp-hi), var(--hp) 70%, #6d1d13); }
+.ub-hp.party i { background: linear-gradient(180deg, #7cc4ff, #4a8fd4 70%, #2b5c92); }
+
+/* ── hotbar: 80ms tactile press/hover feedback ── */
+.skill-btn { transition: transform var(--t-snap), border-color var(--t-fast), box-shadow var(--t-fast); }
+.skill-btn:hover { transform: translateY(-3px) scale(1.05); }
+.skill-btn:active:not(.disabled):not(.empty) { transform: translateY(-1px) scale(0.93); transition-duration: 0.06s; }
+.skill-btn.selected { transform: translateY(-2px) scale(1.03); }
+
+/* ── dice overlay: the die POPS in, with a warm glow behind it ── */
+.dice-scene::before {
+  content: ''; position: absolute; inset: -18%; z-index: -1;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 200, 90, 0.30), rgba(255, 160, 40, 0.10) 52%, rgba(0,0,0,0) 74%);
+  animation: diceGlow 1.15s ease-out both;
+  pointer-events: none;
+}
+.dice-scene canvas {
+  animation: dicePopIn 0.36s cubic-bezier(0.16, 1.6, 0.32, 1) both;
+  will-change: transform;
+}
+@keyframes dicePopIn {
+  0%   { transform: scale(0.42) rotate(-9deg); opacity: 0; }
+  55%  { transform: scale(1.09) rotate(2deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes diceGlow {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  100% { opacity: 0.35; }
+}
+.dice-total { text-shadow: 0 0 22px var(--crit-glow), 0 0 8px rgba(255,240,200,0.7), 0 2px 0 #6a3a10; }
 
 /* ════════════════════════════════════════════════════════════
    RESPONSIVE

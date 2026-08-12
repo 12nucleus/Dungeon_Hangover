@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { Combat, grantXp } from '../combat';
 import { skillById } from '../skillLookup';
-import type { GridPos, SkillDef, Unit } from '../types';
+import type { CombatEvent, GridPos, SkillDef, Unit } from '../types';
 import { NPCS, type NPCDef, type DialogueAction, type ChoiceCondition } from '../npc';
 import { FX } from '../particles';
 import { makeItem } from '../items';
@@ -689,51 +689,83 @@ export function clickCombat(engine: any, pick: InteractPick | null, tile: GridPo
     if (propId && s) trySmashInCombat(engine, active, propId, s);
     return;
   }
+
+  // ══ FREE-FLOW combat (overhaul) ══════════════════════════════
+  // No phase gating: clicking an enemy swings the basic attack whenever it
+  // is still available (auto-setting the turnMode ring to match), and
+  // clicking a tile moves whenever movement is left. Armed skills resolve
+  // first (the targeting block above); everything routes through the same
+  // canUse/useSkill paths — attackUsed/hasAction/hasBonus semantics are
+  // untouched. Fallbacks: an out-of-range attack click closes the gap with
+  // the remaining movement and attacks if the approach lands in reach.
   if (unitId) {
     const t = engine.byId(unitId);
     if (t && t.alive && t.team === 'enemy') {
-      // 3-phase combat: strikes are phase-gated — basic attack in ⚔️ phase 2,
-      // targeted skills in 🔸 phase 3
-      if (engine.combat.turnMode === 'walk') {
-        setHoverInfoOnce(engine, 'Attacking is the ⚔️ second phase — switch or Skip there.');
-        return;
-      }
-      if (engine.combat.turnMode !== 'action') {
-        setHoverInfoOnce(engine, 'Pick a 🔸 skill — or switch to the ⚔️ Attack phase for a basic attack.');
-        return;
-      }
       if (!engine.hasLineOfSight?.(active.pos, t.pos)) {
         engine.setHoverInfoOnce(`No line of sight to ${t.name}.`);
         return;
       }
-      // phase 2 = the BASIC attack: the universal weapon swing (weapon dice
-      // resolve in useSkill). Equipped skills belong to 🔸 phase 3.
-      const pool = ['attack'];
-      const basic = pool.map((id: string) => skillById(id))
-        .find((s: SkillDef | undefined): s is SkillDef => !!s && !!s.damageDice && !s.targetsAllies && !s.selfCentered && s.aoeRadius === 0 &&
-          Combat.dist(active.pos, t.pos) <= Math.max(1, s.range) && !engine.combat.canUse(active, s));
-      if (basic) {
+      const basic = skillById('attack');
+      const attackReady = !!basic && !engine.combat.canUse(active, basic);
+      const inReach = basic ? Combat.dist(active.pos, t.pos) <= Math.max(1, basic.range) : false;
+      if (attackReady && inReach) {
+        engine.combat.turnMode = 'action';
         engine.audio.play('dice', 0.7);
         engine.enqueue(engine.combat.useSkill(active, basic.id, t.id));
-      } else setHoverInfoOnce(engine, 'Out of reach — move closer or pick a skill.');
+        engine.emitSnapshot();
+        return;
+      }
+      if (attackReady && active.movementLeft > 0 && basic) {
+        // out of reach — approach the best reachable tile, then attack if
+        // the approach brings the target into range. moveActiveTo mutates
+        // pos up front, so the follow-up attack resolves against the new spot.
+        const reach = engine.combat.reachable(active, active.movementLeft);
+        let best: GridPos | null = null;
+        let bestD = Infinity;
+        for (const [k, path] of reach) {
+          if (!path.length) continue;
+          const [x, z] = k.split(',').map(Number);
+          const d = Combat.dist({ x, z }, t.pos);
+          if (d < bestD) { bestD = d; best = { x, z }; }
+        }
+        if (best && bestD <= Math.max(1, basic.range)) {
+          const moveEvents = engine.combat.moveActiveTo(best);
+          let attackEvents: CombatEvent[] = [];
+          if (!engine.combat.canUse(active, basic)) {
+            engine.combat.turnMode = 'action';
+            attackEvents = engine.combat.useSkill(active, basic.id, t.id);
+          }
+          engine.audio.play('dice', 0.7);
+          engine.enqueue([...moveEvents, ...attackEvents]);
+          engine.emitSnapshot();
+          return;
+        }
+      }
+      if (attackReady) setHoverInfoOnce(engine, `${t.name} is out of reach — move closer or pick a skill.`);
+      else setHoverInfoOnce(engine, 'Already used your basic attack this turn.');
       return;
     }
   }
   if (propId) { trySmashInCombat(engine, active, propId); return; }
-  if (tile && engine.moveTiles.has(`${tile.x},${tile.z}`)) {
-    // movement is a 🚶 phase-1 action — other phases refuse ground clicks
-    if (engine.combat.turnMode !== 'walk') {
-      setHoverInfoOnce(engine, 'Movement happens in the 🚶 Walk phase — switch or Skip there.');
+  if (tile) {
+    // recompute reachability fresh — moveTiles is a turn-start cache and can
+    // go stale after the first move; reachable() is exactly what moveActiveTo
+    // validates against, so the click always matches the move.
+    const reach = active.movementLeft > 0 ? engine.combat.reachable(active, active.movementLeft) : null;
+    const inReach = !!reach?.get(`${tile.x},${tile.z}`);
+    if (inReach) {
+      engine.combat.turnMode = 'walk';
+      engine.enqueue(engine.combat.moveActiveTo(tile));
+      engine.emitSnapshot();
       return;
     }
-    engine.enqueue(engine.combat.moveActiveTo(tile));
-    return;
+    if (active.movementLeft <= 0) setHoverInfoOnce(engine, 'No movement left this turn.');
   }
   // nothing matched — say so instead of silently eating the click. A
-  // skill was armed but no valid target was hit, or a ⚔️ attack-phase
-  // click landed on empty ground.
+  // skill was armed but no valid target was hit, or the click landed on
+  // ground that can't be reached.
   if (engine.targeting) setHoverInfoOnce(engine, 'No valid target there — pick a unit or tile in range.');
-  else if (engine.combat.turnMode === 'action') setHoverInfoOnce(engine, 'No target there — click an enemy to attack.');
+  else setHoverInfoOnce(engine, 'No target there — click an enemy to attack.');
 }
 
 export function trySmashInCombat(engine: any, active: Unit, propId: string, preferred?: SkillDef) {

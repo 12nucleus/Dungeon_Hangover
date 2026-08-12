@@ -323,3 +323,52 @@ Halt. State your business. …Soap. The King wants soap. I want soap. Everyone w
 
 [scrag/soap_done]   (npc.ts)
 Is that... is that soap? That's soap! That's beautiful soap! Give it here! Give it! ...Okay. You can go through. But knock first. The King hates being surprised.
+
+───────────────────────────────────────────────────────────────
+── FLOOR 50 — WRITER STREAM (floor50Text.ts)
+───────────────────────────────────────────────────────────────
+
+[f50_mq_start]   (src/levels/floor50Text.ts)
+You wake on cold stone in your underwear. The world smells like soap and bad choices. Somewhere above you, the day is waiting. It can wait longer.
+
+[f50_mq_gate]   (src/levels/floor50Text.ts)
+The goblin guard steps aside. The iron door groans open. The smell of strawberries and tyranny rolls over you like a wave. You are through.
+
+[f50_mq_door]   (src/levels/floor50Text.ts)
+The bath chamber door yields. Steam curls around your ankles. Somewhere in the pink water, a king is singing. He is always singing. He is terrible at it.
+
+[f50_grib_75]   (src/levels/floor50Text.ts)
+How DARE you track mud across my bath mat. That is a LIMITED EDITION bath mat.
+
+[f50_grib_50]   (src/levels/floor50Text.ts)
+The bath overflows. The bath OVERFLOWS. Do you know how long it took to get the temperature just so.
+
+[f50_grib_25]   (src/levels/floor50Text.ts)
+My bubbles. You are popping my BUBBLES. Each bubble had a NAME.
+
+[f50_grib_phase2]   (src/levels/floor50Text.ts)
+Enough lukewarm hospitality. Now the water gets SERIOUS.
+
+[f50_grib_death]   (src/levels/floor50Text.ts)
+I yield. I yield. The bath is yours. Just... just keep the cap. Please. It was a gift from the Suds himself. It is all I have. It is all I have EVER had.
+
+[f50_baron_summon]   (src/levels/floor50Text.ts)
+The bath king calls, and Baron Gnaw ANSWERS. Mostly because he was promised snacks.
+
+[f50_duck_choir]   (src/levels/floor50Text.ts)
+The rubber ducks begin to sing. It is not a song you know. It is not a song ANYONE knows. But the ducks are committed. The ducks are ALWAYS committed.
+
+[f50_chandelier]   (src/levels/floor50Text.ts)
+You look up at the chandelier. It glitters. It sways. You once thought you would marry a chandelier. Tonight, the chandelier looks back. It remembers.
+
+[f50_well_wish]   (src/levels/floor50Text.ts)
+You toss a penny into the well. It flashes once, twice, and vanishes. Somewhere deep below, a wish is granted. It is probably not yours.
+
+[f50_tpk_1]   (src/levels/floor50Text.ts)
+Your party falls. All of you. In your underwear. At the bottom of a dungeon. The narrator would like you to know: this is the funniest thing that has ever happened.
+
+[f50_tpk_2]   (src/levels/floor50Text.ts)
+You are dead. The rats are already holding a meeting about who gets your socks. The meeting is surprisingly civil.
+
+[f50_tpk_3]   (src/levels/floor50Text.ts)
+Game over, Greg. The bath wins. The bath ALWAYS wins. But hey. You can try again. The dungeon has a sense of humor. It wants to see what you do next.

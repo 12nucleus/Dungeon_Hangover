@@ -269,7 +269,11 @@ const terrain = buildTerrain(map.walk, {
   wallHeight: [4.0, 6.0],              // grander ceilings than the old 2.6–4.0
   wallScale: 0.07,
   floorPalette: ['cave_floor', 'cave_stone', 'gravel'],
-  wallPalette: ['cave_stone', 'cave_floor'],
+  // walls used to share the FLOOR keys (cave_stone/cave_floor), so wall and
+  // ground came out the same colour and the whole level read as one grey
+  // soup. The wall_* keys in voxelTerrain's palette are a full value-step
+  // darker → silhouettes and doorways now pop against the floor.
+  wallPalette: ['wall_dark', 'wall_light'],
   plateaus,
   flatten: [
     partySpawn, checkpoint, bossDoor, bossBath, goldenChest, secretChest, hermitChamber, exitStairs,
@@ -574,6 +578,58 @@ for (const t of corridorTiles) {
     if (rng() < 0.12) put('stalactite', nx - OFFSET.x, nz - OFFSET.z);
   }
 }
+// ── GLOW DRESSING (art pass) ───────────────────────────────────
+// Bioluminescence is the readability budget for a pitch-black sewer: cool
+// blue/green light pools mark the fungal alcove and the two flooded rooms,
+// and two crystals seed the entry tunnel so the very first corridor has a
+// colour anchor. Every kind here is NON-BLOCKING (glow mushrooms/crystals
+// never set `blocks`, and world.ts only blocks torch/bonfire/brazier), so
+// this pass can never seal a room, a gate lane or the boss door. Reserved /
+// gate-lane / already-occupied tiles are skipped anyway, and running BEFORE
+// roomDress means the generic dressing pass avoids these tiles too.
+const glowAt = (kind: PropKind, wx: number, wz: number, s = 0.5) => {
+  const k = `${wx},${wz}`;
+  if (reserved.has(k) || occupied.has(k) || GATE_LANE_TILES.has(k)) return;
+  putW(kind, wx, wz, s);
+};
+// r13 Fungal Alcove — the densest cluster (this is THE mushroom room)
+glowAt('glow_mushroom_blue', R13.x0 + 1, R13.z0 + 1, 0.35);
+glowAt('glow_mushroom_green', R13.x0 + 3, R13.z0, 0.6);
+glowAt('glow_mushroom_blue', R13.x1, R13.z0 + 3, 0.8);
+glowAt('glow_mushroom_green', R13.x0 + 4, R13.z1, 0.45);   // x0+2 is the r13→r16 secret-door lane
+glowAt('glow_mushroom_blue', R13.x0 + 1, R13.z1 - 1, 0.15);
+// r12 Flooded Rat Den — mushrooms on the shallow-water shelves
+glowAt('glow_mushroom_blue', R12.x0 + 2, R12.z0 + 4, 0.3);
+glowAt('glow_mushroom_green', R12.x0 + 6, R12.z0 + 2, 0.7);
+glowAt('glow_mushroom_blue', R12.x0 + 1, R12.z1 - 2, 0.5);
+glowAt('glow_mushroom_green', R12.x1 - 2, R12.z1 - 2, 0.9);
+// r23 Flooded Deep — the big dark pool before the throne: rim it with light
+glowAt('glow_mushroom_blue', R23.x0 + 2, R23.z0 + 2, 0.25);
+glowAt('glow_mushroom_green', R23.x0 + 8, R23.z0 + 4, 0.55);
+glowAt('glow_mushroom_blue', R23.x0 + 3, R23.z1 - 2, 0.75);
+glowAt('glow_mushroom_green', R23.x1 - 2, R23.z1 - 4, 0.95);
+// r3 Sewer Tunnel — 1–2 crystals so the FIRST corridor has a cold accent
+glowAt('crystal_blue', R3.x0 + 3, R3.z1, 0.4);
+glowAt('crystal_blue', R3.x1 - 3, R3.z0, 0.7);
+// extra braziers down the r21→r24 spine (barracks → armory → deep → throne):
+// warm firelight beads along the grand main so the long walk has rhythm and
+// the player can read the corridor's depth. Placed on the OUTER lane of the
+// 5-wide main (centre line is x 124, lanes run 122..126) and guarded by
+// torchSafe() so a brazier can never pinch or seal the corridor.
+const spineBrazier = (mx: number, mz: number, s = 0.5) => {
+  const wx = mx + OFFSET.x, wz = mz + OFFSET.z;
+  const k = `${wx},${wz}`;
+  if (reserved.has(k) || occupied.has(k) || GATE_LANE_TILES.has(k)) return;
+  if (!on(wx, wz) || !torchSafe(wx, wz)) return;
+  put('brazier', mx, mz, s);
+  torchPlaced.add(k);
+};
+spineBrazier(122, 65, 0.5);   // 21→22
+spineBrazier(126, 69, 0.5);
+spineBrazier(122, 81, 0.5);   // 22→23
+spineBrazier(126, 85, 0.5);
+spineBrazier(122, 101, 0.5);  // 23→24 — last warm light before the throne
+
 // ── generic room dressing ─────────────────────────────────────
 // Fill a room's interior with NON-BLOCKING themed props so it reads as a real,
 // lived-in space. Every kind used here is non-blocking, so even dense dressing
@@ -667,15 +723,19 @@ export const floor50Level: LevelDef = {
   arena: { x0: OFFSET.x, z0: OFFSET.z, x1: OFFSET.x + 141, z1: OFFSET.z + 141 },
   spawn: { party: [partySpawn], enemies: [] },
   props,
-  // grander-scale lighting: a touch more ambient so the bigger rooms + wall
-  // detail read, and much lighter fog so the space doesn't close in on the
-  // player — the whole point of the scale-up is that you can see it.
-  ambient: 0.3,
-  sun: 0.03,
-  fill: 0.18,
-  fogColor: 0x0a0f0a,
-  fogDensity: 0.028,
-  waterColor: 0x2a4a2a,
+  // READABILITY PASS (art) + VIVID-COLOR CORRECTION: the old values rendered
+  // as near-black on most displays, and the teal FogExp2 haze washed the
+  // bright voxels into a blurry film. Player requested vivid colors: fog is
+  // now nearly off (neutral dark, tiny density), the palette is saturated
+  // (see DEFAULT_PALETTE), and the light rig is warmed — ambient/fill (both
+  // cool blue) are trimmed and the warm sun is raised 0.05 → 0.30 so colors
+  // pop instead of washing out under cool light.
+  ambient: 0.4,
+  sun: 0.38,
+  fill: 0.24,
+  fogColor: 0x0a0c0e,
+  fogDensity: 0.004,
+  waterColor: 0x2e8a80,
   waterY: -3,
   layout: {
     walk: map.walk,

@@ -37,6 +37,21 @@ export function GameCanvas() {
     if (isDebug) engine.enterEditorMode();
   }, [isDebug]);
 
+  // Fullscreen crit flash — the engine bumps snap.critFlash (epoch id) on
+  // every critical hit; React shows the flash briefly so it re-triggers each
+  // time even back-to-back.
+  const [critFlashOn, setCritFlashOn] = useState(false);
+  const lastCritRef = useRef(0);
+  useEffect(() => {
+    const cf = snap?.critFlash ?? 0;
+    if (cf && cf !== lastCritRef.current) {
+      lastCritRef.current = cf;
+      setCritFlashOn(true);
+      const t = setTimeout(() => setCritFlashOn(false), 340);
+      return () => clearTimeout(t);
+    }
+  }, [snap?.critFlash]);
+
   useEffect(() => {
     return () => {
       if (engineRef.current?.renderer) engineRef.current.dispose();
@@ -88,6 +103,10 @@ export function GameCanvas() {
     <div className="game-root">
       <div ref={hostRef} className="game-canvas" />
       <div ref={overlayRef} className="fx-layer" />
+      {/* fullscreen combat juice — mounted beside the fx layer, driven by engine state
+          (critFlash epoch id re-triggers the flash; tpkVignette holds while defeated) */}
+      <div className="fx-crit-flash" style={{ opacity: critFlashOn ? 1 : 0, pointerEvents: 'none' }} />
+      <div className={`fx-tpk-vignette ${snap?.tpkVignette ? 'on' : ''}`} style={{ pointerEvents: 'none' }} />
       <HUD snap={snap} engine={engineRef.current} />
       {isDebug && <DebugPanel engine={engineRef.current} />}
       {splashVisible && (

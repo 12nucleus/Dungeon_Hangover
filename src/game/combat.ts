@@ -569,6 +569,18 @@ export class Combat {
     const ev: CombatEvent[] = [];
     ev.push({ type: 'log', text: `${u.name} uses ${s.icon} ${s.name}`, kind: 'info' });
 
+    // shared rider applicator — every rider condition (appliesCondition /
+    // appliesCondition2) lands through here so double-rider skills
+    // (soap_storm: Scalded + Slippery) never need a per-skill special case.
+    const applyRider = (rideEv: CombatEvent[], tgt: Unit, condId: string, rounds: number) => {
+      const cond = CONDITIONS[condId];
+      if (!cond) return;
+      if (!tgt.conditions.some((c) => c.id === condId)) {
+        tgt.conditions.push({ id: condId, name: cond.name, roundsLeft: rounds });
+        rideEv.push({ type: 'float', unitId: tgt.id, text: `❄ ${cond.name}`, cls: 'debuff' });
+      }
+    };
+
     // pay costs — the basic attack is FREE (spent via attackUsed instead) so
     // the action stays available for one skill per round
     if (skillId === 'attack') {
@@ -629,10 +641,10 @@ export class Combat {
     if (s.summonId) {
       const tpl = SUMMON_TEMPLATES[s.summonId];
       if (!tpl) return ev;
-      const count = s.id === 'rat_summon' ? 2 : 1;
+      const count = s.summonCount ?? (s.id === 'rat_summon' ? 2 : 1);
       for (let i = 0; i < count; i++) {
         const unit = this.summon(tpl(), u.pos, u.id);
-        ev.push({ type: 'summon', unit });
+        ev.push({ type: 'summon', unit, summonerId: u.id });
         ev.push({ type: 'log', text: `${unit.name} scurries in from the dark!`, kind: 'system' });
       }
       ev.push({ type: 'skillfx', skill: s, at: center, targets: this.living(u.team).map((t) => t.id) });
@@ -718,7 +730,7 @@ export class Combat {
       for (let i = 0; i < count; i++) {
         const unit = this.summon(tpl(), u.pos, u.id);
         if (!unit) { refused = true; break; }   // party at cap (max 6)
-        ev.push({ type: 'summon', unit });
+        ev.push({ type: 'summon', unit, summonerId: u.id });
         ev.push({ type: 'log', text: `${unit.name} answers the call!`, kind: 'system' });
       }
       if (refused) ev.push({ type: 'log', text: 'The call echoes, but the party is at full strength (max 6).', kind: 'info' });
@@ -859,14 +871,17 @@ export class Combat {
         const save = rollD20(abilityMod(t.abilities[s.saveAbility]));
         const success = save.total >= (s.saveDC ?? 12);
         ev.push({ type: 'save', unitId: t.id, success, total: save.total });
+        ev.push({ type: 'dice', die: 'd20', total: save.total, reason: `${s.saveAbility.toUpperCase()} save` });
         ev.push({ type: 'log', text: `${t.name} ${s.saveAbility.toUpperCase()} save ${save.total} vs DC ${s.saveDC}: ${success ? 'SUCCESS' : 'FAIL'}`, kind: 'roll' });
         const dmg = rollDice(s.damageDice);
         let amount = dmg.total;
         if (s.id === 'sacred_flame' && success) amount = 0;
         else if (success) amount = Math.floor(amount / 2);
-        if (!success && s.appliesCondition && (s.appliesChance ?? 1) > Math.random() && !t.conditions.some((c) => c.id === s.appliesCondition)) {
-          t.conditions.push({ id: s.appliesCondition, name: CONDITIONS[s.appliesCondition].name, roundsLeft: 2 });
-          ev.push({ type: 'float', unitId: t.id, text: `❄ ${CONDITIONS[s.appliesCondition].name}`, cls: 'debuff' });
+        if (!success && s.appliesCondition && (s.appliesChance ?? 1) > Math.random()) {
+          applyRider(ev, t, s.appliesCondition, s.appliesRounds ?? 2);
+        }
+        if (!success && s.appliesCondition2 && (s.appliesChance ?? 1) > Math.random()) {
+          applyRider(ev, t, s.appliesCondition2, s.appliesRounds2 ?? 2);
         }
         if (amount <= 0) {
           ev.push({ type: 'float', unitId: t.id, text: 'Resisted!', cls: 'miss' });
@@ -912,6 +927,9 @@ export class Combat {
       else if (elev >= 1) adv = 'adv';                  // high-ground advantage
       else if (t.conditions.some((c) => c.id === 'prone') || t.conditions.some((c) => c.id === 'blinded')) adv = 'adv';
       const atk = rollD20(atkMod, blessed ? '1d4' : '', adv);
+      // combat dice overlay: PARTY attack rolls only (enemy routine rolls
+      // stay off-screen — the spam guard). Saves are always shown above.
+      if (u.team === 'party') ev.push({ type: 'dice', die: 'd20', total: atk.total, reason: `Attack vs ${t.name}` });
       const auto = s.id === 'magic_missile';
       // prone targets are easier to hit (+2)
       const tgtAC = effAC(t) - (t.conditions.some((x) => x.id === 'prone') ? 2 : 0);
@@ -945,9 +963,11 @@ export class Combat {
       if (sneakCrit) ev.push({ type: 'log', text: '🎯 Sneak attack — guaranteed crit!', kind: 'crit' });
       this.applyDamage(ev, t, amount, weapon?.damageType ?? s.damageType, crit);
       // skill rider condition on a landed hit (soap splash → slippery, …)
-      if (t.alive && s.appliesCondition && (s.appliesChance ?? 1) > Math.random() && !t.conditions.some((x) => x.id === s.appliesCondition)) {
-        t.conditions.push({ id: s.appliesCondition, name: CONDITIONS[s.appliesCondition].name, roundsLeft: s.appliesRounds ?? 2 });
-        ev.push({ type: 'float', unitId: t.id, text: `❄ ${CONDITIONS[s.appliesCondition].name}`, cls: 'debuff' });
+      if (t.alive && s.appliesCondition && (s.appliesChance ?? 1) > Math.random()) {
+        applyRider(ev, t, s.appliesCondition, s.appliesRounds ?? 2);
+      }
+      if (t.alive && s.appliesCondition2 && (s.appliesChance ?? 1) > Math.random()) {
+        applyRider(ev, t, s.appliesCondition2, s.appliesRounds2 ?? 2);
       }
       // weapon on-hit condition + fragile / fumble break / fumble drop
       if (t.alive && weapon?.onHitCondition && Math.random() < weapon.onHitCondition.chance) {
@@ -961,6 +981,7 @@ export class Combat {
           const sv = rollD20(abilityMod(t.abilities[u.onHit.saveAbility]));
           applies = sv.total < (u.onHit.saveDC ?? 12);
           ev.push({ type: 'save', unitId: t.id, success: !applies, total: sv.total });
+          ev.push({ type: 'dice', die: 'd20', total: sv.total, reason: `${u.onHit.saveAbility.toUpperCase()} save vs ${u.name}` });
         }
         if (applies && !t.conditions.some((x) => x.id === u.onHit!.condition)) {
           t.conditions.push({ id: u.onHit!.condition, name: CONDITIONS[u.onHit!.condition]?.name ?? u.onHit!.condition, roundsLeft: u.onHit!.rounds });

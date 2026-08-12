@@ -225,7 +225,7 @@ function crystalCluster(seed, base, glowColor) {
   }
   return {
     name: 'crystal', voxels: v.list(), cube,
-    glow: { color: glowColor, intensity: 6, dist: 8, decay: 1.8, y: maxH * cube * 0.6, flicker: 0.25 },
+    glow: { color: glowColor, intensity: 7.2, dist: 9.5, decay: 1.8, y: maxH * cube * 0.6, flicker: 0.25 },
     particles: { type: 'sparkle', color: glowColor, y: maxH * cube, spread: 0.35, rate: 1.4, count: 10 },
     anim: 'pulse',
   };
@@ -999,7 +999,9 @@ export function propAltar(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 117);
   const v = new Vox();
   const cube = 0.055;
-  const STONE = 0x6a6e75, STONE_D = 0x4c5057, STONE_HI = 0x8a8f96, SOAP = 0xf0a8c0;
+  // SOAP is the boss-theme accent (Gribnab's soap-pink) — brightened so the
+  // single soap voxel still reads as the altar's punchline in low light
+  const STONE = 0x6a6e75, STONE_D = 0x4c5057, STONE_HI = 0x8a8f96, SOAP = 0xffb8d8;
   v.box(-3, 0, -2, 3, 2, 2, STONE);
   v.box(-3, 2, -2, 3, 2, 2, STONE_D);
   v.box(-3, 3, -2, 3, 3, 2, STONE_HI);
@@ -1039,7 +1041,9 @@ export function propDuck(seed = 0.5) {
   const R = rng(Math.floor(seed * 1000) + 123);
   const v = new Vox();
   const cube = 0.05;
-  const Y = 0xf0c040, Y_D = 0xc99a28, BEAK = 0xe07830, EYE = 0x1a1a1a;
+  // brighter rubber-duck yellow: these sit in dark bath water, so the
+  // silhouette needs to pop against Gribnab's marble + teal water
+  const Y = 0xffd94a, Y_D = 0xdcac2e, BEAK = 0xff8c34, EYE = 0x14140f;
   v.ellipsoid(0, 0, 0, 1.6, 1.2, 2.0, Y);
   v.ellipsoid(0, 1.2, -1.0, 1.0, 1.0, 1.0, Y);
   v.add(0, 1.2, -2.0, BEAK);
@@ -1213,7 +1217,9 @@ function glowMushroom(seed, capColor) {
   singleMushroom(R, capColor, STEM, 4, 1.8, 2).v.list().forEach((c) => m.v.add(c.x, c.y, c.z, c.c));
   return {
     name: 'glow_mushroom', voxels: m.v.list(), cube: m.cube,
-    glow: { color: mix(capColor, 0xffffff, 0.35), intensity: 4.2, dist: 7, decay: 2, y: m.maxTop * m.cube * 0.65, flicker: 0.35 },
+    // emissive boost: glow mushrooms are floor 50's readability lighting
+    // (fungal alcove + the two flooded rooms), so they throw a wider pool
+    glow: { color: mix(capColor, 0xffffff, 0.42), intensity: 5.4, dist: 8.5, decay: 2, y: m.maxTop * m.cube * 0.65, flicker: 0.35 },
     particles: { type: 'spore', color: m.capHi, y: m.maxTop * m.cube, spread: 0.28, rate: 0.7, count: 5 },
     anim: 'sway',
   };

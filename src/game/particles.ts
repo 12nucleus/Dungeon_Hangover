@@ -183,6 +183,22 @@ export class ParticleSystem {
 }
 
 // ── FX presets (data-driven: add your own here) ──────────────
+// ── shared scratch state for the per-frame ambient emitter ──
+// (module scope so FX.ambient never allocates inside the render loop)
+const _amb = new THREE.Vector3();
+/** 8 pre-baked outward XZ directions — the crit shockwave ring (no allocation) */
+const RING_DIRS: THREE.Vector3[] = Array.from({ length: 8 }, (_, i) => {
+  const a = (i / 8) * Math.PI * 2;
+  return new THREE.Vector3(Math.cos(a), 0.06, Math.sin(a));
+});
+const WHITE = new THREE.Color(0xffffff);
+const _mix = new THREE.Color();
+/** pale companion tint for a mote colour — called on emit only, no per-frame cost */
+function mixToWhite(hex: number): number {
+  _mix.setHex(hex).lerp(WHITE, 0.55);
+  return _mix.getHex();
+}
+
 export const FX = {
   explosion(ps: ParticleSystem, p: THREE.Vector3, radius = 2) {
     ps.burst({ pos: p, count: 90, color: [0xffd76b, 0xff9a3d, 0xff5a1f, 0xfff3c4], speed: [2, 7 * radius * 0.6], life: [0.4, 1.1], size: [0.9, 2.2], gravity: 2, up: 2.5, endScale: 0.25 });
@@ -240,6 +256,63 @@ export const FX = {
   debris(ps: ParticleSystem, p: THREE.Vector3, colors: number[], count = 24) {
     ps.burst({ pos: p, count, color: colors, speed: [1.5, 4.5], life: [0.5, 1.1], size: [0.5, 1.1], gravity: 12, drag: 0.5, up: 3.2, endScale: 0.75, solid: true });
     ps.burst({ pos: p, count: 6, color: [0x9c8f74, 0xb7a98c], speed: [0.4, 1.2], life: [0.4, 0.8], size: [0.6, 1.2], gravity: -0.5, up: 1, endScale: 1.5, solid: true });
+  },
+  /**
+   * CRIT — the money shot: a gold-white star burst plus a flat shockwave
+   * ring that races outward along the ground. ~24 particles total so it can
+   * fire on every crit without touching the frame budget.
+   */
+  critBurst(ps: ParticleSystem, p: THREE.Vector3) {
+    // 16 hot spikes: white core → gold → amber, fast out, very short life
+    ps.burst({ pos: p, count: 16, color: [0xffffff, 0xffe9a8, 0xffc233, 0xff9c1f], speed: [4.5, 9], life: [0.18, 0.42], size: [0.6, 1.5], gravity: 1.2, drag: 2.4, up: 0.8, endScale: 0.1 });
+    // 8-cube shockwave ring: one cube per pre-baked XZ direction, flat and
+    // gravity-free so it reads as a wave racing out along the ground
+    for (const d of RING_DIRS) {
+      ps.burst({ pos: p, count: 1, color: [0xfff3c4, 0xffd76b], dir: d, spread: 0.12, speed: [6, 8], life: [0.16, 0.26], size: [1.1, 1.8], gravity: 0, drag: 3.2, endScale: 0.05 });
+    }
+  },
+  /**
+   * BUBBLES — gentle pink-white rise, for Gribnab's bath chamber (r25).
+   * Negative gravity + heavy drag = slow lazy float; call sparsely.
+   */
+  bubbles(ps: ParticleSystem, p: THREE.Vector3) {
+    ps.burst({ pos: p, count: 5, color: [0xffe4f2, 0xffc0dc, 0xffffff], speed: [0.1, 0.5], life: [1.1, 2.2], size: [0.5, 1.2], gravity: -1.3, drag: 1.6, endScale: 1.15 });
+  },
+  /**
+   * MOTES — slow drifting dust / spore specks in any tint. Ambient filler:
+   * tiny count, long life, almost no motion, so a few dozen alive at once
+   * still cost nothing.
+   */
+  motes(ps: ParticleSystem, p: THREE.Vector3, color: number) {
+    ps.burst({ pos: p, count: 3, color: [color, mixToWhite(color)], speed: [0.05, 0.35], life: [1.6, 3.2], size: [0.25, 0.6], gravity: -0.12, drag: 0.9, endScale: 0.6 });
+  },
+  /**
+   * AMBIENT — called ONCE PER FRAME by the engine with the hero's position.
+   * A cheap probabilistic emitter: most frames it does nothing, occasionally
+   * it seeds dust motes near the hero or a ceiling drip streak just off to
+   * the side. Reuses the existing burst pools, allocates nothing per frame
+   * (one module-scope scratch Vector3) and scales by `dt`, so the rate is
+   * frame-rate independent.
+   */
+  ambient(ps: ParticleSystem, center: THREE.Vector3, dt: number) {
+    // ~1.6 mote puffs/sec: sewer air always has something floating in it
+    if (Math.random() < dt * 1.6) {
+      _amb.set(
+        center.x + (Math.random() - 0.5) * 7,
+        center.y + 0.6 + Math.random() * 2.4,
+        center.z + (Math.random() - 0.5) * 7,
+      );
+      FX.motes(ps, _amb, Math.random() < 0.25 ? 0x9fd8c8 : 0x8a8574);
+    }
+    // ~0.5 drips/sec: a short cold streak falling out of the ceiling
+    if (Math.random() < dt * 0.5) {
+      _amb.set(
+        center.x + (Math.random() - 0.5) * 9,
+        center.y + 3.4 + Math.random() * 1.6,
+        center.z + (Math.random() - 0.5) * 9,
+      );
+      ps.burst({ pos: _amb, count: 2, color: [0x9fd8e4, 0xd8f2f0], speed: [0.02, 0.14], life: [0.5, 0.9], size: [0.3, 0.55], gravity: 9, drag: 0, endScale: 0.5 });
+    }
   },
   /** low earthy dust plume + a few body-coloured flecks when a corpse hits the floor */
   impactDust(ps: ParticleSystem, p: THREE.Vector3, flecks: number[] = []) {

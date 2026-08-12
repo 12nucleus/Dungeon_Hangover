@@ -34,3 +34,8 @@ ts-errors.txt
 this.spawnDrunkStars(rig)
 __pycache__/
 scripts/acestep_out/
+
+# Large source-art / local session dirs (keep out of git; regenerate or store externally)
+assets-src/
+Shots/
+.omp/

@@ -94,6 +94,9 @@ export interface SkillDef {
   appliesCondition?: string; // condition id applied on failed save / hit
   appliesRounds?: number;    // duration of appliesCondition (default 3)
   appliesChance?: number;    // 0..1 — chance the rider condition lands (default 1)
+  /** second rider condition (soap_storm applies Scalded AND Slippery) */
+  appliesCondition2?: string;
+  appliesRounds2?: number;   // duration of appliesCondition2 (default 2)
   selfCentered?: boolean;    // AoE radiates from the caster
   targetsAllies?: boolean;   // heal / buff
   selfOnly?: boolean;        // caster-only (second wind, arcane shield)
@@ -305,6 +308,10 @@ export interface UISnapshot {
   /** cheat console overlay (backtick key) */
   showConsole?: boolean;
   consoleInput?: string;
+  /** epoch id of the last critical-hit fullscreen flash (React re-triggers) */
+  critFlash?: number;
+  /** TPK defeat vignette overlay on */
+  tpkVignette?: boolean;
 }
 
 // ── combat events: the pure-logic layer (combat.ts) emits these,
@@ -326,4 +333,4 @@ export type CombatEvent =
   | { type: 'loot'; items: import('./items').Item[]; gold: number }
   | { type: 'levelup'; unitId: string }
   | { type: 'shake'; power: number }
-  | { type: 'summon'; unit: Unit };  // a new unit fades in (boss summons, Scrag hostile)
+  | { type: 'summon'; unit: Unit; summonerId?: string };  // a new unit fades in (boss summons, Scrag hostile)

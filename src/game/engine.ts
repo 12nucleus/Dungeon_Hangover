@@ -25,6 +25,7 @@ import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDe
 import { type NPCDef, type DialogueAction } from './npc';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { QuestLog, QUESTS } from './quest';
+import { MAIN_QUEST_F50 } from '../levels/floor50Text';
 import { shopStockFor, shopPriceFor } from './shop';
 import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes/index';
 
@@ -44,6 +45,11 @@ import { showTargeting as showTargetingModule, showMoveTiles as showMoveTilesMod
 import { bindInput as bindInputModule, onPointerMove as onPointerMoveModule, onPointerDown as onPointerDownModule, onKeyDown as onKeyDownModule, onResize as onResizeModule } from './engine/input';
 interface Floater { el: HTMLDivElement; wp: THREE.Vector3; t: number; }
 interface Walker { path: THREE.Vector3[]; tiles: GridPos[]; idx: number; }
+
+// art-designer contract: particles.ts gains FX.ambient(ps, center, dt). The
+// guarded cast keeps the build green before the helper lands (and is a no-op
+// until then) — once art adds it, this resolves to the real function.
+const fxAmbient = (FX as Partial<typeof FX> & { ambient?: (ps: ParticleSystem, c: THREE.Vector3, dt: number) => void }).ambient;
 
 // a weapon that has detached from a dying rig and is tumbling to the floor
 interface DroppedWeapon {
@@ -159,17 +165,23 @@ export class GameEngine {
   // ── dice-roll visual (BG3-style) ──────────────────────  /** last visual dice roll (HUD animates a 3D die for ~2s) */
   public diceShow: { die: string; total: number; reason: string; at: number } | null = null;
   private diceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** epoch id of the last critical-hit fullscreen flash (React re-triggers) */
+  public critFlash = 0;
+  /** defeat (TPK) vignette overlay on */
+  public tpkVignette = false;
 
-  /** show a rolling-die overlay for a check (perception, gamble, luck…) */
-  public showDiceRoll(die: string, total: number, reason: string) {
+  /** show a rolling-die overlay for a check (perception, gamble, luck…).
+   *  Combat dice (attack rolls / saves) pass a shorter ~1.4s window so the
+   *  overlay doesn't monopolise the screen mid-fight. */
+  public showDiceRoll(die: string, total: number, reason: string, durationMs = 3200) {
     this.diceShow = { die, total, reason, at: performance.now() };
     clearTimeout(this.diceTimer!);
     this.diceTimer = setTimeout(() => {
-      if (this.diceShow && performance.now() - this.diceShow.at > 3200) {
+      if (this.diceShow && performance.now() - this.diceShow.at > durationMs) {
         this.diceShow = null;
         this.emitSnapshot();
       }
-    }, 3400);
+    }, durationMs + 200);
     this.emitSnapshot();
   }
   public sneaking = false;
@@ -990,7 +1002,17 @@ export class GameEngine {
   }
 
   // ── floor 50 — flags / ability checks / item hooks ────────
-  public setFlag(f: string) { this.flags.add(f); }
+  public setFlag(f: string) {
+    this.flags.add(f);
+    // floor-50 main-quest stage hooks: The Longest Morning's beat text logs
+    // (and narrates) the moment its milestone flag lands — once, so an old
+    // save replayed after the quest landed fires the beat exactly once too.
+    if (this.floorNumber === 50 && f === 'soap_gate_open' && !this.flags.has('mq_gate_logged')) {
+      this.flags.add('mq_gate_logged');
+      this.pushLog(MAIN_QUEST_F50.stages.gateOpen, 'system');
+      void this.narrate('f50_mq_gate', MAIN_QUEST_F50.stages.gateOpen, 4200);
+    }
+  }
   public hasFlag(f: string): boolean { return this.flags.has(f); }
 
   /** remove one inventory item with this base id (returns success) */
@@ -1168,6 +1190,9 @@ export class GameEngine {
     this.busy = false;
     this.bossCineActive = false;
     this.pushLog('🫧 Gribnab is your partner now. The bath is OURS.', 'system');
+    // The Longest Morning — Gribnab is dealt with (truce path)
+    this.questLog?.progress?.('the_longest_morning');
+    this.pushLog(MAIN_QUEST_F50.stages.gribnabDown, 'system');
     this.emitSnapshot();
   }
 
@@ -2333,7 +2358,13 @@ export class GameEngine {
    *  first save is written only when the player interacts with the bonfire
    *  (lightBonfire / restAtBonfire). */
   onIntroComplete() {
-    // intentionally no save on spawn
+    // The Longest Morning's opening narration plays the moment the intro
+    // lands the party in the cellar (the title sequence owns the air until
+    // then, so startNewGame defers it to here).
+    if (this.floorNumber === 50 && !this.flags.has('mq_start_narrated')) {
+      this.setFlag('mq_start_narrated');
+      void this.narrate('f50_mq_start', MAIN_QUEST_F50.stages.start, 5200);
+    }
   }
 
   // -- character creation -------------------------------------
@@ -2611,10 +2642,10 @@ export class GameEngine {
         break;
       case 'jump': {
         // jump-mode: the next tile click is a hop (2 tiles max, costs movement
-        // in combat). In explore it's a free little hop. Movement (incl. jump)
-        // is a phase-1 action in combat.
-        if (this.phase === 'combat' && this.combat.turnMode !== 'walk') {
-          this.setHoverInfoOnce('Jumping is a 🚶 phase-1 movement action.');
+        // in combat). Free-flow: jumps only need movement left — the phase
+        // ring no longer gates movement.
+        if (this.phase === 'combat' && this.combat.active?.team === 'party' && (this.combat.active.movementLeft ?? 0) <= 0) {
+          this.setHoverInfoOnce('No movement left to jump with.');
           return;
         }
         this.jumpMode = !this.jumpMode;
@@ -2630,15 +2661,8 @@ export class GameEngine {
       case 'attack': {
         const a = this.combat.active;
         if (a && a.team === 'party' && this.phase === 'combat') {
-          // 3-phase combat: the basic attack is the ⚔️ second phase
-          if (this.combat.turnMode === 'walk') {
-            this.setHoverInfoOnce('The basic attack is the ⚔️ second phase — switch or Skip there.');
-            return;
-          }
-          if (this.combat.turnMode !== 'action') {
-            this.setHoverInfoOnce('The basic attack is the ⚔️ Attack phase.');
-            return;
-          }
+          // free-flow: the ring no longer gates the basic attack — arming it
+          // enters targeting and clicking an enemy swings (once per turn).
           // backstab / surprise attack: attacking while sneaking (C mode)
           // is a guaranteed critical — see the sneakCrit path in combat.ts
           if (this.sneaking) {
@@ -2669,14 +2693,7 @@ export class GameEngine {
         // a class skill, so it lives in the default bar, never the loadout.
         const a = this.combat.active;
         if (a && a.team === 'party' && this.phase === 'combat') {
-          if (this.combat.turnMode === 'walk') {
-            this.setHoverInfoOnce('Shoving is a 🔸 skills-phase action — switch or Skip there.');
-            return;
-          }
-          if (this.combat.turnMode !== 'bonus') {
-            this.setHoverInfoOnce('Shoving is a 🔸 skills-phase action.');
-            return;
-          }
+          if (!a.hasBonus) { this.setHoverInfoOnce('Shove needs a bonus action.'); return; }
           this.selectSkill('shove');
           return;
         }
@@ -3759,6 +3776,12 @@ export class GameEngine {
       this.emitSnapshot();
     }
 
+    // TPK vignette self-heals the moment defeat is over (respawn sets explore)
+    if (this.tpkVignette && this.phase !== 'defeat') {
+      this.tpkVignette = false;
+      this.emitSnapshot();
+    }
+
     // floaters
     const w = this.container.clientWidth, h = this.container.clientHeight;
     for (let i = this.floaters.length - 1; i >= 0; i--) {
@@ -3781,6 +3804,14 @@ export class GameEngine {
       sp.project(this.iso.cam);
       if (sp.z > 1) { v.bar.style.display = 'none'; continue; }
       v.bar.style.transform = `translate(${(sp.x * 0.5 + 0.5) * w}px, ${(-sp.y * 0.5 + 0.5) * h}px) translate(-50%,-100%)`;
+    }
+
+    // ambient cellar motes around the hero (art contract: particles.ts gains
+    // FX.ambient(ps, center, dt) — guarded cast keeps the build green until
+    // the helper lands, then this is a plain per-frame emitter).
+    if (this.phase !== 'menu' && !this.disposed) {
+      const hero = this.combat?.living('party')[0];
+      if (hero && fxAmbient) fxAmbient(this.particles, this.unitWorld(hero.pos), dt);
     }
 
     this.particles.update(dt);
@@ -3891,6 +3922,8 @@ export class GameEngine {
       jumpMode: this.jumpMode,
       showConsole: this.consoleOpen,
       consoleInput: this.consoleInput,
+      critFlash: this.critFlash,
+      tpkVignette: this.tpkVignette,
     });
   }
 

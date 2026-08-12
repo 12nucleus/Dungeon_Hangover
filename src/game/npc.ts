@@ -246,6 +246,13 @@ export const SCRAG: NPCDef = {
     done: {
       caption: 'Scrag leans on his spear. He looks almost content.',
       text: "Soap. Delivered. Door. Open. King. Happy — or at least less angry. You did good work, stranger. Don't let the bath get you. The bath gets everyone eventually.",
+      choices: [
+        { label: 'You ever get bored out here?', next: 'bored' },
+        { label: '[Leave]', action: { type: 'endConvo' } },
+      ],
+    },
+    bored: {
+      text: "Bored. BORED. I have been standing in front of this door for six years. I have counted the stones in the wall. There are two hundred and fourteen. I have named twelve of them. That one is Colin. Colin is my best friend. Do not tell Colin I said that.",
       choices: [{ label: '[Leave]', action: { type: 'endConvo' } }],
     },
     attack: {
@@ -269,20 +276,30 @@ export const GRIBNAB: NPCDef = {
   dialogue: {
     parley: {
       caption: 'The Goblin King lowers his soap-crusted club. The bubbles settle.',
-      text: "Wait. Wait. You're not going to kill me? You're... you're offering me a truce? A... a partnership? You want to rule the bath together? ...I've never had a partner. I've only had subjects. And rubber ducks. This is... this is nice.",
+      text: "Wait. Wait. You're not going to kill me? You're... you're offering me a truce? A... a partnership? You want to rule the bath together? I have never had a partner. I have had subjects. I have had rubber ducks. The ducks do not talk back. Well — one does. But he is a liar. This is... this is nice. Do you like warm water? Please say you like warm water.",
       choices: [
         { label: '🫧 We rule the bath together. (Truce)', action: { type: 'bossParley', outcome: 'truce' } },
         { label: '⚔ No truce. This ends.', action: { type: 'bossParley', outcome: 'fight' } },
+        { label: 'Tell me about the ducks.', next: 'ducks' },
+        { label: 'Why the bath?', next: 'why_bath' },
       ],
     },
+    ducks: {
+      text: "The ducks. My ducks. Each one is a loyal subject. Each one is a FRIEND. That one is Sir Quacksley. That one is the Duchess of Squeaks. That one is... I do not remember his name, but he is VINCIBLE. They are all vincible. They are all I have.",
+      choices: [{ label: '[Leave]', action: { type: 'endConvo' } }],
+    },
+    why_bath: {
+      text: "Why the bath? Because the bath does not judge. The bath does not leave. The bath is WARM and it STAYS WARM and when you are the king of the bath, the bath listens to YOU. It is the only relationship that has never disappointed me. Except that one time. With the eel.",
+      choices: [{ label: '[Leave]', action: { type: 'endConvo' } }],
+    },
     pre_fight_soap: {
-      text: "Enter! You have soap? You do! Wonderful! Come in, come in! Don't mind the bubbles. Don't mind the ducks. Don't mind me. I am Gribnab, King of the Goblins, Lord of the Bath, Sovereign of Suds! And you are... in your underwear. Bold choice. I respect it.",
+      text: "Enter! You have soap? You DO! Wonderful! Oh, beautiful, beautiful soap! Come in, come in. Don't mind the bubbles. Don't mind the ducks. Don't mind me. I am Gribnab, King of the Goblins, Lord of the Bath, Sovereign of Suds! I have been soaking in this very tub for three hundred years and it has never once gone cold. And you are... in your underwear. Bold. Naked. I respect it more than you know.",
     },
     pre_fight_door: {
-      text: "You BROKE my door! That was a good door! That was an IRON door! Do you know how hard it is to get iron down here?! I am going to BATH you! I am going to bath you to DEATH!",
+      text: "You BROKE my door! That was a GOOD door! That was an IRON door, carried down through seventeen flooded tunnels by goblins who did not survive the trip! Do you know how hard it is to get iron down here?! Do you know how many buckets of bath water I had to trade?! I am going to BATH you! I am going to bath you until you are CLEAN and also DEAD!",
     },
     final_taunt: {
-      text: "You fight well for someone in underwear! I am almost proud! Almost! But the bath demands a sacrifice! And you are IT!",
+      text: "You fight well for someone in underwear! I am almost proud! Almost! But the bath demands a sacrifice and the water is getting cold, and you — YOU — are it. Every king needs a cautionary tale. Every bath needs a rubber duck. And you, my naked friend, are about to become BOTH.",
     },
   },
 };

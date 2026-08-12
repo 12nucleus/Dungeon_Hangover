@@ -227,6 +227,55 @@ export const SKILLS: Record<string, SkillDef> = {
     attackAbility: 'str', damageDice: '', damageType: 'bludgeoning',
     fxColor: 0x9aa0a8, fx: 'bash',
   },
+  // ── floor 50 — reworked enemy kits (kit identity + readability) ──
+  mold_spit: {
+    id: 'mold_spit', name: 'Mold Spit', icon: '🫠', kind: 'ranged',
+    desc: 'The blob hurls a wad of living mold. 1d4 poison; CON save DC 11 or Poisoned.',
+    range: 4, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'con', damageDice: '1d4', damageType: 'poison',
+    saveAbility: 'con', saveDC: 11, appliesCondition: 'poisoned', appliesRounds: 3, projectile: true,
+    fxColor: 0x9ad86a, fx: 'arcane',
+  },
+  goblin_arrow: {
+    id: 'goblin_arrow', name: 'Goblin Arrow', icon: '🏹', kind: 'ranged',
+    desc: 'A crude goblin arrow, fletched with stolen feathers. 1d6 piercing.',
+    range: 6, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'dex', damageDice: '1d6', damageType: 'piercing', projectile: true,
+    fxColor: 0xd8b46a, fx: 'arrow',
+  },
+  lunge_bite: {
+    id: 'lunge_bite', name: 'Lunge Bite', icon: '🐀', kind: 'melee',
+    desc: 'The rat hurls itself across the floor. 1d6 piercing from 2 tiles away.',
+    range: 2, aoeRadius: 0, cost: 'action', cooldown: 0,
+    attackAbility: 'dex', damageDice: '1d6', damageType: 'piercing',
+    fxColor: 0xc0504a, fx: 'blood',
+  },
+  tail_sweep: {
+    id: 'tail_sweep', name: 'Tail Sweep', icon: '🌀', kind: 'aoe',
+    desc: 'Baron Gnaw sweeps his tail in a full circle. 1d6+2 slashing to all adjacent foes; Prone on a hit. (Below 50% HP)',
+    range: 0, aoeRadius: 1, cost: 'action', cooldown: 2,
+    attackAbility: 'str', damageDice: '1d6+2', damageType: 'slashing',
+    selfCentered: true, appliesCondition: 'prone', appliesRounds: 1, hpBelowPct: 0.5,
+    fxColor: 0xff8a5a, fx: 'slash',
+  },
+  soap_storm: {
+    id: 'soap_storm', name: 'Soap Storm', icon: '🌊', kind: 'aoe',
+    desc: 'A foaming tidal wave of scalding soap: 2d6 bludgeoning to all foes within 3 tiles. CON save DC 13 for half; failures are Scalded AND Slippery. (Below 50% HP, once)',
+    range: 0, aoeRadius: 3, cost: 'action', cooldown: 0,
+    attackAbility: 'con', damageDice: '2d6', damageType: 'bludgeoning',
+    saveAbility: 'con', saveDC: 13, selfCentered: true, oncePerFight: true, hpBelowPct: 0.5,
+    appliesCondition: 'scalded', appliesRounds: 2,
+    appliesCondition2: 'slippery', appliesRounds2: 2,
+    fxColor: 0xffd6f0, fx: 'ice',
+  },
+  duck_swarm: {
+    id: 'duck_swarm', name: 'Duck Swarm', icon: '🦆', kind: 'buff',
+    desc: 'A chorus of rubber ducks floods the bath: 3 squeaky minions that apply Distracted on a hit. (Below 50% HP, once)',
+    range: 0, aoeRadius: 0, cost: 'action', cooldown: 0, selfOnly: true,
+    attackAbility: 'cha', damageDice: '', damageType: 'force',
+    summonId: 'duck_swarm', summonCount: 3, oncePerFight: true, hpBelowPct: 0.5,
+    fxColor: 0xffe066, fx: 'buff',
+  },
   // ── floor 50 — Boss Rat ──
   gnaw: {
     id: 'gnaw', name: 'Gnaw', icon: '🐀', kind: 'melee',
@@ -518,7 +567,7 @@ export interface Floor50Spawns {
 }
 
 /** factory templates for summoned minions (Combat.summon clones them) */
-const ratScheme = { skin: 0x6b4a2f, cloth: 0x9a7a55, accent: 0xc79a9a, hair: 0x140f0f, hood: false, monster: 'rat' as const };
+const ratScheme = { skin: 0x6b4a2f, cloth: 0x9a7a55, accent: 0xff4a3a, hair: 0x140f0f, hood: false, monster: 'rat' as const };
 export const SUMMON_TEMPLATES: Record<string, () => Unit> = {
   small_rat: () => mkSummon({
     name: 'Small Rat', title: 'Nest Rat', team: 'enemy', klass: 'goblin', pos: { x: 0, z: 0 },
@@ -542,6 +591,17 @@ export const SUMMON_TEMPLATES: Record<string, () => Unit> = {
     knownSkills: ['scimitar', 'shield_bash', 'shove'], moveRange: 6, xpValue: 30,
     scheme: { skin: 0x6f9c3f, cloth: 0x4a3a28, accent: 0x2e2418, hair: 0x1c1c1c, hood: false, orc: true, bulk: 0.9 },
     weapon: 'sword', equipment: { weapon: makeItem('goblin_spear') },
+  }),
+  // ── floor 50 — Gribnab's squeaky choir: 2 HP rubber ducks that apply
+  //    Distracted on a landed bite (duck_swarm, phase-2 summon) ──
+  duck_swarm: () => mkSummon({
+    name: 'Rubber Duck', title: 'Squeaky Minion', team: 'enemy', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 2, hp: 2, ac: 10, level: 1,
+    abilities: { str: 4, dex: 12, con: 8, int: 2, wis: 8, cha: 10 },
+    knownSkills: ['bite'], moveRange: 5, xpValue: 5,
+    onHit: { condition: 'distracted', chance: 1, rounds: 1, saveAbility: 'con', saveDC: 10 },
+    scheme: { skin: 0xffe066, cloth: 0xffb545, accent: 0xff7a1f, hair: 0xffe066, hood: false, bulk: 0.6, monster: 'rat' as const },
+    weapon: 'dagger',
   }),
 
   // ── party-side minions (spirit / beast / ghoul / champion summons) ──
@@ -614,12 +674,12 @@ function mkSummon(partial: Partial<Unit> & Pick<Unit, 'name' | 'title' | 'team' 
   };
 }
 
-const ratSmallScheme = { skin: 0x6b4a2f, cloth: 0x9a7a55, accent: 0xc79a9a, hair: 0x140f0f, hood: false, monster: 'rat' as const };
-const leechScheme = { skin: 0x5a2a3a, cloth: 0x3a1a28, accent: 0x9a4a5a, hair: 0x1a0a12, hood: false, monster: 'leech' as const };
-const giantLeechScheme = { skin: 0x7a3a4a, cloth: 0x4a2230, accent: 0xc06070, hair: 0x2a0f18, hood: false, monster: 'leech' as const, bulk: 1.2 };
-const moldScheme = { skin: 0x6a8a4a, cloth: 0x4a5a3a, accent: 0x9ac070, hair: 0x2a3a1a, hood: false, monster: 'blob' as const };
+const ratSmallScheme = { skin: 0x6b4a2f, cloth: 0x9a7a55, accent: 0xff4a3a, hair: 0x140f0f, hood: false, monster: 'rat' as const };
+const leechScheme = { skin: 0x5a2a3a, cloth: 0x3a1a28, accent: 0xd06070, hair: 0x1a0a12, hood: false, monster: 'leech' as const };
+const giantLeechScheme = { skin: 0x7a3a4a, cloth: 0x4a2230, accent: 0xd06070, hair: 0x2a0f18, hood: false, monster: 'leech' as const, bulk: 1.2 };
+const moldScheme = { skin: 0x7aa55a, cloth: 0x4a5a3a, accent: 0x9ac070, hair: 0x2a3a1a, hood: false, monster: 'blob' as const };
 const boneRatScheme = { skin: 0xd8d2be, cloth: 0x4a3a2a, accent: 0x9a9a9a, hair: 0x8fe3ff, hood: false, monster: 'rat' as const, bulk: 1.05 };
-const goblinGuardScheme = { skin: 0x6f9c3f, cloth: 0x4a3a28, accent: 0x2e2418, hair: 0x1c1c1c, hood: false, orc: true, bulk: 0.9 };
+const goblinGuardScheme = { skin: 0x6f9c3f, cloth: 0x6a5238, accent: 0x2e2418, hair: 0x1c1c1c, hood: false, orc: true, bulk: 0.9 };
 const gribnabScheme = { skin: 0x7a9c4a, cloth: 0x4a6a8a, accent: 0xff9ac0, hair: 0x101010, hood: false, orc: true, bulk: 1.2 };
 
 /**
@@ -697,6 +757,16 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
       equipment: { weapon: makeItem('goblin_spear') },
     }));
   };
+  const goblinArcher = (r: Rect, group: string) => {
+    const p = spot(r);
+    units.push(mkUnit({
+      name: 'Goblin Archer', title: 'Goblin Archer', team: 'enemy', klass: 'goblin', pos: p,
+      maxHp: 8, hp: 8, ac: 12, level: 2,
+      abilities: { str: 10, dex: 14, con: 11, int: 8, wis: 9, cha: 8 },
+      knownSkills: ['goblin_arrow'], moveRange: 6, xpValue: 30,
+      scheme: { ...goblinGuardScheme, hood: true }, weapon: 'bow', dormant: true, groupId: group,
+    }));
+  };
 
   // R3 — the sewer tunnel beside spawn is deliberately EMPTY: the player's
   // first fight should come on their terms (Room 4 nursery), not from mobs
@@ -736,8 +806,8 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
     name: 'Baron Gnaw', title: 'The Boss Rat', team: 'enemy', klass: 'goblin', pos: center(sp.bossRatLair),
     maxHp: 25, hp: 25, ac: 13, level: 3,
     abilities: { str: 14, dex: 16, con: 13, int: 4, wis: 10, cha: 6 },
-    knownSkills: ['gnaw', 'rat_summon', 'frenzy'], moveRange: 7, xpValue: 150,
-    scheme: { skin: 0x5a3a28, cloth: 0x8a6a4a, accent: 0xff2a18, hair: 0x140f0f, hood: false, monster: 'rat' as const, bulk: 1.3 },
+    knownSkills: ['gnaw', 'tail_sweep', 'rat_summon', 'frenzy'], moveRange: 7, xpValue: 150,
+    scheme: { skin: 0x5a3a28, cloth: 0x8a6a4a, accent: 0xff4a3a, hair: 0x140f0f, hood: false, monster: 'rat' as const, bulk: 1.3 },
     weapon: 'dagger', dormant: true, bossGroup: true, groupId: 'baron_gnaw',
     deathDrops: { itemIds: ['severed_finger', 'rusty_key'], gold: 10 },
   }));
@@ -747,7 +817,7 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
       name: 'Mold Blob', title: 'Living Wine Mold', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r6),
       maxHp: 5, hp: 5, ac: 10, level: 1,
       abilities: { str: 8, dex: 8, con: 10, int: 2, wis: 8, cha: 3 },
-      knownSkills: ['bite'], moveRange: 4, xpValue: 20,
+      knownSkills: ['mold_spit'], moveRange: 4, xpValue: 20,
       scheme: { ...moldScheme }, weapon: 'dagger', dormant: true, groupId: 'r6_mold',
     }));
   }
@@ -764,7 +834,7 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
     name: 'Large Rat', title: 'Den Tyrant', team: 'enemy', klass: 'goblin', pos: spot(sp.rooms.r12),
     maxHp: 10, hp: 10, ac: 12, level: 2,
     abilities: { str: 12, dex: 14, con: 11, int: 3, wis: 9, cha: 5 },
-    knownSkills: ['bite'], moveRange: 7, xpValue: 30,
+    knownSkills: ['lunge_bite', 'bite'], moveRange: 7, xpValue: 30,
     onHit: { condition: 'bleeding', chance: 1, rounds: 2, saveAbility: 'con', saveDC: 10 },
     scheme: { ...ratSmallScheme, bulk: 1.25 }, weapon: 'dagger', dormant: true, groupId: 'r12_rats',
   }));
@@ -777,10 +847,11 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
     knownSkills: ['bite'], moveRange: 6, xpValue: 50,
     scheme: { ...boneRatScheme }, weapon: 'dagger', dormant: true, groupId: 'r15_bone',
   }));
-  // R21 / R22 / R24 — goblin guards
+  // R21 / R22 / R24 — goblin guards (one r21 guard + the r22 guard are now
+  // archers — ranged kits break up the melee wall and give the AI kiting)
   goblinGuard(sp.rooms.r21, 'r21_guards');
-  goblinGuard(sp.rooms.r21, 'r21_guards');
-  goblinGuard(sp.rooms.r22, 'r22_guard');
+  goblinArcher(sp.rooms.r21, 'r21_guards');
+  goblinArcher(sp.rooms.r22, 'r22_guard');
   goblinGuard(sp.rooms.r24, 'r24_guards');
   goblinGuard(sp.rooms.r24, 'r24_guards');
   // R23 — giant leech + 2 sewer leeches
@@ -799,7 +870,7 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
     name: 'Gribnab', title: 'The Soapy', team: 'enemy', klass: 'goblin', pos: { ...sp.bossBathTile },
     maxHp: 60, hp: 60, ac: 16, level: 5,
     abilities: { str: 16, dex: 11, con: 14, int: 10, wis: 10, cha: 14 },
-    knownSkills: ['club_smash', 'soap_splash', 'bubble_shield', 'duck_distraction', 'bath_time', 'sovereign_sudds'],
+    knownSkills: ['club_smash', 'soap_splash', 'bubble_shield', 'duck_distraction', 'bath_time', 'sovereign_sudds', 'soap_storm', 'duck_swarm'],
     moveRange: 5, xpValue: 300, bathPos: { ...sp.bossBathTile },
     scheme: { ...gribnabScheme }, weapon: 'club', dormant: true, bossGroup: true, dropKey: 'golden',
     deathDrops: { itemIds: ['drowned_majesty', 'soap_crown'], gold: 50 },

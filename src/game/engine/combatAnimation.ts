@@ -16,6 +16,11 @@ import { unitWorld } from './visuals';
 import { clearHighlights, showMoveTiles } from './targeting';
 import { grantKey } from './dungeonSetup';
 import { offerLoot } from './loot';
+import { GRIBNAB_BARKS, BARON_BARKS, EASTER_EGG_LINES, MAIN_QUEST_F50 } from '../../levels/floor50Text';
+
+// art-designer contract: particles.ts gains FX.critBurst(ps, p). Guarded cast
+// keeps the build green before the helper lands (no-op until then).
+const fxCritBurst = (FX as Partial<typeof FX> & { critBurst?: (ps: unknown, p: THREE.Vector3) => void }).critBurst;
 
 /** global animation speed multiplier — 1 = normal, 0.05 = 20× fast.
  *  Dev/spectator aid; wired to the engine as `setAnimScale`. */
@@ -27,26 +32,44 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms * animSc
 // ══ main animation loop ════════════════════════════════════
 export async function animate(engine: any, ev: CombatEvent) {
   switch (ev.type) {
-    case 'log': engine.pushLog(ev.text, ev.kind); await delay(40); break;
+    case 'log': engine.pushLog(ev.text, ev.kind); await delay(25); break;
     case 'move': await animMove(engine, ev.unitId, ev.path); break;
     case 'melee': await animMelee(engine, ev.unitId, ev.targetId); break;
     case 'projectile': await animProjectile(engine, ev); break;
-    case 'skillfx': await animSkillFx(engine, ev.skill, ev.at, ev.targets); break;
+    case 'skillfx': {
+      await animSkillFx(engine, ev.skill, ev.at, ev.targets);
+      // Gribnab's phase-2 arsenal announces itself once per fight
+      if ((ev.skill.id === 'soap_storm' || ev.skill.id === 'duck_swarm') && !engine.flags?.has('grib_bark_phase2')) {
+        engine.setFlag?.('grib_bark_phase2');
+        void engine.narrate?.('f50_grib_phase2', GRIBNAB_BARKS.phase2, 4200);
+      }
+      break;
+    }
     case 'damage': {
       const v = engine.visuals.get(ev.unitId);
       if (v) { v.rig.anim.flinch = 1; refreshBar(engine, ev.unitId); }
-      await delay(120);
-      // Gribnab parley: first time he drops to ≤10% HP, he offers a truce
+      if (ev.crit) {
+        // big hit: heavy shake + burst + a brief hitstop + fullscreen flash
+        engine.iso.shake = Math.max(engine.iso.shake ?? 0, 0.55);
+        const target = engine.byId(ev.unitId);
+        if (target && fxCritBurst) fxCritBurst(engine.particles, unitWorld(engine, target.pos).clone().add(new THREE.Vector3(0, 0.9, 0)));
+        engine.critFlash = Date.now();
+        engine.emitSnapshot?.();
+        await delay(140);
+      }
+      await delay(90);
+      // Gribnab parley + boss HP-threshold barks (first crossing, once per fight)
       engine.maybeParley?.(ev.unitId);
+      barkOnHpThreshold(engine, ev.unitId);
       break;
     }
     case 'heal': {
       const u = engine.byId(ev.unitId);
       if (u) { FX.heal(engine.particles, unitWorld(engine, u.pos).add(new THREE.Vector3(0, 0.5, 0))); engine.audio.play('heal', 0.8); refreshBar(engine, ev.unitId); }
-      await delay(150);
+      await delay(110);
       break;
     }
-    case 'float': spawnFloater(engine, ev.unitId, ev.text, ev.cls); await delay(90); break;
+    case 'float': spawnFloater(engine, ev.unitId, ev.text, ev.cls); await delay(60); break;
     case 'death': {
       const v = engine.visuals.get(ev.unitId);
       if (v) {
@@ -63,9 +86,14 @@ export async function animate(engine: any, ev: CombatEvent) {
         engine.setFlag?.('gribnab_dead');
         engine.runStats.kills += 1;
         engine.pushLog('🛁 The Goblin King is dead. The bath is silent. The rubber ducks float, abandoned.', 'system');
+        void engine.narrate?.('f50_grib_death', GRIBNAB_BARKS.death, 4800);
+        // The Longest Morning — Gribnab is dealt with (death path)
+        engine.questLog?.progress?.('the_longest_morning');
+        engine.pushLog?.(MAIN_QUEST_F50.stages.gribnabDown, 'system');
       }
       if (slain?.name === 'Baron Gnaw') {
         engine.setFlag?.('boss_rat_dead');
+        void engine.narrate?.('f50_baron_death', BARON_BARKS.death, 4200);
       }
       if (slain?.name === 'The Spore Mother') {
         engine.setFlag?.('spore_mother_dead');
@@ -101,13 +129,21 @@ export async function animate(engine: any, ev: CombatEvent) {
       }
       // bone rat reassembly is handled model-side in combat.ts onDeath so
       // the fight correctly continues instead of ending mid-revival.
-      await delay(500);
+      await delay(350);
       break;
     }
     case 'summon': {
       // a new unit fades in (boss summons, Scrag hostile path)
       const u = ev.unit;
       engine.addUnit(u);
+      // Baron Gnaw's first nest-call barks once per fight
+      if (ev.summonerId) {
+        const sum = engine.byId(ev.summonerId);
+        if (sum?.name === 'Baron Gnaw' && !engine.flags?.has('baron_summon_barked')) {
+          engine.setFlag?.('baron_summon_barked');
+          void engine.narrate?.('f50_baron_summon', BARON_BARKS.summon, 4200);
+        }
+      }
       const sv = engine.visuals.get(u.id);
       if (sv) {
         sv.rig.group.scale.set(0.01, 0.01, 0.01);
@@ -162,7 +198,7 @@ export async function animate(engine: any, ev: CombatEvent) {
           engine.enqueue(engine.combat.endTurn());
         }
       }
-      await delay(280);
+      await delay(170);
       break;
     }
     case 'phase': {
@@ -175,7 +211,14 @@ export async function animate(engine: any, ev: CombatEvent) {
         break;
       }
       engine.phase = ev.phase;
-      if (ev.phase === 'defeat') engine.runStats.deaths += 1;
+      if (ev.phase === 'defeat') {
+        engine.runStats.deaths += 1;
+        // TPK juice: vignette + a random narrator line (once per defeat)
+        engine.tpkVignette = true;
+        const lineIdx = Math.floor(Math.random() * EASTER_EGG_LINES.tpk.length);
+        void engine.narrate?.(`f50_tpk_${lineIdx + 1}`, EASTER_EGG_LINES.tpk[lineIdx], 5200);
+        engine.emitSnapshot?.();
+      }
       if (ev.phase === 'combat') {
         // fresh fight: the first party turn must re-fire the phase banner
         engine.lastTurnTeam = null;
@@ -193,6 +236,7 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (ev.phase === 'explore') {
         engine.phaseBanner = null;    // fight over — no stale phase flash
         engine.hazardUsed?.clear();   // hazards reset per fight
+        if (engine.tpkVignette) { engine.tpkVignette = false; engine.emitSnapshot?.(); }
         engine.audio.setMusicDucked(false);
         if (engine.phase === 'explore') engine.audio.playMusic('music_ambient');  // back to the cellar
         // drops that piled up during the fight surface now
@@ -201,7 +245,7 @@ export async function animate(engine: any, ev: CombatEvent) {
       await delay(200);
       break;
     }
-    case 'dice': engine.showDiceRoll?.(ev.die, ev.total, ev.reason); break;
+    case 'dice': engine.showDiceRoll?.(ev.die, ev.total, ev.reason, 1400); break;
     case 'levelup': {
       const u = engine.byId(ev.unitId);
       if (u) {
@@ -630,6 +674,27 @@ function dropWeapon(engine: any, v: any) {
 export function enqueue(engine: any, events: CombatEvent[]) {
   engine.eventQueue.push(...events);
   void pump(engine);
+}
+
+/** boss HP-threshold barks — Gribnab's 75/50/25% lines fire once per fight on
+ *  the first crossing of each threshold (hp only moves down, so the deepest
+ *  newly-reached threshold wins on a big hit). Baron Gnaw's summon bark lives
+ *  beside the 'summon' event instead (it needs the summoner context). */
+function barkOnHpThreshold(engine: any, unitId: string) {
+  const u = engine.byId(unitId);
+  if (!u || !u.alive || u.team !== 'enemy') return;
+  if (u.name !== 'Gribnab') return;
+  const pct = u.hp / Math.max(1, u.maxHp);
+  if (pct <= 0.25 && !engine.flags?.has('grib_bark_25')) {
+    engine.setFlag?.('grib_bark_25');
+    void engine.narrate?.('f50_grib_25', GRIBNAB_BARKS.hp25, 4200);
+  } else if (pct <= 0.5 && !engine.flags?.has('grib_bark_50')) {
+    engine.setFlag?.('grib_bark_50');
+    void engine.narrate?.('f50_grib_50', GRIBNAB_BARKS.hp50, 4200);
+  } else if (pct <= 0.75 && !engine.flags?.has('grib_bark_75')) {
+    engine.setFlag?.('grib_bark_75');
+    void engine.narrate?.('f50_grib_75', GRIBNAB_BARKS.hp75, 4200);
+  }
 }
 
 /** pump the event queue — play one event at a time */

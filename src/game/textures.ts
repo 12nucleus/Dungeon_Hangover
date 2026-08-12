@@ -102,16 +102,20 @@ const painters: Record<string, Painter> = {
     noiseFill(ctx, rnd, S, '#2f6b2a', ['#3a7d33', '#265a22', '#47913d', '#1f4d1b']);
     for (let i = 0; i < 14; i++) px(ctx, rnd() * S, rnd() * S, 3, 3, '#55a348');
   },
-  water(ctx, rnd, S) {
-    noiseFill(ctx, rnd, S, '#2e6f9e', ['#2a6590', '#3880b3', '#235a82'], 8);
-    for (let i = 0; i < 8; i++) px(ctx, rnd() * S, rnd() * S, 10 + rnd() * 14, 2, '#7fb8d9');
+  water(ctx, rnd, S) {   // teal-shifted so dungeon pools read wet, not sky-blue
+    noiseFill(ctx, rnd, S, '#2b7a94', ['#276f88', '#348ea6', '#215f76'], 8);
+    for (let i = 0; i < 8; i++) px(ctx, rnd() * S, rnd() * S, 10 + rnd() * 14, 2, '#84cbd6');
   },
   snow(ctx, rnd, S) {
     noiseFill(ctx, rnd, S, '#e8edf2', ['#dde4ec', '#f4f7fa', '#cfd8e2']);
   },
+  // ── CONTRAST PASS (floor-50 readability): cave surfaces were so dark
+  // they crushed to black under the dungeon's dim ambient. Bases are
+  // lifted ~25% and the shade lists spread WIDER in value so a 64px tile
+  // still reads as texture (and as a tile boundary) at game scale.
   cave_stone(ctx, rnd, S) {
-    noiseFill(ctx, rnd, S, '#3a3a42', ['#2e2e36', '#46464e', '#38383f', '#2a2a32']);
-    ctx.strokeStyle = '#1e1e26'; ctx.lineWidth = 2;
+    noiseFill(ctx, rnd, S, '#484852', ['#37373f', '#5a5a66', '#41414b', '#30303a']);
+    ctx.strokeStyle = '#24242e'; ctx.lineWidth = 2;
     for (let i = 0; i < 6; i++) {
       ctx.beginPath();
       let x = rnd() * S, y = rnd() * S;
@@ -119,19 +123,44 @@ const painters: Record<string, Painter> = {
       for (let j = 0; j < 5; j++) { x += (rnd() - 0.5) * 20; y += rnd() * 16; ctx.lineTo(x, y); }
       ctx.stroke();
     }
-    for (let i = 0; i < 12; i++) px(ctx, rnd() * S, rnd() * S, 2, 2, '#4a4a55');
+    for (let i = 0; i < 12; i++) px(ctx, rnd() * S, rnd() * S, 2, 2, '#63636f');
   },
   cave_floor(ctx, rnd, S) {
-    noiseFill(ctx, rnd, S, '#4a3a2a', ['#3d2f22', '#574433', '#422f1f', '#2e2318']);
-    for (let i = 0; i < 15; i++) px(ctx, rnd() * S, rnd() * S, 3, 3, '#5d4a38');
+    noiseFill(ctx, rnd, S, '#5c4834', ['#493826', '#6f5842', '#523c28', '#3b2d1e']);
+    for (let i = 0; i < 15; i++) px(ctx, rnd() * S, rnd() * S, 3, 3, '#7a6148');
   },
   gravel(ctx, rnd, S) {
-    noiseFill(ctx, rnd, S, '#5a554a', ['#4e4a42', '#666058', '#524e46']);
-    for (let i = 0; i < 25; i++) px(ctx, rnd() * S, rnd() * S, 2, 2, '#6e6860');
+    noiseFill(ctx, rnd, S, '#706a5d', ['#5f5a4f', '#807a70', '#666158', '#514d45']);
+    for (let i = 0; i < 25; i++) px(ctx, rnd() * S, rnd() * S, 2, 2, '#8b8378');
   },
-  dark_water(ctx, rnd, S) {
-    noiseFill(ctx, rnd, S, '#0a1a2e', ['#081424', '#0c2040', '#061020'], 8);
-    for (let i = 0; i < 6; i++) px(ctx, rnd() * S, rnd() * S, 8 + rnd() * 10, 1, '#163a55');
+  // ── floor-50 room materials (mirrors voxelTerrain DEFAULT_PALETTE so
+  // the textured fallback path keeps the same room identities) ──
+  bone(ctx, rnd, S) {   // rat nursery / bone pit — WARM honey ivory
+    noiseFill(ctx, rnd, S, '#c0a878', ['#a98f5e', '#d6bd8f', '#9c8454', '#e0c89c']);
+    for (let i = 0; i < 18; i++) px(ctx, rnd() * S, rnd() * S, 2 + rnd() * 3, 2, '#ecd9ae');
+  },
+  sludge(ctx, rnd, S) {  // Gnaw's den — RICH GREEN wet muck, the darkest floor
+    noiseFill(ctx, rnd, S, '#4a7c3e', ['#3a6130', '#5b9148', '#33552a', '#67a251']);
+    for (let i = 0; i < 10; i++) px(ctx, rnd() * S, rnd() * S, 4 + rnd() * 6, 3, '#7db565');
+  },
+  marble(ctx, rnd, S) { // throne + bath — COOL sea-blue, the brightest floor
+    noiseFill(ctx, rnd, S, '#9fb8c8', ['#8ca6b8', '#b3c9d6', '#839db0', '#bfd2de']);
+    ctx.strokeStyle = '#7d99ad'; ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {  // veining
+      ctx.beginPath();
+      let x = rnd() * S, y = rnd() * S;
+      ctx.moveTo(x, y);
+      for (let j = 0; j < 5; j++) { x += (rnd() - 0.5) * 28; y += rnd() * 18; ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+  },
+  moss(ctx, rnd, S) {   // fungal alcove — VIVID spore-green
+    noiseFill(ctx, rnd, S, '#558a3e', ['#3f6f2c', '#6aa34d', '#487c33', '#7cb55d']);
+    for (let i = 0; i < 16; i++) px(ctx, rnd() * S, rnd() * S, 2, 2, '#8fc46e');
+  },
+  dark_water(ctx, rnd, S) {  // sewer water — murky TEAL, not blue-black
+    noiseFill(ctx, rnd, S, '#0f2a28', ['#0c2320', '#143a36', '#0a1c1a'], 8);
+    for (let i = 0; i < 6; i++) px(ctx, rnd() * S, rnd() * S, 8 + rnd() * 10, 1, '#2a6a63');
   },
 };
 

@@ -12,6 +12,7 @@
 import type { GridPos } from '../game/types';
 import type { Rect } from './levelTypes';
 import { mulberry32 } from './gen/dungeonGen';
+import { MAIN_QUEST_F50, EASTER_EGG_LINES } from './floor50Text';
 
 /** Narrator's first-entry line for each room (bible verbatim). */
 export const ROOM_NARRATION: Record<string, string> = {
@@ -183,6 +184,14 @@ const consumeAnySoap = (e: GameEngineLike) => {
 /** a soap-keyed gate: the door opens if the player has soap OR the
  *  str/plumber force path succeeded (both feed soap_gate_open). */
 const isPlumber = (e: GameEngineLike) => e.hasClassSkill('plumber');
+
+/** The Longest Morning — the bath door beat (logs + narrates once). */
+function mqDoorBeat(e: GameEngineLike) {
+  if (e.hasFlag('mq_door_logged')) return;
+  e.setFlag('mq_door_logged');
+  e.pushLog(MAIN_QUEST_F50.stages.doorOpen, 'system');
+  void e.narrate('f50_mq_door', MAIN_QUEST_F50.stages.doorOpen, 4200);
+}
 
 /** count how many of a flag family are set (e.g. gamble_1..3) */
 function flagCount(e: GameEngineLike, prefix: string): number {
@@ -782,6 +791,26 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         void e.narrate('f50_well', 'Down you go. The well is a throat. The throat swallows. You land in waist-deep water — Room 7, the flooded passage.', 3600);
       },
     });
+    // ── Well Wish easter egg: 1 gold, a seeded coin-flip (repeatable while
+    //    the party has gold — the seeded rng replays the same outcomes on a
+    //    loaded run). ──
+    out.push({
+      id: 'well_wish', pos: { x: (r.x0 + r.x1) >> 1, z: (r.z0 + r.z1) >> 1 }, radius: 2,
+      label: '[R] Make a wish in the well (1 gold)',
+      visibleIf: (e) => e.gold >= 1,
+      run: (e) => {
+        e.addGold(-1);
+        if (rng() < 0.5) {
+          const greg = e.combat!.living('party')[0];
+          if (greg) e.applyCondition(greg.id, 'blessed', 5);
+          e.pushLog('The coin vanishes into the dark water. A warm tingle climbs your spine — Blessed, 5 rounds.', 'system');
+          void e.narrate('f50_well_wish', EASTER_EGG_LINES.wellWish, 4200);
+        } else {
+          e.pushLog('The coin vanishes into the dark water. Nothing happens. The well keeps the gold anyway.', 'system');
+          void e.narrate('f50_well_wish_fail', EASTER_EGG_LINES.wellWishFail, 3600);
+        }
+      },
+    });
     out.push({
       id: 'well_drop_finger', pos: { x: (r.x0 + r.x1) >> 1, z: r.z1 }, radius: 2,
       label: '[R] Drop the severed finger into the well',
@@ -916,6 +945,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         e.setFlag('gribnab_door_open');
         e.setFlag('knocked');
         e.pushLog('You knock. The humming stops. A voice like damp velvet: "ENTER! You have SOAP! Wonderful!"', 'system');
+        mqDoorBeat(e);
       },
     });
     out.push({
@@ -928,6 +958,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
           e.setFlag('door_forced');
           e.setFlag('made_noise');
           void e.narrate('f50_forced', 'The iron door shrieks and gives. Somewhere inside, a goblin king is going to be VERY upset about this.', 3400);
+          mqDoorBeat(e);
         } else {
           e.pushLog('You bounce off the iron door. The door does not bounce.', 'system');
         }
@@ -946,6 +977,17 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         grant(e, ['rubber_duck']);
         e.playSfx('screech', 0.4);
         e.pushLog('SQUEAK. The duck is taken. The duck is magnificent.', 'system');
+        // ── Duck Choir easter egg: collect all four and the cellar sings ──
+        // (the 4th duck's did_ flag is set after run() returns, so 3 flags
+        // set means this IS the fourth and final duck).
+        if (flagCount(e, 'did_squeeze_duck_') >= 3) {
+          e.runStats!.secretsFound += 1;
+          e.addGold(7);
+          const greg = e.combat!.living('party')[0];
+          if (greg) e.applyCondition(greg.id, 'blessed', 10);
+          e.pushLog('🦆 The four ducks, united, sing a chord the bath has never heard. +7 gold, Blessed 10 rounds.', 'system');
+          void e.narrate('f50_duck_choir', EASTER_EGG_LINES.duckChoir, 5200);
+        }
       });
     });
     once('take_towel', r.x0, r.z0, '[R] Take the towel', (e) => {
@@ -961,9 +1003,27 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       label: '[R] Climb the stairs to Floor 49',
       visibleIf: (e) => e.hasFlag('gribnab_dead') || e.hasFlag('gribnab_befriended'),
       run: (e) => {
+        // The Longest Morning — the run's spine quest completes at the exit
+        e.completeQuest('the_longest_morning');
+        e.pushLog(MAIN_QUEST_F50.stages.departure, 'system');
         void e.narrate('f50_departure', 'The staircase is cold. The staircase is stone. The staircase goes UP. You climb away from the bath. You climb away from the soap. You climb toward Floor 49. You climb toward the LIGHT.', 5600);
         // real floor transition — the run continues one floor up
         e.goToFloor?.(49);
+      },
+    });
+  }
+
+  // ── R24 — the chandelier callback easter egg (the r1 "marry a chandelier"
+  //    beat pays off in the throne antechamber, above the mezzanine). ──
+  {
+    const r = R('r24');
+    out.push({
+      id: 'admire_chandelier', pos: { x: (r.x0 + r.x1) >> 1, z: (r.z0 + r.z1) >> 1 }, radius: 2,
+      label: '[R] Admire the chandelier',
+      once: true,
+      run: (e) => {
+        e.runStats!.secretsFound += 1;
+        void e.narrate('f50_chandelier', EASTER_EGG_LINES.chandelier, 4600);
       },
     });
   }

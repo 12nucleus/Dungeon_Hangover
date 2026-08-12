@@ -9,6 +9,8 @@ import { skillById } from '../skillLookup';
 import { setWeapon } from '../characters';
 import { SaveManager, SettingsManager, SAVE_VERSION_NUMBER } from '../save';
 import type { GameSettings, SaveData } from '../save';
+import { QUESTS } from '../quest';
+import { MAIN_QUEST_F50 } from '../../levels/floor50Text';
 import { unitWorld } from './visuals';
 import { clearHighlights, showTargeting } from './targeting';
 import { attachHeroTorch } from './dungeonSetup';
@@ -177,6 +179,10 @@ export function startNewGame(engine: any, slotId: string) {
   engine.currentSlotId = slotId;
   engine.clearLoot?.();   // a fresh run starts with no loot offers
   engine.stopVo?.();      // no stray voice-over may survive into the new run
+  // The Longest Morning — floor 50's main quest anchors every fresh run. Its
+  // opening narration is deferred to onIntroComplete (the title sequence owns
+  // the air until the intro lands the party in the cellar).
+  startFloor50Quest(engine);
   enterDungeon(engine);
 }
 
@@ -235,6 +241,9 @@ export function loadGame(engine: any, slotId: string): boolean {
   engine.gold = data.gold;
   engine.inventory = data.inventory.map((i: any) => clone(i));
   engine.questLog.load(data.questStates);
+  // save-compat: runs saved before the quest existed get it started silently
+  // (no narration on the load path — the player is mid-run, not on a beat).
+  startFloor50Quest(engine, true);
   engine.bonfirePos = data.bonfirePos ? { ...data.bonfirePos } : null;
   engine.bonfireLit = data.bonfireLit;
   engine.defeatedSpecialMobs = new Set(data.defeatedSpecialMobs);
@@ -295,6 +304,21 @@ export function loadGame(engine: any, slotId: string): boolean {
 
 function clone<T>(x: T): T {
   return JSON.parse(JSON.stringify(x)) as T;
+}
+
+/** Start floor-50's main quest (additive, save-compatible). `silent` skips
+ *  narration (load path); the fresh-run narration plays in onIntroComplete. */
+function startFloor50Quest(engine: any, silent = false) {
+  if (engine.floorNumber !== 50) return;
+  if (engine.questLog?.get?.('the_longest_morning')) return;
+  engine.questLog?.start?.('the_longest_morning');
+  engine.pushLog?.(`📜 Quest started: ${QUESTS['the_longest_morning']?.name ?? 'The Longest Morning'}`, 'system');
+  engine.emitSnapshot?.();
+  if (!silent) {
+    // narration deferred to engine.onIntroComplete (the title sequence owns
+    // the air until the intro lands the party in the cellar)
+    void engine.narrate?.('f50_mq_start', MAIN_QUEST_F50.stages.start, 5200);
+  }
 }
 
 function partyName(engine: any): string {

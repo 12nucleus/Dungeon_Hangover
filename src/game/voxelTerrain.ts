@@ -129,6 +129,13 @@ export function buildVoxelTerrain(
     list.push(g);
     boxCount++;
   };
+  /** multiply a packed hex colour by a scalar (per-tile value jitter) */
+  const scaleHex = (hex: number, f: number): number => {
+    const r = Math.min(255, Math.round(((hex >> 16) & 0xff) * f));
+    const g = Math.min(255, Math.round(((hex >> 8) & 0xff) * f));
+    const b = Math.min(255, Math.round((hex & 0xff) * f));
+    return (r << 16) | (g << 8) | b;
+  };
   const pushPlane = (
     list: THREE.BufferGeometry[],
     sx: number, sz: number,
@@ -188,7 +195,13 @@ export function buildVoxelTerrain(
     if (water?.[x]?.[z]) continue;
     const { wx, wz } = toWorld(x, z);
     const h = heights[x][z];
-    const matCol = opts.floorPalette(floorMats[x][z]);
+    // per-TILE value jitter (±12%): neighbouring tiles differ in brightness
+    // so the 1×1 grid stays countable at game scale without drawing grid
+    // lines. One hash per tile — the inner voxel loop stays allocation-free.
+    const matCol = scaleHex(
+      opts.floorPalette(floorMats[x][z]),
+      0.88 + hash(x * 7 + 13, z * 11 + 5, (opts.seed | 0) + 21) * 0.24,
+    );
     const cols = Math.max(1, Math.round(TILE / floorVox));
     for (let cx = 0; cx < cols; cx++) {
       for (let cz = 0; cz < cols; cz++) {
@@ -459,26 +472,40 @@ export function carveRiver(
   return water;
 }
 
-/** Default material→color palette — a gray hewn-rock cavern. */
+/**
+ * Default material→color palette — a gray hewn-rock cavern.
+ *
+ * CONTRAST PASS: every floor tone was lifted ~25% (the dungeon's ambient is
+ * deliberately low, so the palette has to carry the readability) and each
+ * floor-50 room material was pushed onto its OWN hue so a room's identity is
+ * legible from the floor alone at BG3 camera distance:
+ *   bone   → warm ivory (brightest warm)     marble → cool blue-grey (brightest cool)
+ *   sludge → green wet muck (darkest)        moss   → spore-lit violet-grey
+ * Walls stay a full value-step below every floor tone so they read as
+ * recessed rock instead of merging with the ground.
+ */
 export const DEFAULT_PALETTE: Record<string, number> = {
   // floors — neutral gray rock, slightly warmer in patches, never red/brown
-  cave_floor: 0x6b6a68,
-  cave_stone: 0x74736f,
-  gravel:     0x5e5d5b,
-  stone:      0x6a6a6d,
-  dirt:       0x51504a,
-  sand:       0x8d8473,
-  grass:      0x4d6b3a,
-  // floor 50 — sewer cellar: mossy fungal floors + pale marble,
-  // bone-white nurseries/bone pits + the boss lair's dark wet muck
-  moss:       0x46503a,
-  marble:     0x8d8a86,
-  bone:       0x8d8578,
-  sludge:     0x4a443a,
+  cave_floor: 0x8a8075,
+  cave_stone: 0x94897a,
+  gravel:     0x7a7468,
+  stone:      0x7e8490,
+  dirt:       0x6e5c4a,
+  sand:       0xb0a078,
+  grass:      0x5f8f3e,
+  // floor 50 — sewer cellar: vivid spore-green fungal floors + pale cool
+  // marble, warm honey-ivory nurseries/bone pits + the boss lair's wet green
+  // muck. VIVID-COLOR PASS: hues are real and saturated so the lit render
+  // keeps its color instead of washing out to gray (ACES tonemapping + cool
+  // ambient light both eat saturation, so the palette has to over-deliver).
+  moss:       0x558a3e,
+  marble:     0x9fb8c8,
+  bone:       0xc0a878,
+  sludge:     0x4a7c3e,
   // walls — darker gray so they read as recessed rock from the lighter floor
-  wall_dark:   0x3a3a3e,
-  wall_light:  0x4a4a4e,
-  wall_moss:   0x3d4732,
+  wall_dark:   0x48464e,
+  wall_light:  0x5e5a62,
+  wall_moss:   0x4a6a48,
 };
 /**
  * Default palette lookup. Walls are mapped to the darker "wall_*" tones
