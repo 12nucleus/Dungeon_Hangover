@@ -45,7 +45,7 @@ export class Combat {
     return this.units.find((u) => u.id === this.turnOrder[this.activeIdx]) ?? null;
   }
   byId(id: string) { return this.units.find((u) => u.id === id) ?? null; }
-  living(team: 'party' | 'enemy') { return this.units.filter((u) => u.alive && u.team === team); }
+  living(team: 'party' | 'enemy') { return this.units.filter((u) => u.alive && !u.unconscious && u.team === team); }
 
   private summonSeq = 0;
 
@@ -272,9 +272,9 @@ export class Combat {
       ev.push({ type: 'float', unitId: u.id, text: `☠ -${dmg.total}`, cls: 'dmg' });
       ev.push({ type: 'log', text: `${u.name} suffers ${dmg.total} ${dot.type} damage (${c.name})`, kind: 'hit' });
       if (u.hp <= 0 && u.alive) ev.push(...this.onDeath(u));
-      if (!u.alive) {
-        // died to DOT at turn start: still emit the turn event so the pump
-        // auto-advances the rotation (the 'turn' handler skips dead units).
+      if (!u.alive || u.unconscious) {
+        // died (or was knocked out) to DOT at turn start: still emit the turn
+        // event so the pump auto-advances the rotation past the downed unit.
         ev.push({ type: 'turn', unitId: u.id, round: this.round });
         return ev;
       }
@@ -341,11 +341,11 @@ export class Combat {
   endTurn(): CombatEvent[] {
     const ev: CombatEvent[] = [];
     if (!this.inCombat) return ev;
-    // find next living
+    // find next living (skips dead AND knocked-out units)
     for (let i = 1; i <= this.turnOrder.length; i++) {
       const idx = (this.activeIdx + i) % this.turnOrder.length;
       const u = this.byId(this.turnOrder[idx])!;
-      if (!u.alive) continue;
+      if (!u.alive || u.unconscious) continue;
       if (idx <= this.activeIdx) this.round++;
       this.activeIdx = idx;
       break;
@@ -394,6 +394,16 @@ export class Combat {
           if (u.team !== 'enemy' || !u.alive || u.bossGroup) continue;
           if (u.groupId) u.dormant = true;
           else u.alive = false; // summoned minions fade on victory
+        }
+        // knocked-out companions stir and get back up with 1 HP when the
+        // fight is won (reviveable earlier by a heal; otherwise auto-wake).
+        for (const u of this.units) {
+          if (u.team !== 'party' || !u.unconscious) continue;
+          u.unconscious = false;
+          u.hp = Math.max(1, u.hp);
+          u.conditions = [];
+          ev.push({ type: 'revive', unitId: u.id });
+          ev.push({ type: 'log', text: `${u.name} stirs and gets back up with 1 HP.`, kind: 'system' });
         }
         this.phase = 'explore';
         ev.push({ type: 'log', text: '— ✓ Area secured. —', kind: 'system' });
@@ -860,6 +870,12 @@ export class Combat {
         ev.push({ type: 'skillfx', skill: s, at: center, targets: targets.map((x) => x.id) });
         ev.push({ type: 'heal', unitId: t.id, amount: amt });
         ev.push({ type: 'log', text: `${t.name} heals ${amt} HP (${heal.expr}: [${heal.rolls.join(',')}])`, kind: 'heal' });
+        // a heal revives a knocked-out companion
+        if (t.unconscious) {
+          t.unconscious = false;
+          ev.push({ type: 'revive', unitId: t.id });
+          ev.push({ type: 'log', text: `${t.name} is revived!`, kind: 'system' });
+        }
       }
       return ev;
     }
@@ -1072,6 +1088,17 @@ export class Combat {
       t.conditions = [];
       out.push({ type: 'log', text: '🦴 The bones RATTLE. The Bone Rat reassembles!', kind: 'system' });
       out.push({ type: 'float', unitId: t.id, text: 'REASSEMBLED', cls: 'dmg' });
+      return out;
+    }
+    // companions never truly die — they fall unconscious (reviveable, and they
+    // wake with 1 HP once the fight ends if nobody picks them up).
+    if (t.companion) {
+      t.unconscious = true;
+      t.hp = 0;
+      out.push({ type: 'death', unitId: t.id });
+      out.push({ type: 'float', unitId: t.id, text: '💤 Knocked out!', cls: 'debuff' });
+      out.push({ type: 'log', text: `${t.name} collapses — unconscious but alive.`, kind: 'system' });
+      out.push(...this.checkEnd());
       return out;
     }
     t.alive = false;

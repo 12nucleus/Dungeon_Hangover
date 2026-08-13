@@ -230,6 +230,8 @@ export interface Unit {
   aiControlled?: boolean;
   /** temporary quest-bound companion — departs at the next floor transition */
   companion?: boolean;
+  /** knocked out (0 HP) but not dead — reviveable; auto-wakes after combat */
+  unconscious?: boolean;
   // ── idle patrolling (M8) ──
   /** home tile the mob patrols around (anchor point) */
   home?: GridPos;
@@ -331,6 +333,7 @@ export type CombatEvent =
   | { type: 'float'; unitId: string; text: string; cls: string }
   | { type: 'save'; unitId: string; success: boolean; total: number }
   | { type: 'death'; unitId: string }
+  | { type: 'revive'; unitId: string }
   | { type: 'turn'; unitId: string; round: number }
   | { type: 'phase'; phase: GamePhase }
   | { type: 'dice'; die: string; total: number; reason: string }

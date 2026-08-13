@@ -69,15 +69,37 @@ export async function animate(engine: any, ev: CombatEvent) {
       await delay(110);
       break;
     }
+    case 'revive': {
+      // a knocked-out companion stands back up — switch to idle and leave the
+      // death state for updateRig's "revived/reset" pass to fully undo.
+      const v = engine.visuals.get(ev.unitId);
+      const u = engine.byId(ev.unitId);
+      if (v) {
+        v.rig.anim.mode = 'idle';
+        v.rig.anim.t = 0;
+        v.rig.anim.crouch = 0;
+        v.bar.style.display = '';
+        v.dustDone = false;
+      }
+      if (u) { FX.buff(engine.particles, unitWorld(engine, u.pos).add(new THREE.Vector3(0, 0.5, 0))); engine.audio.play('heal', 0.8, 1.3); refreshBar(engine, ev.unitId); }
+      await delay(120);
+      break;
+    }
     case 'float': spawnFloater(engine, ev.unitId, ev.text, ev.cls); await delay(60); break;
     case 'death': {
       const v = engine.visuals.get(ev.unitId);
+      const slain = engine.byId(ev.unitId);
       if (v) {
-        v.rig.anim.mode = 'dead'; v.rig.anim.t = 0; v.bar.style.display = 'none';
-        dropWeapon(engine, v);
+        v.rig.anim.mode = 'dead'; v.rig.anim.t = 0;
+        if (slain?.unconscious) {
+          // knocked out, not dead — keep the bar visible (reads 0 HP) and hold
+          // onto the weapon; the 'revive' event will stand them back up.
+        } else {
+          v.bar.style.display = 'none';
+          dropWeapon(engine, v);
+        }
       }
       engine.audio.play('sword_hit', 0.4, 0.6);
-      const slain = engine.byId(ev.unitId);
       if (slain?.dropKey) grantKey(engine, slain.dropKey);
       if (slain?.bossGroup || slain?.name === 'Baron Gnaw' || slain?.name === 'Gribnab') {
         engine.defeatedSpecialMobs.add(slain.id);
@@ -178,12 +200,14 @@ export async function animate(engine: any, ev: CombatEvent) {
           engine.emitSnapshot();
         }
         const aiParty = u.team === 'party' && u.aiControlled;
-        if (u.team === 'party' && engine.phase === 'combat' && !aiParty) showMoveTiles(engine);
+        const downed = !u.alive || u.unconscious;
+        if (u.team === 'party' && engine.phase === 'combat' && !aiParty && !downed) showMoveTiles(engine);
         // M8: enemy turns AND ai-controlled companions are driven by the AI —
         // resolve the full turn (skills + movement, then advance initiative)
-        // right here so the turn actually resolves instead of stalling.
-        if ((u.team === 'enemy' || aiParty) && engine.combat.inCombat) {
-          if (u.alive) {
+        // right here so the turn actually resolves instead of stalling. Dead or
+        // knocked-out units auto-advance past themselves (endTurn skips them).
+        if ((u.team === 'enemy' || aiParty || downed) && engine.combat.inCombat) {
+          if (u.alive && !u.unconscious) {
             const aiEvents: CombatEvent[] = [];
             for (let i = 0; i < 8; i++) {
               const step = aiParty ? engine.combat.partyAiStep() : engine.combat.aiStep();

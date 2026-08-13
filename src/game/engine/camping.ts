@@ -67,7 +67,10 @@ export function restAtBonfire(engine: any, idx = 0) {
   engine.audio.play('heal', 0.9);
   engine.restingAtBonfire = true;
 
-  for (const u of engine.combat.living('party')) {
+  for (const u of engine.combat.units) {
+    if (u.team !== 'party') continue;
+    u.alive = true;
+    u.unconscious = false;
     u.hp = effMaxHp(u);
     u.conditions = [];
     // resting at the bonfire fully resets action points (action/bonus/move)
@@ -77,6 +80,9 @@ export function restAtBonfire(engine: any, idx = 0) {
     u.movementLeft = u.moveRange;
     u.cooldowns = {};
     (u as any).restedAtBonfire = true;
+    // stand back up any knocked-out companion
+    const v = engine.visuals.get(u.id);
+    if (v) { v.rig.anim.mode = 'idle'; v.rig.anim.death = undefined; v.bar.style.display = ''; }
   }
 
   // NOTE: resting does NOT revive slain enemies or rebuild destroyed props —
@@ -188,22 +194,35 @@ export function respawn(engine: any) {
   engine.combat.round = 1;
 
   // `living('party')` excludes dead Greg — iterate all party units so defeat
-  // can actually recover the party.
+  // can actually recover the party. Each member gets its own walkable tile so
+  // Greg + companions/summons don't stack on one spot (and an unconscious
+  // companion wakes back up at the fire, not stranded at their old cell).
+  const used = new Set<string>();
+  const offsets = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [2, 0], [0, 2], [-2, 0], [0, -2]];
   for (const u of engine.combat.units) {
     if (u.team !== 'party') continue;
     u.alive = true;
+    u.unconscious = false;
     u.hp = effMaxHp(u);
     u.conditions = [];
     u.hasAction = true;
     u.hasBonus = true;
     u.movementLeft = u.moveRange;
-    u.pos = { ...spot };
+    let pos: GridPos = { ...spot };
+    for (const [dx, dz] of offsets) {
+      const tx = spot.x + dx, tz = spot.z + dz;
+      if (used.has(`${tx},${tz}`)) continue;
+      if (engine.world.isWalkable(tx, tz) && !engine.world.blocked[tx]?.[tz]) { pos = { x: tx, z: tz }; break; }
+    }
+    used.add(`${pos.x},${pos.z}`);
+    u.pos = pos;
     const v = engine.visuals.get(u.id);
     if (v) {
-      const wp = unitWorld(engine, spot);
+      const wp = unitWorld(engine, pos);
       v.rig.group.position.copy(wp);
       v.rig.group.userData.baseY = wp.y;
       v.rig.anim.mode = 'idle';
+      v.rig.anim.death = undefined;
       v.rig.anim.t = 0;
       v.bar.style.display = '';
       v.dustDone = false;
