@@ -160,6 +160,8 @@ export interface Unit {
   level: number;
   xp: number;             // accumulated experience
   skillPoints: number;    // unspent (used by a later chunk)
+  /** unspent ability points (granted on sobriety level-ups, spend on abilities) */
+  abilityPoints?: number;
   equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; arms?: import('./items').Item; belt?: import('./items').Item; cloak?: import('./items').Item; trinket?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item };
   maxHp: number;
   hp: number;
@@ -289,7 +291,7 @@ export interface UISnapshot {
   /** active interactable prompt, e.g. "[E] Drink from the puddle" */
   interactPrompt?: string | null;
   /** quest log entries for the J panel */
-  quests?: { id: string; name: string; stage: string; desc: string }[];
+  quests?: { id: string; name: string; stage: string; desc: string; rewardGold: number; rewardItems: { icon: string; name: string }[]; xpReward: number }[];
   /** vendor shop panel (Floor 49 Spore Merchant) */
   showShop?: boolean;
   shopNpcName?: string;

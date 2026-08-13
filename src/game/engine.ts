@@ -28,6 +28,7 @@ import { type NPCDef, type DialogueAction } from './npc';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { QuestLog, QUESTS } from './quest';
 import { MAIN_QUEST_F50 } from '../levels/floor50Text';
+import { ABILITY_LABELS } from './abilityLabels';
 import { shopStockFor, shopPriceFor } from './shop';
 import { CutsceneDirector, setupTitleScene, runTitleNarration, type CutsceneHost } from './cutscenes/index';
 
@@ -2422,6 +2423,7 @@ export class GameEngine {
       hero.level = 1;
       hero.xp = 0;
       hero.skillPoints = 0;
+      hero.abilityPoints = 0;
       hero.maxHp = 24;
       hero.hp = 24;
       // Level-gated knowledge: at Lv1 the hero only knows the 2 skills they
@@ -3060,6 +3062,20 @@ export class GameEngine {
     }
     this.pushLog(`${u.name} learns ${node.name} from the ${node.branch} branch!`, 'system');
     this.audio.play('heal', 0.9, 1.3);
+    this.emitSnapshot();
+  }
+
+  /** spend one ability point (from a sobriety level-up) to raise an ability.
+   *  Max 20, D&D-style. */
+  spendAbilityPoint(unitId: string, ability: Ability) {
+    const u = this.byId(unitId);
+    if (!u || u.team !== 'party') return;
+    if ((u.abilityPoints ?? 0) <= 0) { this.setHoverInfoOnce('No ability points to spend.'); return; }
+    if ((u.abilities[ability] ?? 10) >= 20) { this.setHoverInfoOnce('That ability is already at its cap (20).'); return; }
+    u.abilityPoints = (u.abilityPoints ?? 0) - 1;
+    u.abilities[ability] += 1;
+    this.pushLog(`${u.name} raises ${ABILITY_LABELS[ability]} to ${u.abilities[ability]}.`, 'system');
+    this.audio.play('ui_click', 0.6);
     this.emitSnapshot();
   }
 
@@ -3765,6 +3781,12 @@ export class GameEngine {
           this.pendingTalk = null;
           const entry = this.npcs.find((n) => n.npcId === npcId);
           if (entry && Combat.dist(u.pos, entry.pos) <= 1.5) this.talkToNpc(npcId);
+          else {
+            // a companion in the party (e.g. the Hermit) is a unit, not a
+            // static NPC — resolve the dialogue against the unit's position
+            const comp = this.combat.units.find((x) => x.companion && x.npcId === npcId && x.alive && !x.unconscious);
+            if (comp && Combat.dist(u.pos, comp.pos) <= 1.5) this.talkToNpc(npcId);
+          }
         }
       }
           else FX.dust(this.particles, pos.clone());
@@ -4020,6 +4042,9 @@ export class GameEngine {
         name: q.name,
         stage: q.stage,
         desc: q.desc,
+        rewardGold: q.rewardGold,
+        rewardItems: q.rewardItems.map((rid) => { const it = makeItem(rid); return { icon: it.icon, name: it.name }; }),
+        xpReward: q.xpReward,
       })),
       showShop: this.shopOpen,
       shopNpcName: this.shopNpcName,

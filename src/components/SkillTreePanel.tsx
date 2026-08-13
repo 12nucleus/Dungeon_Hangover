@@ -22,15 +22,15 @@ interface Props { snap: UISnapshot; engine: GameEngine; }
 /* constellation geometry (px, deterministic — nodes + SVG share it) */
 const CW = 210;          // branch column width
 const GAP = 54;          // gap between branch columns
-const ROW_H = 168;       // vertical spacing between tiers
-const TOP = 96;          // y of tier 3 (the apex)
+const ROW_H = 130;       // vertical spacing between tiers
+const TOP = 96;          // y of tier 5 (the apex)
 const PADX = 44;         // horizontal padding inside the sky
 const PADB = 96;         // padding below tier 1
 
 /* lateral zig-zag per tier so chains read like constellations,
    not ladders (fraction of CW, relative to the branch centre) */
-const XOFF: Record<number, number> = { 3: -0.17, 2: 0.15, 1: -0.07 };
-const ROMAN: Record<number, string> = { 1: 'I', 2: 'II', 3: 'III' };
+const XOFF: Record<number, number> = { 5: -0.17, 4: 0.15, 3: -0.07, 2: 0.15, 1: -0.07 };
+const ROMAN: Record<number, string> = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V' };
 
 type NodeState = 'unlocked' | 'avail' | 'locked';
 
@@ -57,12 +57,12 @@ export function SkillTreePanel({ snap, engine }: Props) {
       const bi = branches.indexOf(n.branch);
       pos.set(n.id, {
         x: PADX + bi * (CW + GAP) + CW / 2 + (XOFF[n.tier] ?? 0) * CW,
-        y: TOP + (3 - n.tier) * ROW_H,
+        y: TOP + (5 - n.tier) * ROW_H,
         node: n,
       });
     }
     const w = PADX * 2 + branches.length * CW + (branches.length - 1) * GAP;
-    const h = TOP + 2 * ROW_H + PADB;
+    const h = TOP + 4 * ROW_H + PADB;
     return { tree, branches, pos, w, h };
   }, [u]);
 
@@ -154,8 +154,8 @@ export function SkillTreePanel({ snap, engine }: Props) {
                   </div>
                 );
               })}
-              {([3, 2, 1] as const).map((t) => (
-                <div key={t} className="stc-tier-label" style={{ left: 10, top: TOP + (3 - t) * ROW_H }}>
+              {([5, 4, 3, 2, 1] as const).map((t) => (
+                <div key={t} className="stc-tier-label" style={{ left: 10, top: TOP + (5 - t) * ROW_H }}>
                   TIER {ROMAN[t]}
                 </div>
               ))}

@@ -149,9 +149,11 @@ export function levelUpAtBonfire(engine: any, unitId: string) {
     u.maxHp += 6;
     u.hp = Math.min(effMaxHp(u), u.hp + 6);
     u.skillPoints += 1;
+    // sobering up also grants an ability point (spend it in the Stats panel)
+    u.abilityPoints = (u.abilityPoints ?? 0) + 1;
     recomputeHangover(u);
     leveled++;
-    engine.pushLog(`⬆ ${u.name} reaches level ${u.level}! (+6 max HP, +1 skill point — spend it in the Skill Tree).`, 'system');
+    engine.pushLog(`⬆ ${u.name} reaches level ${u.level}! (+6 max HP, +1 skill point, +1 ability point — spend them in the Skill Tree & Stats panel)`, 'system');
   }
   if (!leveled) {
     const need = XP_THRESHOLDS[u.level + 1] ?? Infinity;

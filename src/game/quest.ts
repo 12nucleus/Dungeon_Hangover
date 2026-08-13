@@ -273,17 +273,23 @@ export class QuestLog {
     return qs;
   }
 
-  /** every quest with its current stage (for the quest-log UI) */
-  all(): { id: string; name: string; stage: QuestStage; desc: string }[] {
-    const out: { id: string; name: string; stage: QuestStage; desc: string }[] = [];
+  /** every ACQUIRED quest with its current stage (for the quest-log UI).
+   *  Quests never started are omitted — the log only shows what you've
+   *  actually picked up (plus completed/failed for history). */
+  all(): { id: string; name: string; stage: QuestStage; desc: string; rewardGold: number; rewardItems: string[]; xpReward: number }[] {
+    const out: { id: string; name: string; stage: QuestStage; desc: string; rewardGold: number; rewardItems: string[]; xpReward: number }[] = [];
     for (const q of Object.values(QUESTS)) {
       const qs = this.states.get(q.id);
-      if (!qs || qs.stage === 'not_started') {
-        if (q.hidden) continue;               // hidden quests stay hidden until started
-        out.push({ id: q.id, name: q.name, stage: 'not_started', desc: q.desc });
-        continue;
-      }
-      out.push({ id: q.id, name: q.name, stage: qs.stage, desc: q.desc });
+      if (!qs || qs.stage === 'not_started') continue;   // only acquired quests
+      out.push({
+        id: q.id,
+        name: q.name,
+        stage: qs.stage,
+        desc: q.desc,
+        rewardGold: q.rewardGold ?? 0,
+        rewardItems: q.rewardItemIds,
+        xpReward: q.xpReward ?? 0,
+      });
     }
     return out;
   }

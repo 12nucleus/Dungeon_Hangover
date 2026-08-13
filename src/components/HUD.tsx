@@ -66,6 +66,37 @@ function ActionFeed({ snap }: { snap: UISnapshot }) {
   );
 }
 
+type QuestRow = NonNullable<UISnapshot['quests']>[number];
+
+/** One quest-log entry — click to expand the description + rewards. */
+function QuestEntry({ q }: { q: QuestRow }) {
+  const [open, setOpen] = useState(false);
+  const done = q.stage === 'completed' || q.stage === 'failed';
+  const marker = q.stage === 'completed' ? '✔' : q.stage === 'failed' ? '✖' : q.stage === 'accepted' || q.stage === 'in_progress' ? '◑' : '◔';
+  return (
+    <div className={`quest-entry ${q.stage} ${open ? 'open' : ''}`} onClick={() => setOpen(!open)}>
+      <div className="quest-name">
+        {marker} {q.name}
+        <span className="quest-chevron">{open ? '▾' : '▸'}</span>
+      </div>
+      {open && (
+        <div className="quest-details">
+          <div className="quest-desc">{q.desc}</div>
+          {!done && (
+            <div className="quest-rewards">
+              {q.xpReward > 0 && <span className="quest-reward">✦ {q.xpReward} XP</span>}
+              {q.rewardGold > 0 && <span className="quest-reward">🪙 {q.rewardGold}</span>}
+              {q.rewardItems.map((it) => (
+                <span key={it.name} className="quest-reward">{it.icon} {it.name}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Loot preview — see what dropped, choose what to take (Take All / per-item).
  *  Each row offers Examine (full model + stat sheet) before taking. */
 function LootPreviewOverlay({ snap, engine }: { snap: UISnapshot; engine: GameEngine | null }) {
@@ -435,13 +466,7 @@ export function HUD({ snap, engine }: Props) {
           {snap.quests && snap.quests.length > 0 ? (
             <div className="quest-log-body">
               {snap.quests.map((q) => (
-                <div key={q.id} className={`quest-entry ${q.stage}`}>
-                  <div className="quest-name">
-                    {q.stage === 'completed' ? '✔' : q.stage === 'failed' ? '✖' : q.stage === 'accepted' || q.stage === 'in_progress' ? '◑' : '◔'}{' '}
-                    {q.name}
-                  </div>
-                  <div className="quest-desc">{q.desc}</div>
-                </div>
+                <QuestEntry key={q.id} q={q} />
               ))}
             </div>
           ) : (

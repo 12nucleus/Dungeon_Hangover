@@ -729,12 +729,22 @@ button:focus-visible, [tabindex]:focus-visible {
   border-left: 3px solid var(--edge-hi); padding: 7px 12px;
   background: linear-gradient(90deg, rgba(27, 32, 48, 0.6), rgba(19, 23, 34, 0.3));
   border-radius: 4px;
+  cursor: pointer;
+  transition: background var(--t-fast);
 }
+.quest-entry:hover { background: linear-gradient(90deg, rgba(36, 42, 60, 0.7), rgba(24, 29, 42, 0.4)); }
 .quest-entry.accepted, .quest-entry.in_progress { border-left-color: var(--gold); }
 .quest-entry.completed { border-left-color: var(--good); opacity: 0.85; }
 .quest-entry.failed { border-left-color: var(--bad); opacity: 0.8; }
-.quest-name { color: var(--parchment); font-size: 13.5px; font-weight: 600; }
-.quest-desc { color: var(--text-dim); font-size: 12px; margin-top: 2px; line-height: 1.45; }
+.quest-name { color: var(--parchment); font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.quest-chevron { margin-left: auto; color: var(--text-dim); font-size: 11px; }
+.quest-details { margin-top: 6px; }
+.quest-desc { color: var(--text-dim); font-size: 12px; line-height: 1.45; }
+.quest-rewards { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.quest-reward {
+  font-size: 11px; color: var(--gold-hi); background: rgba(201, 162, 39, 0.12);
+  border: 1px solid rgba(201, 162, 39, 0.3); border-radius: 3px; padding: 2px 7px;
+}
 
 /* ════════════════════════════════════════════════════════════
    DIALOGUE — BG3 cinematic bar
@@ -1040,6 +1050,13 @@ button:focus-visible, [tabindex]:focus-visible {
 .sa-mod { font-size: 12px; font-weight: 800; min-width: 22px; text-align: center; }
 .sa-mod.pos { color: #6eff9a; }
 .sa-mod.neg { color: #ff7a6b; }
+.sa-up {
+  background: rgba(201, 162, 39, 0.15); border: 1px solid rgba(201, 162, 39, 0.4);
+  color: var(--gold-hi); border-radius: 4px; width: 22px; height: 22px; line-height: 1;
+  cursor: pointer; font-size: 14px; font-weight: 800; padding: 0; transition: all var(--t-fast);
+}
+.sa-up:hover { background: rgba(201, 162, 39, 0.3); color: #ffe9a0; }
+.stats-ap { font-size: 11.5px; color: var(--gold-hi); text-align: center; padding: 4px 0 6px; font-style: italic; }
 .stats-conds { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .stats-cond-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .stats-cond-label { color: var(--text-dim); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; min-width: 62px; }

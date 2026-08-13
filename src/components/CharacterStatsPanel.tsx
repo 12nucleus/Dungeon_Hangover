@@ -84,14 +84,23 @@ export function CharacterStatsPanel({ snap, engine }: Props) {
       <div className="stats-abilities">
         {ABIL_ORDER.map((k) => {
           const m = abilityMod(k);
+          const ap = u.abilityPoints ?? 0;
+          const canSpend = ap > 0 && (u.abilities[k] ?? 10) < 20;
           return (
             <div key={k} className="stat-ability" title={ABILITY_HINTS[k]}>
               <span className="sa-label">{ABILITY_LABELS[k]}</span>
               <span className="sa-value">{u.abilities[k]}</span>
               <span className={`sa-mod ${m >= 0 ? 'pos' : 'neg'}`}>{m >= 0 ? `+${m}` : m}</span>
+              {canSpend && (
+                <button className="sa-up" onClick={() => engine.spendAbilityPoint(u.id, k)} title={`Spend 1 ability point (${ap} left)`}>＋</button>
+              )}
             </div>
           );
         })}
+      </div>
+      <div className="stats-ap">
+        {((u.abilityPoints ?? 0) > 0) && <span>🪙 {u.abilityPoints} ability point{u.abilityPoints !== 1 ? 's' : ''} to spend — tap ＋ next to an ability</span>}
+        {((u.abilityPoints ?? 0) === 0) && <span>Sober up to earn ability points.</span>}
       </div>
 
       {/* buffs / debuffs */}

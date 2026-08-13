@@ -658,7 +658,7 @@ export const SUMMON_TEMPLATES: Record<string, () => Unit> = {
     maxHp: 20, hp: 20, ac: 12, level: 2,
     abilities: { str: 10, dex: 12, con: 12, int: 14, wis: 16, cha: 10 },
     knownSkills: ['hermit_cane', 'hermit_moss_heal', 'shove'], moveRange: 6, xpValue: 0,
-    companion: true,
+    companion: true, npcId: 'hermit',
     scheme: { skin: 0xb8a888, cloth: 0x6a5a3a, accent: 0x2a2a2a, hair: 0xd8c890, hood: false, style: 'normal', kind: 'barkeep', beard: true },
     weapon: 'staff',
   }),

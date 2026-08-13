@@ -22,7 +22,7 @@ export interface SkillNode {
   icon: string;
   desc: string;
   branch: string;
-  tier: 1 | 2 | 3;
+  tier: 1 | 2 | 3 | 4 | 5;
   cost: number;
   requires?: string[];
   unlockSkill?: string;   // id into SKILLS
@@ -31,13 +31,20 @@ export interface SkillNode {
 
 const N = (n: SkillNode) => n;
 
+/** minimum Sobriety (character level) required to unlock a tier.
+ *  Tier 1 opens at Lv2, tier 2 at Lv3, tiers 3–5 at Lv4. */
+export function levelForTier(tier: number): number {
+  if (tier <= 1) return 2;
+  if (tier === 2) return 3;
+  return 4;
+}
+
 /**
  * Build the hero's constellation from their chosen classes. One branch per
- * class (branch = class name), tiers 1–3 chained within the branch, each node
+ * class (branch = class name), tiers 1–5 chained within the branch, each node
  * unlocking the first NON-PASSIVE skill of that class+tier from CLASS_SKILLS.
- * Class-pool passives are skipped (they were never combat-functional); only
- * learnable skills appear. Deterministic: same classes ⇒ same tree, so saved
- * `unlockedNodes` stay valid across reloads.
+ * Deterministic: same classes ⇒ same tree, so saved `unlockedNodes` stay
+ * valid across reloads.
  */
 export function buildClassTree(classes: string[] | undefined): SkillNode[] {
   const nodes: SkillNode[] = [];
@@ -46,7 +53,7 @@ export function buildClassTree(classes: string[] | undefined): SkillNode[] {
     const pool = CLASS_SKILLS[cid] ?? [];
     if (!def || !pool.length) continue;
     let prev: string | null = null;
-    for (const tier of [1, 2, 3] as const) {
+    for (const tier of [1, 2, 3, 4, 5] as const) {
       const sk = pool.find((s) => (s.tier ?? 1) === tier && !s.passive);
       if (!sk) continue;
       const id = `${cid}_t${tier}_${sk.id}`;
@@ -56,7 +63,7 @@ export function buildClassTree(classes: string[] | undefined): SkillNode[] {
         icon: sk.icon,
         branch: def.name,
         tier,
-        cost: tier === 3 ? 2 : 1,
+        cost: tier >= 3 ? 2 : 1,
         requires: prev ? [prev] : undefined,
         unlockSkill: sk.id,
         desc: sk.desc,
@@ -74,6 +81,8 @@ export function treeFor(u: Unit): SkillNode[] {
 /** null = unlockable now; otherwise the reason why not */
 export function canUnlock(u: Unit, node: SkillNode): string | null {
   if (u.unlockedNodes.includes(node.id)) return 'Already unlocked';
+  const lvl = levelForTier(node.tier);
+  if (u.level < lvl) return `Requires Sobriety ${lvl}`;
   if (u.skillPoints < node.cost) return `Needs ${node.cost} skill point${node.cost > 1 ? 's' : ''}`;
   for (const req of node.requires ?? []) {
     if (!u.unlockedNodes.includes(req)) {

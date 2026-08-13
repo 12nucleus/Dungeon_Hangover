@@ -318,7 +318,7 @@ export function updateHover(engine: any) {
   let info: string | null = null;
   if (pick?.kind === 'unit' && pick.unitId) {
     const u = engine.byId(pick.unitId);
-    if (u && u.alive) info = `${u.name} · ${u.title} — HP ${u.hp}/${u.maxHp} · AC ${u.ac}${u.conditions.length ? ' · ' + u.conditions.map((c: any) => c.name).join(', ') : ''}`;
+    if (u && u.alive) info = `${u.name} · ${u.title} — HP ${u.hp}/${u.maxHp} · AC ${u.ac}${u.conditions.length ? ' · ' + u.conditions.map((c: any) => c.name).join(', ') : ''}${u.companion && u.npcId ? ' — click to talk' : ''}`;
   } else if (pick?.kind === 'npc' && pick.npcId) {
     info = `💬 ${NPCS[pick.npcId]?.name ?? 'A stranger'} — click to talk`;
   } else if (pick?.kind === 'prop' && pick.propId) {
@@ -476,6 +476,26 @@ function npcClick(engine: any, leader: Unit | null, npcId: string) {
   setHoverInfoOnce(engine, `${NPCS[npcId]?.name ?? 'The figure'} — can't find a way to them.`);
 }
 
+/** companion (party member who is also an NPC): walk adjacent, then talk */
+function companionClick(engine: any, leader: Unit | null, u: Unit) {
+  if (!leader || !u.npcId) return;
+  if (Combat.dist(leader.pos, u.pos) <= 1.5) { talkToNpc(engine, u.npcId); return; }
+  const adj = closestWalkableAdjacent(engine, u.pos, leader);
+  if (adj) {
+    const path = engine.combat.pathTo(leader, adj.x, adj.z);
+    if (path && path.length) {
+      engine.pendingTalk = u.npcId;
+      engine.audio.play('ui_click', 0.5);
+      pingAt(engine, adj);
+      moveUnitAlong(engine, leader, path);
+      engine.selectedId = leader.id;
+      engine.emitSnapshot();
+      return;
+    }
+  }
+  setHoverInfoOnce(engine, `${NPCS[u.npcId]?.name ?? 'The figure'} — can't find a way to them.`);
+}
+
 /**
  * Walk click — BG3 rules: you may only plot a route to tiles you can SEE
  * (explored) and STAND on (walkable). Clicking a wall/fog/void snaps to the
@@ -582,6 +602,12 @@ export function clickExplore(engine: any, pick: InteractPick | null, tile: GridP
       setHoverInfoOnce(engine, `${prop.def.icon} Can't reach the ${prop.def.name}.`);
       return;
     }
+  }
+
+  // ── talk to a companion (a party member who is also a quest NPC) ──
+  if (pick?.kind === 'unit' && pick.unitId) {
+    const cu = engine.byId(pick.unitId);
+    if (cu?.team === 'party' && cu.companion && cu.npcId && leader) { companionClick(engine, leader, cu); return; }
   }
 
   // ── party select ──
