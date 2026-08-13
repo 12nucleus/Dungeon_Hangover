@@ -368,10 +368,17 @@ function modelSoap(pink: boolean): THREE.Group {
 function modelKey(rust: boolean): THREE.Group {
   const g = new THREE.Group();
   const c = rust ? 0x9a6a3a : GOLD;
-  // bow (ring)
-  addVox(g, -1, 2, 0, c); addVox(g, 0, 3, 0, c); addVox(g, -1, 3, 0, c); addVox(g, -2, 3, 0, c); addVox(g, -2, 2, 0, c);
-  // shaft
-  addVox(g, 0, 1, 0, c); addVox(g, 0, 0, 0, c); addVox(g, 1, 0, 0, c); addVox(g, 2, 0, 0, c);
+  const d = shade(c, 0.85);
+  // bow (ring head)
+  addVox(g, -1, 2, 0, c); addVox(g, 0, 2, 0, d);
+  addVox(g, -2, 3, 0, c); addVox(g, -1, 3, 0, c); addVox(g, 0, 3, 0, c);
+  addVox(g, -2, 2, 0, c);
+  addVox(g, -1, 2, 1, d); addVox(g, -2, 2, 1, d); addVox(g, -2, 3, 1, d); addVox(g, -1, 3, 1, d); addVox(g, 0, 3, 1, d);
+  // shaft (2 deep)
+  addVox(g, 0, 1, 0, c); addVox(g, 0, 1, 1, d);
+  addVox(g, 0, 0, 0, c); addVox(g, 0, 0, 1, d);
+  addVox(g, 1, 0, 0, c); addVox(g, 1, 0, 1, d);
+  addVox(g, 2, 0, 0, c); addVox(g, 2, 0, 1, d);
   // teeth
   addVox(g, 1, -1, 0, c); addVox(g, 2, -1, 0, c);
   return g;
@@ -402,38 +409,50 @@ function modelFinger(): THREE.Group {
 
 function modelRing(): THREE.Group {
   const g = new THREE.Group();
-  // band
-  addVox(g, 0, 0, 0, GOLD); addVox(g, 0, 1, 0, GOLD); addVox(g, 0, 1, 1, GOLD); addVox(g, 0, 0, 1, GOLD);
-  addVox(g, 1, 1, 0, shade(GOLD, 0.9)); addVox(g, -1, 1, 0, shade(GOLD, 0.9));
-  // gem
+  // gold band loop (2 tall, ring with a hole)
+  for (let y = 0; y <= 1; y++) {
+    for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) {
+      if (x === 0 && z === 0) continue;   // the hole
+      addVox(g, x, y, z, shade(GOLD, 0.95));
+    }
+  }
+  // gem on top
   addVox(g, 0, 2, 0, 0x7dd3fc); addVox(g, 0, 2, 1, shade(0x7dd3fc, 1.2));
   return g;
 }
 
 function modelPenny(): THREE.Group {
   const g = new THREE.Group();
-  addVox(g, 0, 0, 0, GOLD); addVox(g, 0, 1, 0, shade(GOLD, 1.1));
-  addVox(g, 1, 0, 0, shade(GOLD, 0.9)); addVox(g, -1, 0, 0, shade(GOLD, 0.9));
-  addVox(g, 0, 0, 1, shade(GOLD, 0.85)); addVox(g, 0, 0, -1, shade(GOLD, 0.85));
+  // a flat gold disc (coin) — 3×3, one thick
+  for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) {
+    if (x === 0 && z === 0) { addVox(g, 0, 0, 0, shade(GOLD, 1.1)); continue; }
+    addVox(g, x, 0, z, shade(GOLD, 0.92));
+  }
   return g;
 }
 
 function modelWhisker(): THREE.Group {
   const g = new THREE.Group();
-  // a long curved whisker
-  addVox(g, 0, 0, 0, 0xe8e4da); addVox(g, 1, 0, 0, 0xe8e4da); addVox(g, 2, 1, 0, 0xe8e4da);
-  addVox(g, 3, 1, 0, 0xe8e4da); addVox(g, 4, 2, 0, 0xe8e4da); addVox(g, 5, 2, 0, 0xe8e4da);
-  addVox(g, 2, 0, 1, 0xd8d4ca); addVox(g, 1, 1, 1, 0xd8d4ca);
+  const W = 0xe8e4da;
+  // a thick, gently-curving whisker (2×2 cross-section)
+  addVox(g, 0, 0, 0, W); addVox(g, 0, 0, 1, shade(W, 0.9));
+  addVox(g, 1, 0, 0, W); addVox(g, 1, 0, 1, shade(W, 0.9));
+  addVox(g, 2, 1, 0, W); addVox(g, 2, 1, 1, shade(W, 0.9));
+  addVox(g, 3, 1, 0, W); addVox(g, 3, 1, 1, shade(W, 0.9));
+  addVox(g, 4, 2, 0, shade(W, 1.05)); addVox(g, 4, 2, 1, shade(W, 0.95));
+  addVox(g, 5, 2, 0, shade(W, 1.1));
   return g;
 }
 
 function modelLockpick(): THREE.Group {
   const g = new THREE.Group();
-  // long thin shaft with a bent tip
-  addVox(g, 0, 0, 0, STEEL); addVox(g, 1, 0, 0, STEEL); addVox(g, 2, 0, 0, STEEL); addVox(g, 3, 0, 0, STEEL);
-  addVox(g, 3, 1, 0, STEEL); addVox(g, 4, 1, 0, STEEL);
-  // handle
-  addVox(g, -1, 0, 0, WOOD); addVox(g, -1, 1, 0, WOOD);
+  // long thin shaft with a bent tip (2 deep)
+  for (let x = 0; x <= 3; x++) { addVox(g, x, 0, 0, STEEL); addVox(g, x, 0, 1, shade(STEEL, 0.85)); }
+  addVox(g, 3, 1, 0, STEEL); addVox(g, 3, 1, 1, shade(STEEL, 0.85));
+  addVox(g, 4, 1, 0, STEEL); addVox(g, 4, 1, 1, shade(STEEL, 0.85));
+  // wooden handle
+  addVox(g, -1, 0, 0, WOOD); addVox(g, -1, 0, 1, shade(WOOD, 0.85));
+  addVox(g, -1, 1, 0, WOOD); addVox(g, -1, 1, 1, shade(WOOD, 0.85));
   return g;
 }
 
@@ -459,11 +478,14 @@ function modelBook(): THREE.Group {
 
 function modelWrench(): THREE.Group {
   const g = new THREE.Group();
-  // handle
-  addVox(g, 0, 0, 0, METAL_DARK); addVox(g, 1, 0, 0, METAL_DARK); addVox(g, 2, 0, 0, METAL_DARK); addVox(g, 3, 0, 0, METAL_DARK);
-  // C-shaped jaw
-  addVox(g, 4, 0, 0, METAL); addVox(g, 4, 1, 0, METAL); addVox(g, 5, 1, 0, METAL);
-  addVox(g, 4, -1, 0, METAL); addVox(g, 5, -1, 0, METAL);
+  // handle (2 deep)
+  for (let x = 0; x <= 3; x++) { addVox(g, x, 0, 0, METAL_DARK); addVox(g, x, 0, 1, shade(METAL_DARK, 0.85)); }
+  // C-shaped jaw (2 deep)
+  addVox(g, 4, 0, 0, METAL); addVox(g, 4, 0, 1, shade(METAL, 0.85));
+  addVox(g, 4, 1, 0, METAL); addVox(g, 4, 1, 1, shade(METAL, 0.85));
+  addVox(g, 5, 1, 0, METAL); addVox(g, 5, 1, 1, shade(METAL, 0.85));
+  addVox(g, 4, -1, 0, METAL); addVox(g, 4, -1, 1, shade(METAL, 0.85));
+  addVox(g, 5, -1, 0, METAL); addVox(g, 5, -1, 1, shade(METAL, 0.85));
   // greasy shine
   addVox(g, 1, 1, 0, shade(METAL_DARK, 1.2)); addVox(g, 2, 1, 0, shade(METAL_DARK, 1.2));
   return g;
@@ -493,11 +515,16 @@ function modelTowel(): THREE.Group {
 
 function modelRope(): THREE.Group {
   const g = new THREE.Group();
-  // coiled circle
-  addVox(g, -1, 0, 0, 0xc8a878); addVox(g, 0, 0, 0, 0xb89a68); addVox(g, 1, 0, 0, 0xc8a878);
-  addVox(g, -1, 0, 1, 0xb89a68); addVox(g, 0, 0, 1, 0xc8a878); addVox(g, 1, 0, 1, 0xb89a68);
-  addVox(g, -2, 0, 0, 0xc8a878); addVox(g, 2, 0, 0, 0xc8a878);
-  addVox(g, -1, 1, 0, 0xb89a68); addVox(g, 0, 1, 0, 0xc8a878); addVox(g, 1, 1, 0, 0xb89a68);
+  const R = 0xc8a878, Rd = 0xb89a68;
+  // coiled ring, 2 tall
+  for (let y = 0; y <= 1; y++) {
+    for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) {
+      if (x === 0 && z === 0) continue;   // the coil's hole
+      addVox(g, x, y, z, (x === 0 || z === 0) ? R : Rd);
+    }
+  }
+  // a loose end trailing off
+  addVox(g, 2, 0, 0, R); addVox(g, 2, 1, 0, Rd); addVox(g, 3, 0, 0, Rd);
   return g;
 }
 
@@ -527,20 +554,29 @@ function modelBrokenBottle(): THREE.Group {
 
 function modelBone(): THREE.Group {
   const g = new THREE.Group();
-  addVox(g, 0, 0, 0, BONE); addVox(g, 1, 0, 0, BONE); addVox(g, 2, 0, 0, BONE);
-  // knobs
-  addVox(g, -1, 0, 0, shade(BONE, 0.95)); addVox(g, -1, 1, 0, shade(BONE, 0.95)); addVox(g, -1, -1, 0, shade(BONE, 0.95));
-  addVox(g, 3, 0, 0, shade(BONE, 0.95)); addVox(g, 3, 1, 0, shade(BONE, 0.95)); addVox(g, 3, -1, 0, shade(BONE, 0.95));
+  // 2×2 shaft, three long
+  for (let x = 0; x <= 2; x++) {
+    addVox(g, x, 0, 0, BONE); addVox(g, x, 1, 0, BONE);
+    addVox(g, x, 0, 1, shade(BONE, 0.92)); addVox(g, x, 1, 1, shade(BONE, 0.92));
+  }
+  // knobby ends (3×3 at both ends)
+  for (const ex of [-1, 3]) {
+    for (let y = -1; y <= 2; y++) for (let z = -1; z <= 2; z++) {
+      addVox(g, ex, y, z, shade(BONE, 0.88));
+    }
+  }
   return g;
 }
 
 function modelSpear(): THREE.Group {
   const g = new THREE.Group();
-  // shaft
-  addVox(g, 0, 0, 0, WOOD); addVox(g, 0, 1, 0, WOOD); addVox(g, 0, 2, 0, WOOD); addVox(g, 0, 3, 0, WOOD);
-  // head
-  addVox(g, 0, 4, 0, METAL); addVox(g, -1, 5, 0, METAL); addVox(g, 0, 5, 0, shade(METAL, 1.1)); addVox(g, 1, 5, 0, METAL);
-  addVox(g, -1, 6, 0, METAL); addVox(g, 1, 6, 0, METAL); addVox(g, 0, 6, 0, shade(METAL, 1.2));
+  // shaft (2 deep)
+  for (let y = 0; y <= 3; y++) { addVox(g, 0, y, 0, WOOD); addVox(g, 0, y, 1, shade(WOOD, 0.85)); }
+  // leaf head
+  addVox(g, 0, 4, 0, METAL); addVox(g, 0, 4, 1, shade(METAL, 0.85));
+  addVox(g, -1, 5, 0, METAL); addVox(g, 0, 5, 0, shade(METAL, 1.1)); addVox(g, 1, 5, 0, METAL);
+  addVox(g, -1, 5, 1, shade(METAL, 0.85)); addVox(g, 0, 5, 1, shade(METAL, 0.95)); addVox(g, 1, 5, 1, shade(METAL, 0.85));
+  addVox(g, 0, 6, 0, shade(METAL, 1.2)); addVox(g, 0, 6, 1, shade(METAL, 1.05));
   return g;
 }
 
@@ -652,25 +688,31 @@ function modelTorch(): THREE.Group {
 
 function modelCleaver(): THREE.Group {
   const g = new THREE.Group();
-  // brutal wide blade
-  addVox(g, -1, 0, 0, METAL_DARK); addVox(g, 0, 0, 0, METAL); addVox(g, 1, 0, 0, METAL_DARK);
-  addVox(g, -1, 1, 0, METAL); addVox(g, 0, 1, 0, shade(METAL, 1.1)); addVox(g, 1, 1, 0, METAL);
-  addVox(g, -1, 2, 0, shade(METAL, 1.1)); addVox(g, 0, 2, 0, shade(METAL, 1.2)); addVox(g, 1, 2, 0, shade(METAL, 1.1));
-  addVox(g, 0, 3, 0, shade(METAL, 1.3));
+  const add = (x: number, y: number, c: number) => { addVox(g, x, y, 0, c); addVox(g, x, y, 1, shade(c, 0.85)); };
+  // brutal wide blade (2 deep)
+  add(-1, 0, METAL_DARK); add(0, 0, METAL); add(1, 0, METAL_DARK);
+  add(-1, 1, METAL); add(0, 1, shade(METAL, 1.1)); add(1, 1, METAL);
+  add(-1, 2, shade(METAL, 1.1)); add(0, 2, shade(METAL, 1.2)); add(1, 2, shade(METAL, 1.1));
+  add(0, 3, shade(METAL, 1.3));
   // grip + pommel
-  addVox(g, 0, -1, 0, GRIP); addVox(g, 0, -2, 0, GRIP); addVox(g, 0, -3, 0, 0x5a3a1e);
+  add(0, -1, GRIP); add(0, -2, GRIP); add(0, -3, 0x5a3a1e);
   // soap residue
-  addVox(g, 0, 1, 1, SUD);
+  addVox(g, 0, 1, 2, SUD);
   return g;
 }
 
 function modelBelt(): THREE.Group {
   const g = new THREE.Group();
-  // strap
-  addVox(g, -1, 0, 0, 0x6a4a2a); addVox(g, 0, 0, 0, 0x7a5a3a); addVox(g, 1, 0, 0, 0x6a4a2a);
-  addVox(g, -1, 0, 1, 0x5a3a22); addVox(g, 0, 0, 1, 0x6a4a2a); addVox(g, 1, 0, 1, 0x5a3a22);
-  // brass buckle
-  addVox(g, 0, 1, 0, BRASS); addVox(g, 0, 1, 1, shade(BRASS, 0.9));
+  const L = 0x6a4a2a;
+  // loop (ring) of leather, 2 tall, with a hole
+  for (let y = 0; y <= 1; y++) {
+    for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) {
+      if (x === 0 && z === 0) continue;   // the hole
+      addVox(g, x, y, z, (x === 0 || z === 0) ? L : shade(L, 0.85));
+    }
+  }
+  // brass buckle in the hole
+  addVox(g, 0, 0, 0, BRASS); addVox(g, 0, 1, 0, shade(BRASS, 0.9));
   return g;
 }
 
