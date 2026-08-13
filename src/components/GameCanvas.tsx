@@ -94,9 +94,11 @@ export function GameCanvas() {
   };
 
   const handleExit = () => {
-    // best-effort: browsers only allow script-close for script-opened
-    // windows, so this is a no-op in most cases and the menu simply stays.
-    window.close();
+    // Tauri desktop: window.close() is a no-op inside the webview — close the
+    // actual app window. Falls back to window.close() in a plain browser.
+    void import('@tauri-apps/api/window')
+      .then(({ getCurrentWindow }) => getCurrentWindow().close())
+      .catch(() => window.close());
   };
 
   return (

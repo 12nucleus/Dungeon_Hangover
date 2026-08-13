@@ -841,7 +841,16 @@ export class GameEngine {
     // we re-assert sizing + let the player know what happened.
     this.renderer.domElement.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
-      this.pushLog('⚠ Graphics hiccup — the canvas is re-initializing…', 'system');
+      this.pushLog('⚠ Graphics hiccup — re-initializing the canvas…', 'system');
+      // preventDefault() stops the browser's automatic restore, so we MUST
+      // restore manually. Without this the canvas stays white forever.
+      setTimeout(() => {
+        try {
+          this.renderer.forceContextRestore();
+        } catch {
+          /* ignore — the next render attempt re-inits anyway */
+        }
+      }, 200);
     });
     this.renderer.domElement.addEventListener('webglcontextrestored', () => {
       this.applyDisplaySettings();
