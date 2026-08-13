@@ -117,7 +117,7 @@ export function SettingsPanel({ engineRef, onBack }: {
           <span>Resolution</span>
           <select value={settings.resolution}
             onChange={(e) => apply({ resolution: Number(e.target.value) })}
-            title="Lowers the internal render resolution for performance; height follows the window"
+            title="Sets the window size (Native = current window). In fullscreen, it lowers the render resolution instead"
             className="splash__set-select">
             <option value={0}>Native (window)</option>
             <option value={2560}>2560×1440</option>

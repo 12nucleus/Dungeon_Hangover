@@ -26,6 +26,7 @@ import { PhysicsWorld } from './physics';
 import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot, Ability } from './types';
 import { type NPCDef, type DialogueAction } from './npc';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { LogicalSize } from '@tauri-apps/api/dpi';
 import { QuestLog, QUESTS } from './quest';
 import { MAIN_QUEST_F50 } from '../levels/floor50Text';
 import { ABILITY_LABELS } from './abilityLabels';
@@ -90,6 +91,8 @@ export class GameEngine {
   public surfaces = new SurfaceSystem();
   public physics = new PhysicsWorld();
   private surfaceTickAt = 0;
+  /** last resolution preset we resized the window to (only resize on change) */
+  private lastAppliedRes: number | null = null;
   public pickables: THREE.Object3D[] = [];
   public unitProxies: THREE.Object3D[] = [];
   public ray = new THREE.Raycaster();
@@ -265,6 +268,7 @@ export class GameEngine {
   /** Start a VO element under the current generation. Returns null when a
    *  newer VO (or a skip) superseded us while the element was being created. */
   private playVo(url: string): HTMLAudioElement | null {
+    if (this.audio.muted) return null;   // mute silences the narrator too
     const seq = this.voSeq;
     let a: HTMLAudioElement;
     try { a = new Audio(url); } catch { return null; }
@@ -2051,11 +2055,32 @@ export class GameEngine {
       }
     } catch { /* ignore */ }
     const hostW = this.container.clientWidth, hostH = this.container.clientHeight;
+    // The canvas ELEMENT always fills its container (the HUD/menus are anchored
+    // to it) — resolution only changes the internal drawing buffer. This is what
+    // keeps menus/items on-screen in fullscreen: a stale buffer size must never
+    // move the visible canvas off the window.
+    this.renderer.domElement.style.width = '100%';
+    this.renderer.domElement.style.height = '100%';
+    this.renderer.domElement.style.display = 'block';
     if (hostW <= 0 || hostH <= 0) return;
     const res = this.settings.resolution ?? 0;
+    const inTauri = !!(window as any).__TAURI_INTERNALS__;
+    // Resolution presets resize the actual desktop window (so the setting does
+    // something real), but never while fullscreen is active and never repeatedly
+    // on unrelated window resizes.
+    if (res !== this.lastAppliedRes) {
+      this.lastAppliedRes = res;
+      if (res > 0 && inTauri && !this.settings.fullscreen) {
+        const iw = Math.max(320, res);
+        const ih = Math.max(180, Math.round(iw * (hostH / hostW)));
+        void getCurrentWindow().setSize(new LogicalSize(iw, ih)).catch(() => {});
+        return;   // the resize event re-runs applyDisplaySettings with the new host size
+      }
+    }
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     if (res > 0 && res < hostW) {
-      // preset only honored when it genuinely downscales the window
+      // preset honored only when it genuinely downscales the window — the canvas
+      // element still fills 100%, only the buffer is smaller (sharper ≠ bigger)
       const iw = Math.max(320, res);
       const ih = Math.max(180, Math.round(iw * (hostH / hostW)));
       this.renderer.setPixelRatio(1);
@@ -2068,6 +2093,12 @@ export class GameEngine {
     }
     this.iso.cam.aspect = hostW / hostH;
     this.iso.cam.updateProjectionMatrix();
+    // fullscreen changes the viewport asynchronously — re-run a beat later so a
+    // stale host size captured mid-transition can't leave the canvas mis-sized.
+    if (this.settings.fullscreen) {
+      clearTimeout((this as any)._fsReapply);
+      (this as any)._fsReapply = setTimeout(() => this.applyDisplaySettings(), 180);
+    }
   }
 
   // -- pause (in-game menu) ----------------------------------
@@ -2756,6 +2787,7 @@ export class GameEngine {
    *  the current line is cut the instant the next one starts, so clicking
    *  through a conversation never stacks or overlaps voices. */
   public speakDialogue(npcId: string, nodeId: string) {
+    if (this.audio.muted) return;        // mute silences NPC voice-over too
     this.stopVo();                     // cut any VO currently playing (incl. the previous node)
     const token = this.voSeq;          // our generation — we own the air until superseded
     const base = `${import.meta.env.BASE_URL}audio/npc/${npcId}_${nodeId}`;

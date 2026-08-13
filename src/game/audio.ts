@@ -56,18 +56,28 @@ export class AudioManager {
     this.started = true;
     this.ctx = new AudioContext();
     if (this.ctx.state === 'suspended') { try { await this.ctx.resume(); } catch { /* ignore */ } }
-    this.master = this.ctx.createGain();
-    this.master.gain.value = 0.9;
-    this.master.connect(this.ctx.destination);
-    this.sfxGain = this.ctx.createGain();
-    this.sfxGain.gain.value = 0.9;
-    this.sfxGain.connect(this.master);
-    this.musicGain = this.ctx.createGain();
-    this.musicGain.gain.value = 0.42;
-    this.musicGain.connect(this.master);
-    this.tavernGain = this.ctx.createGain();
-    this.tavernGain.gain.value = 0;   // silent until the tavern plays
-    this.tavernGain.connect(this.master);
+    try {
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.9;
+      this.master.connect(this.ctx.destination);
+      this.sfxGain = this.ctx.createGain();
+      this.sfxGain.gain.value = 0.9;
+      this.sfxGain.connect(this.master);
+      this.musicGain = this.ctx.createGain();
+      this.musicGain.gain.value = 0.42;
+      this.musicGain.connect(this.master);
+      this.tavernGain = this.ctx.createGain();
+      this.tavernGain.gain.value = 0;   // silent until the tavern plays
+      this.tavernGain.connect(this.master);
+    } catch (err) {
+      // A browser/WebView2 that can't build the gain graph would otherwise
+      // silently kill every SFX/music node while VO (HTMLAudio) kept playing.
+      this.ctx = null;
+      this.started = false;              // allow a retry on the next gesture
+      // eslint-disable-next-line no-console
+      console.warn('[audio] WebAudio init failed — SFX/music disabled', err);
+      return;
+    }
 
     // Critical audio — awaited so the first click feels instant.
     const critical = ['ui_click', 'sword_hit', 'dice', 'tavern_music', 'music_ambient'];

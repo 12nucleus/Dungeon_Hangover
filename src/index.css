@@ -77,7 +77,7 @@ button:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid var(--gold); outline-offset: 1px;
 }
 
-.game-root { position: fixed; inset: 0; }
+.game-root { position: fixed; inset: 0; overflow: hidden; }
 .game-canvas { position: absolute; inset: 0; }
 .game-canvas canvas { display: block; }
 
