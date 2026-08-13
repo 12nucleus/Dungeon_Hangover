@@ -117,6 +117,13 @@ export function Hotbar({ snap, engine }: Props) {
                       title={`Throw ${st.item.name} at a unit (bonus action)`}
                     >🎯</button>
                   )}
+                  {!isWeapon && phase === 'combat' && (
+                    <button
+                      className={`item-throw ${snap.selectedSkill === `GIVE:${key}` ? 'on' : ''}`}
+                      onClick={() => !enemyTurn && engine.startGive(key)}
+                      title={`Use ${st.item.name} on a party member (bonus action)`}
+                    >💊</button>
+                  )}
                 </div>
               );
             })}

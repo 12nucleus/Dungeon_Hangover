@@ -664,6 +664,16 @@ export function clickCombat(engine: any, pick: InteractPick | null, tile: GridPo
     engine.emitSnapshot();
     return;
   }
+  if (engine.targeting && typeof engine.targeting === 'string' && engine.targeting.startsWith('GIVE:')) {
+    const itemId = engine.targeting.slice(5);
+    const t = unitId ? engine.byId(unitId) : null;
+    engine.targeting = null;
+    clearHighlights(engine);
+    if (t && t.team === 'party') engine.giveConsumable(itemId, t.id);
+    else setHoverInfoOnce(engine, 'Use the item on a party member.');
+    engine.emitSnapshot();
+    return;
+  }
   if (engine.targeting) {
     const s = skillById(engine.targeting);
     if (s && s.aoeRadius > 0 && !s.selfCentered) {

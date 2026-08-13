@@ -3113,6 +3113,32 @@ export class GameEngine {
     }
   }
 
+  /** arm a "give to ally" targeting: the next party-member click uses the
+   *  consumable on them (heal/revive). Costs the active hero's bonus action. */
+  startGive(itemId: string) {
+    const it = this.inventory.find((i) => i.id === itemId || (i._baseId && i._baseId === itemId));
+    if (!it || it.kind !== 'consumable') return;
+    if (this.targeting === `GIVE:${itemId}`) { this.cancelTargeting(); return; }
+    this.targeting = `GIVE:${itemId}`;
+    this.audio.play('ui_click', 0.6);
+    this.emitSnapshot();
+  }
+
+  /** use a consumable on a party member (not self) — heal/revive an ally */
+  public giveConsumable(itemId: string, targetId: string) {
+    const idx = this.inventory.findIndex((i) => i.id === itemId || (i._baseId && i._baseId === itemId));
+    const u = this.combat.active;
+    const t = this.byId(targetId);
+    if (idx < 0 || !u || u.team !== 'party' || !t || t.team !== 'party') return;
+    const item = this.inventory[idx];
+    if (item.kind !== 'consumable') return;
+    if (!this.combat.inCombat) { this.setHoverInfoOnce('Using items on an ally is a combat bonus action.'); return; }
+    if (!u.hasBonus) { this.setHoverInfoOnce('No bonus action left.'); return; }
+    this.inventory.splice(idx, 1);
+    this.audio.play('heal', 0.5, 1.6);
+    this.enqueue(this.combat.useConsumable(u, item, t.id));
+  }
+
   /** player-curated item bar: pin stack keys (baseIds) into the first 6 slots.
    *  Keys with no owned stack are dropped; the bar auto-fills the rest. */
   setItemBarLoadout(keys: string[]) {

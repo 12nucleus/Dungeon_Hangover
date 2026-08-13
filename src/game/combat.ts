@@ -1161,6 +1161,12 @@ export class Combat {
       t.hp += amt;
       ev.push({ type: 'heal', unitId: t.id, amount: amt });
       ev.push({ type: 'log', text: `${t.name} heals ${amt} HP.`, kind: 'heal' });
+      // a healing item revives a knocked-out companion
+      if (t.unconscious) {
+        t.unconscious = false;
+        ev.push({ type: 'revive', unitId: t.id });
+        ev.push({ type: 'log', text: `${t.name} is revived!`, kind: 'system' });
+      }
     }
     // cleanses: strip every condition
     if (item.cleanses && t.conditions.length) {
