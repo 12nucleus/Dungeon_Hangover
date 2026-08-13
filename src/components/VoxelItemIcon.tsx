@@ -379,12 +379,24 @@ function modelKey(rust: boolean): THREE.Group {
 
 function modelFinger(): THREE.Group {
   const g = new THREE.Group();
-  // flesh finger lying flat
-  addVox(g, 0, 0, 0, FLESH); addVox(g, 1, 0, 0, FLESH); addVox(g, 2, 0, 0, FLESH); addVox(g, 3, 0, 0, FLESH);
-  // silver wedding band
-  addVox(g, 2, 1, 0, METAL); addVox(g, 2, 0, 1, METAL); addVox(g, 2, 0, -1, METAL); addVox(g, 2, -1, 0, METAL);
-  // gnawed bone stub
-  addVox(g, 0, 1, 0, BONE); addVox(g, 0, 0, 1, BONE); addVox(g, 0, 0, -1, BONE);
+  const F = FLESH;
+  // severed base — the gnawed bone end (2 tall × 2 wide)
+  addVox(g, 0, 0, 0, BONE); addVox(g, 0, 1, 0, BONE);
+  addVox(g, 0, 0, 1, shade(BONE, 0.9)); addVox(g, 0, 1, 1, shade(BONE, 0.9));
+  // flesh shaft — three 2×2 segments
+  for (let x = 1; x <= 3; x++) {
+    addVox(g, x, 0, 0, F); addVox(g, x, 1, 0, F);
+    addVox(g, x, 0, 1, shade(F, 0.9)); addVox(g, x, 1, 1, shade(F, 0.9));
+  }
+  // silver wedding band wrapped around the middle segment
+  addVox(g, 2, 0, 2, METAL); addVox(g, 2, 1, 2, METAL);
+  addVox(g, 2, 0, -1, METAL); addVox(g, 2, 1, -1, METAL);
+  addVox(g, 2, 2, 0, METAL); addVox(g, 2, 2, 1, METAL);
+  addVox(g, 2, -1, 0, METAL); addVox(g, 2, -1, 1, METAL);
+  // taper toward the fingertip
+  addVox(g, 4, 1, 0, F); addVox(g, 4, 1, 1, shade(F, 0.9));
+  // rounded tip
+  addVox(g, 5, 1, 0, shade(F, 1.15));
   return g;
 }
 
@@ -592,15 +604,26 @@ function modelRibcage(): THREE.Group {
 
 function modelBoot(): THREE.Group {
   const g = new THREE.Group();
-  // shaft
-  addVox(g, 0, 0, 0, 0x5a3a22); addVox(g, 0, 1, 0, 0x6a4a2a); addVox(g, 0, 2, 0, 0x6a4a2a);
-  addVox(g, 0, 0, 1, 0x4a3020); addVox(g, 0, 1, 1, 0x5a3a22);
-  // foot
-  addVox(g, 1, -1, 0, 0x5a3a22); addVox(g, 2, -1, 0, 0x5a3a22); addVox(g, 3, -1, 0, 0x4a3020);
-  addVox(g, 1, -1, 1, 0x4a3020); addVox(g, 2, -1, 1, 0x4a3020); addVox(g, 3, -1, 1, 0x3e2818);
-  addVox(g, 1, 0, 0, 0x6a4a2a); addVox(g, 2, 0, 0, 0x5a3a22);
-  // sole
-  addVox(g, 0, -2, 0, 0x2e2012); addVox(g, 1, -2, 0, 0x2e2012); addVox(g, 2, -2, 0, 0x2e2012); addVox(g, 3, -2, 0, 0x2e2012);
+  const L = 0x5a3a22;        // leather
+  const L_D = 0x4a3020;      // shaded leather
+  const L_L = 0x6a4a2a;      // lit leather
+  // shaft — 2 wide × 2 deep × 3 tall, rising from the ankle
+  for (let y = 1; y <= 3; y++) {
+    addVox(g, 0, y, 0, L_L); addVox(g, 1, y, 0, L);
+    addVox(g, 0, y, 1, L_D); addVox(g, 1, y, 1, shade(L_D, 0.9));
+  }
+  // ankle / instep
+  addVox(g, 0, 0, 0, L_L); addVox(g, 1, 0, 0, L);
+  addVox(g, 0, 0, 1, L_D); addVox(g, 1, 0, 1, shade(L_D, 0.9));
+  // toe box — extends forward (+X)
+  addVox(g, 2, 0, 0, L); addVox(g, 3, 0, 0, L); addVox(g, 4, 0, 0, shade(L, 1.1));
+  addVox(g, 2, 0, 1, L_D); addVox(g, 3, 0, 1, L_D); addVox(g, 4, 0, 1, shade(L_D, 0.85));
+  // heel — kicks back (−X)
+  addVox(g, -1, 0, 0, L_D); addVox(g, -1, 0, 1, shade(L_D, 0.85));
+  // sole — dark, under the whole foot + heel
+  for (let x = -1; x <= 4; x++) {
+    addVox(g, x, -1, 0, 0x2e2012); addVox(g, x, -1, 1, 0x241810);
+  }
   return g;
 }
 
