@@ -498,7 +498,10 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // ── Greg gets up ──
   for (let i = 0; i < 3; i++) { h.spawnStars(starPos); await delay(450); }
   hv.rig.anim.death = undefined;
-  hv.rig.anim.getupStart = 0;
+  // reset getupStart so updateRig captures the CURRENT anim.t as the rise's
+  // t0 — leaving a stale value (or 0) makes T jump to 1 and Greg teleports
+  // upright instead of playing the crawl→kneel→stand curve.
+  hv.rig.anim.getupStart = undefined;
   hv.rig.anim.mode = 'getup';
   await delay(950);                              // let the full rise play out (~0.9s)
   hv.rig.anim.mode = 'idle';

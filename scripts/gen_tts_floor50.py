@@ -97,6 +97,35 @@ def lines_from_sources() -> dict[str, str]:
 
 
 # ══════════════════════════════════════════════════════════
+# floor50Text.ts lines — Gribnab / Baron Gnaw barks, the main
+# quest "The Longest Morning" beats, and the easter-egg lines.
+# These narrate calls pass a VARIABLE (e.g. GRIBNAB_BARKS.death)
+# rather than a string literal, so the regex above can't see them.
+# Text here is copied verbatim from src/levels/floor50Text.ts.
+# ══════════════════════════════════════════════════════════
+def lines_from_floor50_text() -> dict[str, str]:
+    return {
+        "f50_grib_75": "How DARE you track mud across my bath mat. That is a LIMITED EDITION bath mat.",
+        "f50_grib_50": "The bath overflows. The bath OVERFLOWS. Do you know how long it took to get the temperature just so.",
+        "f50_grib_25": "My bubbles. You are popping my BUBBLES. Each bubble had a NAME.",
+        "f50_grib_phase2": "Enough lukewarm hospitality. Now the water gets SERIOUS.",
+        "f50_grib_death": "I yield. I yield. The bath is yours. Just... just keep the cap. Please. It was a gift from the Suds himself. It is all I have. It is all I have EVER had.",
+        "f50_baron_summon": "The bath king calls, and Baron Gnaw ANSWERS. Mostly because he was promised snacks.",
+        "f50_baron_death": "Baron Gnaw collapses into a pile of wet fur and bad decisions. The bath is quieter now. The bath is ALWAYS quieter after the snacks arrive.",
+        "f50_duck_choir": "The rubber ducks begin to sing. It is not a song you know. It is not a song ANYONE knows. But the ducks are committed. The ducks are ALWAYS committed.",
+        "f50_chandelier": "You look up at the chandelier. It glitters. It sways. You once thought you would marry a chandelier. Tonight, the chandelier looks back. It remembers.",
+        "f50_well_wish": "You toss a penny into the well. It flashes once, twice, and vanishes. Somewhere deep below, a wish is granted. It is probably not yours.",
+        "f50_well_wish_fail": "You have no penny to toss. The well stares back. The well has seen this before. The well is not impressed.",
+        "f50_mq_start": "You wake on cold stone in your underwear. The world smells like soap and bad choices. Somewhere above you, the day is waiting. It can wait longer.",
+        "f50_mq_gate": "The goblin guard steps aside. The iron door groans open. The smell of strawberries and tyranny rolls over you like a wave. You are through.",
+        "f50_mq_door": "The bath chamber door yields. Steam curls around your ankles. Somewhere in the pink water, a king is singing. He is always singing. He is terrible at it.",
+        "f50_tpk_1": "Your party falls. All of you. In your underwear. At the bottom of a dungeon. The narrator would like you to know: this is the funniest thing that has ever happened.",
+        "f50_tpk_2": "You are dead. The rats are already holding a meeting about who gets your socks. The meeting is surprisingly civil.",
+        "f50_tpk_3": "Game over, Greg. The bath wins. The bath ALWAYS wins. But hey. You can try again. The dungeon has a sense of humor. It wants to see what you do next.",
+    }
+
+
+# ══════════════════════════════════════════════════════════
 # NPC dialogue voice-over — every `text` line (and the `caption`
 # flavor line when a node has one) of the four floor-50 NPCs,
 # extracted verbatim from src/game/npc.ts.
@@ -150,6 +179,7 @@ def main():
     args = ap.parse_args()
 
     lines = lines_from_sources()
+    lines.update(lines_from_floor50_text())
     npc_lines = lines_from_npc()
     if args.ids:
         lines = {k: v for k, v in lines.items() if k in args.ids}

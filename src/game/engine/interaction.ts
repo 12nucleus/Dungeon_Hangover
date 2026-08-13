@@ -23,6 +23,10 @@ const fogDummy = new THREE.Object3D();
 
 export function updateFog(engine: any, _dt: number) {
   if (!engine.explored.length || engine.phase === 'menu' || engine.busy) return;
+  // the fog-of-war overlay is hidden on the title screen / returnToTitle and
+  // re-shown here (the intro/load paths only reveal world/props/dressing, so
+  // without this the fog stays off forever and every room is visible).
+  if (engine.fogGroup) engine.fogGroup.visible = true;
   const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat?.living('party')[0];
   if (!leader) return;
 
