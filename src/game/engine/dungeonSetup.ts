@@ -18,6 +18,7 @@ import { SUMMON_TEMPLATES } from '../skills';
 import { unitWorld } from './visuals';
 import { animateTo } from './cheats';
 import { offerLoot } from './loot';
+import { FloorChaos } from '../chaos';
 import { propPuddle, propBucket, propScratches, propSkeleton } from '../voxelModels.mjs';
 import { voxelMeshC } from './voxelUtils';
 
@@ -208,8 +209,9 @@ export function setupDungeon(engine: any, L: LevelDef) {
   for (const s of (L.surfaces ?? [])) {
     engine.surfaces.apply(s.tile.x, s.tile.z, s.kind);
   }
-  // per-run hidden treasures
   engine.hiddenTreasures = L.makeHiddenTreasures ? L.makeHiddenTreasures(engine.runSeed ?? 0) : [];
+  engine.chaos = new FloorChaos(engine, engine.runSeed ?? 0);
+  engine.chaos.install(L);
 }
 
 /** Mount a burning torch in the hero's off-hand */
@@ -220,6 +222,7 @@ export function attachHeroTorch(_engine: any, _rig: Rig) {
 /** Per-frame dungeon logic — prop tweens, torch flicker, interactable proximity */
 export function updateDungeon(engine: any, dt: number) {
   if (!engine.structures) return;
+  engine.chaos?.tick(dt);
   const st = engine.structures;
   if (engine.propAnims.length) engine.propAnims = engine.propAnims.filter((fn: any) => !fn(dt));
 
@@ -405,6 +408,7 @@ export function updateDungeon(engine: any, dt: number) {
         const prefix = engine.floorNumber === 49 ? 'f49' : `f${engine.floorNumber}`;
         if (text) void engine.narrate(`${prefix}_room_${roomId}`, text, 5200);
         maybeAmbush(engine, roomId, leader.pos);
+        engine.chaos?.onRoomEnter(roomId, leader.pos);
         perceptionRoll(engine, roomId, leader);
       }
     }

@@ -1079,6 +1079,65 @@ function buildMushroomRig(scheme: CharacterScheme): Rig {
   };
 }
 
+function buildTotemRig(scheme: CharacterScheme): Rig {
+  const C = 0.075;
+  const SUB = 3;
+  const group = new THREE.Group();
+  const parts: Record<string, THREE.Mesh> = {};
+  const wood = scheme.skin, woodD = scheme.cloth, carve = scheme.accent, dark = scheme.hair;
+  const part = (name: string, x: number, y: number, z: number, build: Build) => {
+    const v = new Vox(C, SUB); build(v); const m = v.mesh(); m.position.set(x, y, z); parts[name] = m; group.add(m);
+  };
+
+  // carved wooden pole: stacked segments, flared base, chiselled bands
+  part('torso', 0, 0.75, 0, (v) => {
+    v.col(0, 0, -7, 7, 1.5, 1.5, wood);            // main shaft
+    v.col(0, 0, -7, -5, 2.2, 2.2, woodD);          // flared base
+    v.fill(-1.5, -3, -1.5, 1.5, -2, 1.5, carve);   // low carved band
+    v.fill(-1.5, 0, -1.5, 1.5, 1, 1.5, carve);     // mid carved band
+    v.col(0, 0, 5, 7, 1.3, 1.3, carve);            // crown/cap
+    v.add(-1, -4, 2, carve); v.add(1, -4, 2, carve); // forward teeth
+  });
+
+  // carved face on the front (+z): brow, beak, jaw
+  part('head', 0, 1.35, 0, (v) => {
+    v.fill(-1, -1, 0, 1, 1, 1, wood);              // face block
+    v.add(0, 0, 2, carve);                         // beak/nose
+    v.fill(-1, 1, 0, 1, 1, 1, woodD);              // brow ridge
+    v.add(-1, 0, 2, woodD); v.add(1, 0, 2, woodD); // cheek ridges
+    v.fill(-1, -1, -1, 1, -1, 0, dark);            // jaw
+  });
+
+  // side wing carvings
+  for (const [name, s] of [['armL', -1], ['armR', 1]] as const) part(name, s * 0.3, 0.75, 0, (v) => {
+    v.fill(-1, -1, -1, 1, 1, 1, woodD);
+    v.add(0, 1, 1, carve); v.add(0, -1, 1, carve);
+  });
+  // tiny hand stubs (required by updateRig)
+  for (const [name, s] of [['handL', -1], ['handR', 1]] as const) part(name, s * 0.25, 0.5, 0, (v) => {
+    v.add(0, 0, 0, woodD);
+  });
+  // wide base feet
+  for (const [name, s] of [['legL', -1], ['legR', 1]] as const) part(name, s * 0.2, 0.12, 0, (v) => {
+    v.fill(-1, -1, -1, 1, 0, 1, woodD);
+    v.add(0, 0, 1, wood);
+  });
+
+  // glowing ember eyes — the totem reads as a channelling spirit, not dead wood
+  const eyeMat = new THREE.MeshLambertMaterial({ color: 0xffa53a, emissive: 0xff7a1f, emissiveIntensity: 0.95 });
+  for (const [name, x] of [['eyeL', -0.08], ['eyeR', 0.08]] as const) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.09, 0.06), eyeMat);
+    m.position.set(x, 1.42, 0.11); m.castShadow = false; parts[name] = m; group.add(m);
+  }
+
+  group.scale.setScalar(scheme.bulk ?? 1);
+  return {
+    group, parts,
+    anim: { mode: 'idle', t: Math.random() * 3, lunge: 0, flinch: 0, lungeDir: new THREE.Vector3(), bob: 0, crouch: 0 },
+    pivots: { hip: 0.12, torso: 0.75, head: 1.35, eye: 1.42, hair: 1.35, arm: 0.75, hand: 0.5, weapon: 0.75 },
+  };
+}
+
 function buildCrawlerRig(scheme: CharacterScheme): Rig {
   const C = 0.075;
   const SUB = 3;
@@ -1566,6 +1625,7 @@ export function buildCharacter(scheme: CharacterScheme, weapon?: WeaponKind): Ri
   if (scheme.monster === 'crawler') return buildCrawlerRig(scheme);
   if (scheme.monster === 'fish') return buildFishRig(scheme);
   if (scheme.monster === 'frog') return buildFrogRig(scheme);
+  if (scheme.monster === 'totem') return buildTotemRig(scheme);
   if (scheme.kind === 'wizard') return buildHumanoidRig(scheme, weapon, { robe: true, beard: true, hat: true, stars: true, leftHand: true });
   if (scheme.kind === 'barmaid') return buildHumanoidRig(scheme, weapon, { dress: true, apron: true, bun: true, tray: true });
   if (scheme.kind === 'bouncer') return buildHumanoidRig(scheme, weapon, { bald: true, vest: true });
@@ -1575,29 +1635,30 @@ export function buildCharacter(scheme: CharacterScheme, weapon?: WeaponKind): Ri
   return buildChibiRig(scheme, weapon);
 }
 
-/** Swap (or remove) the weapon held in the rig's hand. Pass null to unequip. */
-export function setWeapon(rig: Rig, kind: WeaponKind | null, accent: number) {
-  // remove existing weapon group
-  const existing = rig.parts.weapon as unknown as THREE.Object3D | undefined;
-  if (existing) {
-    existing.parent?.remove(existing);
-    existing.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
-    delete (rig.parts as { weapon?: THREE.Mesh }).weapon;
-  }
-  if (!kind) return;
+/** Dispose and detach a single named rig part (weapon / offWeapon). */
+function disposeRigPart(rig: Rig, name: string) {
+  const existing = rig.parts[name] as unknown as THREE.Object3D | undefined;
+  if (!existing) return;
+  existing.parent?.remove(existing);
+  existing.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
+  delete rig.parts[name];
+}
 
+/** Build a held weapon and parent it to the rig's left or right hand. */
+function attachWeapon(rig: Rig, kind: WeaponKind, accent: number, side: 'L' | 'R'): THREE.Group {
   const detailed = !!rig.pivots;
   const C = detailed ? C_DETAIL : C_CHIBI;
   const WC = detailed ? C_NORMAL : C_CHIBI;
   const wg = buildWeapon(kind, accent, WC);
   if (detailed) {
-    const handR = rig.parts.handR as THREE.Mesh | undefined;
-    if (handR) {
-      wg.position.set(0.03, ((rig.pivots!.weapon ?? 34 * C) / C - 31) * C, 5 * C);
+    const hand = (side === 'L' ? rig.parts.handL : rig.parts.handR) as THREE.Mesh | undefined;
+    const sgn = side === 'L' ? -1 : 1;
+    if (hand) {
+      wg.position.set(0.03 * sgn, ((rig.pivots!.weapon ?? 34 * C) / C - 31) * C, 5 * C);
       wg.rotation.x = kind === 'bow' || kind === 'torch' ? -0.12 : 1.35;
-      handR.add(wg);
+      hand.add(wg);
     } else {
-      wg.position.set(10 * C + 0.03, (rig.pivots!.weapon ?? 28 * C), 5 * C);
+      wg.position.set((10 * C + 0.03) * sgn, (rig.pivots!.weapon ?? 28 * C), 5 * C);
       wg.rotation.x = kind === 'bow' || kind === 'torch' ? -0.12 : -0.6;
       rig.group.add(wg);
     }
@@ -1608,8 +1669,22 @@ export function setWeapon(rig: Rig, kind: WeaponKind | null, accent: number) {
     wg.position.set(0.38, 0.5, 0.08); wg.rotation.x = kind === 'bow' ? 0 : 1.35;
     rig.group.add(wg);
   }
-  rig.parts.weapon = wg as unknown as THREE.Mesh;
   (wg as unknown as THREE.Object3D).userData.kind = kind;
+  return wg;
+}
+
+/** Swap (or remove) the weapon held in the rig's hand. Pass null to unequip. */
+export function setWeapon(rig: Rig, kind: WeaponKind | null, accent: number) {
+  disposeRigPart(rig, 'weapon');
+  if (!kind) return;
+  rig.parts.weapon = attachWeapon(rig, kind, accent, 'R') as unknown as THREE.Mesh;
+}
+
+/** Swap (or remove) the off-hand weapon (dual-wielded blade/club). Pass null to unequip. */
+export function setOffWeapon(rig: Rig, kind: WeaponKind | null, accent: number) {
+  disposeRigPart(rig, 'offWeapon');
+  if (!kind) return;
+  rig.parts.offWeapon = attachWeapon(rig, kind, accent, 'L') as unknown as THREE.Mesh;
 }
 
 // ────── ANIMATION ──────
@@ -2308,6 +2383,10 @@ export interface EquipVisual {
   magic?: { color: number; glow: boolean };
   /** tier-driven detail 1..3: 1 plain, 2 studs/rivets, 3 gold trim + gems */
   detail?: number;
+  /** off-hand render shape: small buckler | wooden bucket | held weapon */
+  offHandShape?: 'shield' | 'bucket' | 'weapon';
+  /** weapon kind when offHandShape === 'weapon' (dual-wielded blade, club…) */
+  weaponKind?: WeaponKind;
 }
 
 /** '#ff7a1f' → 0xff7a1f */
@@ -2638,6 +2717,43 @@ function buildShield(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) 
   ringShell(v, piv, -13, 40, -3, -11, 46, 3, 1, def.color);
 }
 
+/** A small wooden bucket worn on the forearm — reads as a bucket, not a shield. */
+function buildBucket(v: Vox, piv: { cx: number; cy: number }, def: EquipVisual) {
+  const wood = def.color;
+  const woodDk = shade(wood, 0.72);
+  const iron = 0x6f6f6f;
+  const BX = -12, BY0 = 40, BY1 = 47, R = 3;
+  // tapered round walls (wider at the base) with alternating staves
+  for (let y = BY0; y <= BY1; y++) {
+    const c = y === BY0 || y === BY1 ? woodDk : (y % 2 === 0 ? wood : woodDk);
+    for (let x = BX - R; x <= BX + R; x++) for (let z = -R; z <= R; z++) {
+      const rr = (x - BX) * (x - BX) + z * z;
+      if (rr > R * R || rr <= (R - 1) * (R - 1)) continue;
+      v.add(x - piv.cx, y - piv.cy, z, c, 0.02);
+    }
+  }
+  // solid bottom disc
+  for (let x = BX - R; x <= BX + R; x++) for (let z = -R; z <= R; z++) {
+    if ((x - BX) * (x - BX) + z * z > R * R) continue;
+    v.add(x - piv.cx, BY0 - piv.cy, z, woodDk, 0.02);
+  }
+  // two iron hoops
+  for (const hy of [BY0 + 1, BY1 - 1]) {
+    for (let x = BX - R; x <= BX + R; x++) for (let z = -R; z <= R; z++) {
+      const rr = (x - BX) * (x - BX) + z * z;
+      if (rr > R * R || rr <= (R - 1) * (R - 1)) continue;
+      v.add(x - piv.cx, hy - piv.cy, z, iron, 0.02);
+    }
+  }
+  // iron handle arc over the top
+  for (let a = 0; a <= 180; a += 15) {
+    const rad = (a * Math.PI) / 180;
+    const x = BX + Math.round(3.5 * Math.cos(rad));
+    const y = BY1 + Math.round(2.5 * Math.sin(rad));
+    v.add(x - piv.cx, y - piv.cy, 0, iron, 0.03);
+  }
+}
+
 function buildPiece(def: EquipVisual): { part: string; mesh: THREE.Mesh }[] {
   const out: { part: string; mesh: THREE.Mesh }[] = [];
   const mk = (part: string, build: (v: Vox, piv: { cx: number; cy: number }) => void, gem?: (v: Vox, piv: { cx: number; cy: number }) => void) => {
@@ -2668,7 +2784,11 @@ function buildPiece(def: EquipVisual): { part: string; mesh: THREE.Mesh }[] {
     case 'trinket': mk('torso', (v, p) => buildTrinket(v, p, def)); break;
     case 'belt': mk('torso', (v, p) => buildBelt(v, p, def)); break;
     case 'ring': for (const s of ['L', 'R']) mk('hand' + s, (v, p) => buildRing(v, p, def)); break;
-    case 'offHand': mk('foreL', (v, p) => buildShield(v, p, def)); break;
+    case 'offHand': {
+      if (def.offHandShape === 'bucket') mk('foreL', (v, p) => buildBucket(v, p, def));
+      else if (def.offHandShape !== 'weapon') mk('foreL', (v, p) => buildShield(v, p, def));
+      break;
+    }
     default: break;
   }
   return out;
@@ -2707,6 +2827,12 @@ export function equip(rig: Rig, def: EquipVisual): void {
   unequip(rig, def.slot);
   // headgear hides the hair so it doesn't poke through the helmet
   if (def.slot === 'head') setHairVisible(rig, false);
+  // an off-hand WEAPON is a held model in the left hand (a real blade/club),
+  // not a layered clothing voxel — route it through setOffWeapon instead.
+  if (def.slot === 'offHand' && def.offHandShape === 'weapon' && def.weaponKind) {
+    setOffWeapon(rig, def.weaponKind, def.color);
+    return;
+  }
   const pieces = buildPiece(def);
   const stored: THREE.Object3D[] = [];
   for (const { part, mesh } of pieces) {
@@ -2726,6 +2852,9 @@ export function equip(rig: Rig, def: EquipVisual): void {
 
 /** Remove a single equipped piece (by slot). */
 export function unequip(rig: Rig, slot: EquipSlot): void {
+  // drop any off-hand weapon first (it lives in rig.parts.offWeapon, not
+  // rig.equipped, so the generic loop below wouldn't find it)
+  if (slot === 'offHand') setOffWeapon(rig, null, 0);
   const arr = rig.equipped?.[slot];
   if (!arr) return;
   for (const o of arr) {
@@ -2780,6 +2909,8 @@ export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisua
 
   let color: number;
   let style: EquipStyle;
+  let offHandShape: EquipVisual['offHandShape'];
+  let weaponKind: WeaponKind | undefined;
   switch (s) {
     case 'head':
       if (item._baseId === 'wooden_bucket') { color = 0x6b4423; style = 'bucket'; break; }
@@ -2805,6 +2936,17 @@ export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisua
       else color = 0x9a7b4f;
       style = 'shirt';
       break;
+    case 'offHand': {
+      color = MATS[mat];
+      style = 'shirt';
+      // bucket-as-buckler reads wrong: the wooden bucket keeps its bucket
+      // shape, a real weapon dual-wields as that weapon, and everything else
+      // (wooden shield, cup, wrench, towel…) reads as a small buckler.
+      if (item._baseId === 'wooden_bucket') offHandShape = 'bucket';
+      else if (item.kind === 'weapon') { offHandShape = 'weapon'; weaponKind = item.weaponKind; }
+      else offHandShape = 'shield';
+      break;
+    }
     default: color = MATS[mat]; style = 'shirt';
   }
 
@@ -2820,5 +2962,5 @@ export function itemToEquipVisual(item: Item, slotOverride?: string): EquipVisua
   // jewellery pieces ARE the gem — dye them entirely
   if (magic && (s === 'amulet' || s === 'ring' || s === 'trinket')) color = magic.color;
 
-  return { slot: s, color, style, magic, detail: Math.min(3, Math.max(1, item.tier ?? 1)) };
+  return { slot: s, color, style, magic, detail: Math.min(3, Math.max(1, item.tier ?? 1)), offHandShape, weaponKind };
 }

@@ -63,6 +63,16 @@ export function executeCheatCommand(engine: any, cmd: string) {
       engine.combat.godMode = engine.godMode;
       reply(`God mode ${engine.godMode ? 'ON' : 'OFF'}`);
       break;
+    case 'creation':
+      // open the wake character-builder overlay from any phase (debug aid —
+      // the normal flow opens it mid-intro). Confirming still applies the
+      // build and drops to explore; nothing in the intro is waiting on it.
+      engine.phase = 'creation';
+      engine.busy = false;
+      engine.cinematic = false;
+      engine.emitSnapshot();
+      reply('Character creation (debug)');
+      break;
     case 'superhero':
       if (hero) {
         hero.maxHp = 999; hero.hp = 999; hero.ac = 30;
@@ -109,8 +119,6 @@ export function executeCheatCommand(engine: any, cmd: string) {
       for (let x = 0; x < engine.explored.length; x++)
         for (let z = 0; z < engine.explored[x].length; z++)
           engine.explored[x][z] = true;
-      if (engine.fogMesh) engine.fogMesh.count = 0;
-      engine.fogDirty = true;
       reply('Map revealed — fog of war cleared!');
       break;
     case 'gotofloor':

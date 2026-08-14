@@ -15,6 +15,8 @@ import { ALL_CLASS_SKILLS, classPoolSkillIds } from './classSkills';
 import { AudioManager } from './audio';
 import { DestructibleManager, type Destructible } from './destructibles';
 import { makeItem, ITEM_BASES, type Item } from './items';
+import { canEquipIn, isThrowable, itemUses } from './improvised';
+import { FloorChaos } from './chaos';
 import type { LevelDef, LevelStructures } from '../levels/levelTypes';
 import { effMaxHp } from './stats';
 import { rollD20, abilityMod, fmtMod } from './dice';
@@ -40,7 +42,7 @@ import { buildTavern } from './engine/tavern';
 import { buildSheep } from './engine/sheep';
 import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone, grantKey as grantKeyModule, winGame as winGameModule, grantLoot as grantLootModule } from './engine/dungeonSetup';
 import { smashProp, checkCombatTrigger, enqueue, setAnimScale, spawnFloater, refreshBar, triggerTrap as triggerTrapModule, disarmTrap as disarmTrapModule } from './engine/combatAnimation';
-import { updateFog, updateExploredVisibility, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule, hidePathPreview, type InteractPick } from './engine/interaction';
+import { updateFog, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule, hidePathPreview, type InteractPick } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
 import { respawn as respawnModule, levelUpAtBonfire as levelUpAtBonfireModule } from './engine/camping';
 import { executeCheatCommand as executeCheatCommandModule } from './engine/cheats';
@@ -144,6 +146,8 @@ export class GameEngine {
   public flags = new Set<string>();
   /** hand-authored interactables (proximity prompts) */
   public interactables: Interactable[] = [];
+  /** seeded extra beats + pickups for this run */
+  public chaos: FloorChaos | null = null;
   /** 3-phase combat: team of the last processed turn (banner fires on change) */
   public lastTurnTeam: string | null = null;
   /** big center-screen phase flash — set on party→enemy / enemy→party */
@@ -339,6 +343,10 @@ export class GameEngine {
   public disposed = false;
   public raf = 0;
   public lastT = 0;
+  /** active retry timer while a lost WebGL context is being restored */
+  private _ctxRestoreTimer: number | null = null;
+  /** cached BEFORE any loss — getExtension() returns null once the context is lost */
+  private _loseCtxExt: WEBGL_lose_context | null = null;
   public chest: THREE.Group | null = null;
 
   // -- dungeon interactables & quest state --
@@ -387,17 +395,11 @@ export class GameEngine {
   public gameWon = false;
 
   // -- fog of war ---------------------------------------------
-  /** tiles the player has seen at least once */
+  /** tiles the player has seen at least once — drives the minimap / full map.
+   *  No canvas fog overlay: the dungeon is always visible and lit by the
+   *  hero's torch pool; `explored` only inks the map. */
   public explored: boolean[][] = [];
-  /** parent group for the full-map fog InstancedMesh */
-  public fogGroup: THREE.Group | null = null;
-  /** single InstancedMesh of black columns covering every UNEXPLORED tile
-   *  map-wide (not just a window near the leader) — rebuilt lazily when
-   *  `fogDirty` flips, so scrolled-away areas stay completely black */
-  public fogMesh: THREE.InstancedMesh | null = null;
-  /** set when exploration changes → updateFog rebuilds the fog mesh */
-  public fogDirty = true;
-  /** vision radius (tiles) ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ torch extends it; base is a small cone */
+  /** vision radius (tiles) — torch extends it; base is a small cone */
   public visionRadius = 6;
 
   // -- cheat console ------------------------------------------
@@ -461,7 +463,14 @@ export class GameEngine {
   init() {
     void this.physics.init();
     const w = this.container.clientWidth, h = this.container.clientHeight;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // no `powerPreference: 'high-performance'` — on virtualized GPUs that hint
+    // can force an unstable adapter path and cause repeated context loss.
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Cache WEBGL_lose_context NOW: after a context loss getExtension() returns
+    // null, and three.js's forceContextRestore() re-queries lazily — so it can
+    // never restore a context that wasn't primed here. We keep the reference and
+    // drive restoreContext() through it directly in the recovery loop below.
+    this._loseCtxExt = this.renderer.getContext().getExtension('WEBGL_lose_context');
     this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -527,16 +536,11 @@ export class GameEngine {
     this.world = new VoxelWorld(levelForFloor(this.floorNumber), this.runSeed & 0xffff);
     this.scene.add(this.world.group);
 
-    // -- fog of war: initialize the explored grid (all dark) + overlay group --
-    // The fog InstancedMesh itself is lazy-created by updateFog (interaction.ts)
-    // so any world/floor rebuild path automatically gets a fresh full-map mesh.
+    // -- fog of war: initialize the explored grid (all dark) --
+    // No canvas fog overlay; `explored` only inks the minimap / full map.
     {
       const FS = this.world.heights.length;
       this.explored = Array.from({ length: FS }, () => new Array<boolean>(FS).fill(false));
-      this.fogGroup = new THREE.Group();
-      this.scene.add(this.fogGroup);
-      this.fogMesh = null;
-      this.fogDirty = true;
     }
 
     // find bonfire prop
@@ -788,7 +792,6 @@ export class GameEngine {
     if (this.phase === 'menu') {
       this.world.group.visible = false;
       this.props.group.visible = false;
-      if (this.fogGroup) this.fogGroup.visible = false;
       // dungeon dressing (rubble, bath, iron doors, chests) + trap markers
       // must not leak beside the tavern exterior on the title screen
       if (this.dressingGroup) this.dressingGroup.visible = false;
@@ -842,22 +845,33 @@ export class GameEngine {
 
     this.bindInput();
     // GPU resilience: a lost WebGL context (common on virtualized GPUs) blanks
-    // the canvas white until the browser restores it. three.js auto-recovers;
-    // we re-assert sizing + let the player know what happened.
+    // the canvas white. three.js calls preventDefault() internally, so the
+    // browser will NOT auto-restore — we must drive the restore ourselves. A
+    // single-shot restore often returns false on virtualized GPUs, so retry
+    // until the context is actually back; this is what keeps a white canvas
+    // from ever persisting.
     this.renderer.domElement.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
-      this.pushLog('⚠ Graphics hiccup — re-initializing the canvas…', 'system');
-      // preventDefault() stops the browser's automatic restore, so we MUST
-      // restore manually. Without this the canvas stays white forever.
-      setTimeout(() => {
+      if (this._ctxRestoreTimer !== null) return;   // a recovery pass is already running
+      this.pushLog('⚠ Graphics context lost — restoring…', 'system');
+      let attempts = 0;
+      this._ctxRestoreTimer = window.setInterval(() => {
+        attempts += 1;
+        const gl = this.renderer.getContext();
+        if (!gl.isContextLost()) { this._stopCtxRestore(); return; }
         try {
-          this.renderer.forceContextRestore();
+          this._loseCtxExt?.restoreContext();
         } catch {
-          /* ignore — the next render attempt re-inits anyway */
+          /* swallow — retried on the next tick */
         }
-      }, 200);
+        if (attempts >= 40) {
+          this._stopCtxRestore();
+          this.pushLog('❌ Graphics driver refused to restore the canvas. Please restart the game.', 'system');
+        }
+      }, 250);
     });
     this.renderer.domElement.addEventListener('webglcontextrestored', () => {
+      this._stopCtxRestore();
       this.applyDisplaySettings();
       this.pushLog('✅ Graphics recovered.', 'system');
     });
@@ -892,6 +906,14 @@ export class GameEngine {
     // dev hook: lets scripts/browser automation drive the engine directly
     (window as unknown as Record<string, unknown>).__dh_engine = this;
   }
+  /** stop any in-flight context-restore retry loop */
+  private _stopCtxRestore() {
+    if (this._ctxRestoreTimer !== null) {
+      window.clearInterval(this._ctxRestoreTimer);
+      this._ctxRestoreTimer = null;
+    }
+  }
+
 
   public spawnUnits() {
     const L = levelForFloor(this.floorNumber);
@@ -1315,7 +1337,6 @@ export class GameEngine {
     for (let x = tile.x - 1; x <= tile.x + 1; x++) for (let z = tile.z - 1; z <= tile.z + 1; z++) {
       if (x >= 0 && z >= 0 && x < WORLD_SIZE && z < WORLD_SIZE) this.explored[x][z] = true;
     }
-    this.fogDirty = true;
   }
 
   /** mark a rect explored (goblin map) */
@@ -1323,7 +1344,6 @@ export class GameEngine {
     for (let x = rect.x0; x <= rect.x1; x++) for (let z = rect.z0; z <= rect.z1; z++) {
       if (x >= 0 && z >= 0 && x < WORLD_SIZE && z < WORLD_SIZE) this.explored[x][z] = true;
     }
-    this.fogDirty = true;
     this.emitSnapshot();
   }
 
@@ -1802,7 +1822,6 @@ export class GameEngine {
     //    fresh run never rebuilt it). Hiding mirrors enterTavern's pattern.
     if (this.world) this.world.group.visible = false;
     if (this.props) this.props.group.visible = false;
-    if (this.fogGroup) this.fogGroup.visible = false;
     // dungeon dressing + trap markers stay out of the tavern-exterior view
     if (this.dressingGroup) this.dressingGroup.visible = false;
     if (this.trapManager?.group) this.trapManager.group.visible = false;
@@ -1945,7 +1964,6 @@ export class GameEngine {
         }
         this.flags.add('scouted_12');   // the r12 rat den is caught flat-footed
         u.cooldowns['scout'] = 4;       // 3-round cooldown, ticking like combat
-        this.fogDirty = true;
         this.audio.play('dice', 0.7);
         this.pushLog('🦅 A scout slips ahead — the map opens up. Hidden enemies are spotted.', 'system');
         this.emitSnapshot();
@@ -2145,7 +2163,6 @@ export class GameEngine {
     this.gameWon = false;
     this.runStats = { kills: 0, deaths: 0, questsDone: 0, secretsFound: 0, startedAt: Date.now() };
     this.explored = this.explored.map((row) => row.map(() => false));
-    this.fogDirty = true;
     this.hazardUsed = new Set();
 
     // clear dressing from the previous run (doors, blockers, rubble, NPCs)
@@ -2926,7 +2943,10 @@ export class GameEngine {
     const idx = this.inventory.findIndex((i) => i.id === itemId);
     if (!u || u.team !== 'party' || idx < 0) return;
     const item = this.inventory[idx];
-    if (item.kind === 'consumable') { this.setHoverInfoOnce('Consumables are used, not equipped.'); return; }
+    if (item.kind === 'consumable' && itemUses(item).length === 0) {
+      this.setHoverInfoOnce('Consumables are used, not equipped.');
+      return;
+    }
     // legacy saves: items made before `slot` was persisted lack it — recover
     // the intended slot from the base template so boots stay boots instead of
     // falling through to the armor→'chest' default.
@@ -2938,16 +2958,11 @@ export class GameEngine {
       if (n.includes('ring')) nativeSlot = 'ring';
       else if (n.includes('amulet')) nativeSlot = 'amulet';
     }
+    if (slotHint && canEquipIn(item, slotHint)) nativeSlot = nativeSlot ?? slotHint;
+    if (!nativeSlot && itemUses(item)[0]) nativeSlot = itemUses(item)[0].slot;
     if (!nativeSlot) { this.setHoverInfoOnce('No valid slot for this item.'); return; }
-    // paper-doll clicks may override the native slot when the item allows it
-    // (the bucket is a weapon that also fits off-hand / head; any one-handed
-    // weapon can be held in the off hand for dual-wielding)
     let slot: string = nativeSlot;
-    if (slotHint && slotHint !== nativeSlot) {
-      const allowed = (item.altSlots ?? []).includes(slotHint as EquipSlot)
-        || (item.kind === 'weapon' && !item.twoHanded && slotHint === 'offHand');
-      if (allowed) slot = slotHint;
-    }
+    if (slotHint && slotHint !== nativeSlot && canEquipIn(item, slotHint)) slot = slotHint;
     // two-handed main weapon + off-hand item → refuse (both hands busy)
     if (slot === 'offHand' && u.equipment.weapon?.twoHanded) {
       this.setHoverInfoOnce(`${u.equipment.weapon.name} needs both hands — put it away first.`);
@@ -3203,7 +3218,7 @@ export class GameEngine {
    *  given consumable or weapon (range 6). Toggle off by clicking the 🎯 again. */
   startThrow(itemId: string) {
     const it = this.inventory.find((i) => i.id === itemId || (i._baseId && i._baseId === itemId));
-    if (!it || (it.kind !== 'consumable' && it.kind !== 'weapon')) return;
+    if (!it || !isThrowable(it)) return;
     if (this.targeting === `THROW:${itemId}`) { this.cancelTargeting(); return; }
     this.targeting = `THROW:${itemId}`;
     this.audio.play('ui_click', 0.6);
@@ -3218,7 +3233,7 @@ export class GameEngine {
     const u = this.combat.active;
     if (idx < 0 || !u || u.team !== 'party') return;
     const item = this.inventory[idx];
-    if (item.kind !== 'consumable' && item.kind !== 'weapon') return;
+    if (!isThrowable(item)) return;
     if (!this.combat.inCombat) { this.setHoverInfoOnce('Throwing is a combat bonus action.'); return; }
     if (!u.hasBonus) { this.setHoverInfoOnce('No bonus action left.'); return; }
     if (Combat.dist(u.pos, { x: tx, z: tz }) > 6) { this.setHoverInfoOnce('Too far to throw (6 tiles).'); return; }
@@ -3384,23 +3399,7 @@ export class GameEngine {
         this.trapManager.group.parent.remove(this.trapManager.group);
       }
     }
-    // 6. Fog of war — dispose the full-map InstancedMesh + overlay group.
-    if (this.fogMesh) {
-      if (this.fogMesh.geometry) this.fogMesh.geometry.dispose();
-      if (this.fogMesh.material) {
-        const mats = Array.isArray(this.fogMesh.material) ? this.fogMesh.material : [this.fogMesh.material];
-        mats.forEach((mat) => mat.dispose());
-      }
-      this.fogGroup?.remove(this.fogMesh);
-      this.fogMesh = null;
-    }
-    if (this.fogGroup) {
-      this.fogGroup.clear();
-      if (this.fogGroup.parent) this.fogGroup.parent.remove(this.fogGroup);
-      this.fogGroup = null;
-    }
-    this.fogDirty = true;
-    // 7. Dungeon dressing — iron door, golden chest, secret chest,
+    // 6. Dungeon dressing — iron door, golden chest, secret chest,
     //    lever mesh, weapon rack, boss prop, rubble. These are tracked
     //    as references on the engine; tear them down so they don't
     //    leak between floors.
@@ -3670,10 +3669,9 @@ export class GameEngine {
     this.tickSurfaces(dt);
     if (this.structures) this.updateDungeon(dt);
 
-    // torch flames only exist in explored rooms; otherwise particles leak light
+    // wall-torch flames burn everywhere — no fog overlay to hide them anymore
     for (const t of this.world.torches) {
-      const tile = this.world.worldToTile(t.pos.x, t.pos.z);
-      if (tile && this.explored?.[tile.x]?.[tile.z]) FX.flame(this.particles, t.pos.clone());
+      FX.flame(this.particles, t.pos.clone());
     }
 
     // bonfire (flame + smoke particles)
@@ -3714,10 +3712,12 @@ export class GameEngine {
           }
         }
       } else {
-        // no torch: soft always-on pool centred over the hero's head
-        this.torchLight.color.setHex(0xd7deef);
-        this.torchLight.intensity = 1.6;
-        this.torchLight.distance = 10;
+        // no torch: soft always-on pool centred over the hero's head. Warm
+        // + bright enough to read as a visible circle against the cool cave
+        // ambient (the old cool 1.6 was invisible under ACES tone mapping).
+        this.torchLight.color.setHex(0xffd9a0);
+        this.torchLight.intensity = 4.0;
+        this.torchLight.distance = 11;
         if (player) {
           const wp = this.unitWorld(player.pos);
           this.torchLight.position.set(wp.x, wp.y + 2.1, wp.z);
@@ -3727,7 +3727,6 @@ export class GameEngine {
 
     // fog of war: mark tiles within vision as explored, show/hide dark overlays
     this.updateFog(dt);
-    updateExploredVisibility(this);
 
     // sneak visual ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ smooth crouch
     this.crouchLerp += (this.sneaking ? 1 : 0) * Math.min(1, dt * 6) - this.crouchLerp * Math.min(1, dt * 6);
@@ -3976,10 +3975,17 @@ export class GameEngine {
     }
 
     // unit bars
+    const lightLead = this.combat?.living('party')[0];
+    const lightR = (this.torchLit ? this.visionRadius + 2 : this.visionRadius);
+    const lightR2 = lightR * lightR;
     for (const [id, v] of this.visuals) {
       const u = this.byId(id);
-      const explored = !!u && (u.team === 'party' || !!this.explored?.[u.pos.x]?.[u.pos.z]);
-      if (!u || !u.alive || !explored || this.phase === 'menu' || this.inTavern) { if (v.bar.style.display !== 'none') v.bar.style.display = 'none'; continue; }
+      // Party bars always show; MOB bars only appear inside the hero's light
+      // circle (the torch pool) — no fog overlay on the canvas anymore, so
+      // "seen" means "lit", and enemies beyond the pool stay unmarked.
+      const inLight = !!u && !!lightLead && (u.team === 'party' ||
+        (u.pos.x - lightLead.pos.x) ** 2 + (u.pos.z - lightLead.pos.z) ** 2 <= lightR2);
+      if (!u || !u.alive || !inLight || this.phase === 'menu' || this.inTavern) { if (v.bar.style.display !== 'none') v.bar.style.display = 'none'; continue; }
       v.bar.style.display = 'block';
       const sp = v.rig.group.position.clone(); sp.y += v.rig.pivots ? 2.8 : 2.05;
       sp.project(this.iso.cam);
@@ -4114,6 +4120,7 @@ export class GameEngine {
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this._stopCtxRestore();
     if (this.splashAudioHandler) {
       window.removeEventListener('pointerdown', this.splashAudioHandler);
       window.removeEventListener('keydown', this.splashAudioHandler);

@@ -23,8 +23,8 @@ export const GRIBNAB_BARKS = {
 
 /** Baron Gnaw — the Boss Rat's narrator barks. */
 export const BARON_BARKS = {
-  summon: "The bath king calls, and Baron Gnaw ANSWERS. Mostly because he was promised snacks.",
-  death: "Baron Gnaw collapses into a pile of wet fur and bad decisions. The bath is quieter now. The bath is ALWAYS quieter after the snacks arrive.",
+  summon: "Baron Gnaw whistles. The whistle, in rat, means 'everyone.' You are about to meet everyone.",
+  death: "Baron Gnaw collapses into a pile of wet fur and bad decisions. The surviving rats look at the body, look at each other, and immediately start campaigning to be the new Baron.",
 };
 
 /** Main quest: The Longest Morning. The hungover escape spine. */
@@ -42,13 +42,13 @@ export const MAIN_QUEST_F50 = {
 
 /** Easter-egg narrator lines. */
 export const EASTER_EGG_LINES = {
-  duckChoir: "The rubber ducks begin to sing. It is not a song you know. It is not a song ANYONE knows. But the ducks are committed. The ducks are ALWAYS committed.",
+  duckChoir: "The rubber ducks begin to sing. It is not a song you know. It is not a song ANYONE knows. But the ducks are committed. The ducks have been practicing.",
   chandelier: "You look up at the chandelier. It glitters. It sways. You once thought you would marry a chandelier. Tonight, the chandelier looks back. It remembers.",
   wellWish: "You toss a penny into the well. It flashes once, twice, and vanishes. Somewhere deep below, a wish is granted. It is probably not yours.",
   wellWishFail: "You have no penny to toss. The well stares back. The well has seen this before. The well is not impressed.",
   tpk: [
     "Your party falls. All of you. In your underwear. At the bottom of a dungeon. The narrator would like you to know: this is the funniest thing that has ever happened.",
     "You are dead. The rats are already holding a meeting about who gets your socks. The meeting is surprisingly civil.",
-    "Game over, Greg. The bath wins. The bath ALWAYS wins. But hey. You can try again. The dungeon has a sense of humor. It wants to see what you do next.",
+    "Game over, Greg. The bath wins. It was going to win from the first splinter, but it appreciates the effort. You can try again. The dungeon has a sense of humor. It wants to see what you do next.",
   ],
 };

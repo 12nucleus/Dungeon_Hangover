@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import type { CutsceneHost } from './types';
 import { buildCharacter, bakePassedOut } from '../characters';
+import { C_NORMAL } from '../characters/vox';
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -202,6 +203,10 @@ export async function playIntroCutscene(h: CutsceneHost) {
   if (bar) h.barmaidServe(bar);
   await h.narrate('narr_maid', 'The barmaid has poured this exact drink for this exact man forty-seven times. She stopped making eye contact somewhere around the thirtieth. It is safer that way.', 7600);
 
+  h.audio.distantScream?.(0.65);
+  h.iso.shake = Math.max(h.iso.shake ?? 0, 0.18);
+  await h.narrate('narr_cellar', 'Something in the cellar answers the toast. Nobody looks down. Everybody heard it. The floorboards remember a worse night than this one.', 5200);
+
   // == BEAT 6: the nervous wizard in the corner ==
   // FIX 4: face the wizard from the front (not profile). The wizard is small;
   // we need a closer shot so we can read the nervous arithmetic on his face.
@@ -289,7 +294,13 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // at the staff tip (no focus/distance change — the camera finally settled
   // onto the wizard in STAGE A; if we touch the focus here we restart the
   // iso.lerp ease and the whole shot jitters).
-  const wizardTip = poi.wizard.clone().add(new THREE.Vector3(0.15, 1.6, 0.05));
+  // FIX: the sheep ray must fire from the gem on the staff tip, not the hand.
+  // The gem sits at the top of the staff shaft (local y = 28.5 voxels × C_NORMAL);
+  // resolve its world position through the rig so the aim pose is honoured.
+  const staffGroup: THREE.Object3D | undefined = wiz?.parts?.weapon;
+  const wizardTip = staffGroup
+    ? staffGroup.localToWorld(new THREE.Vector3(0, 28.5 * C_NORMAL, 0))
+    : poi.wizard.clone().add(new THREE.Vector3(0.15, 1.6, 0.05));
   if (wiz) wiz.anim.mode = 'point';          // AIM: staff arm extended at Greg
   // charging swirl: two converging mote rings at the staff tip
   h.particles.burst({ pos: wizardTip, count: 14, color: [0xc084fc, 0xe9d5ff], speed: [0.2, 0.8], life: [0.5, 1.0], size: [0.3, 0.6], gravity: -0.4, endScale: 0.2 });
@@ -484,8 +495,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
 
   const starPos = floorWp.clone().add(new THREE.Vector3(0, 1.7, 0));
   h.spawnStars(starPos);
-  await h.narrate('narr_premise', 'You stand. The room spins. You are not sure if it\'s the hangover or the dungeon. Both, probably.', 4800);
-  await h.narrate('narr_premise_2', "A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that never burns out. Somewhere in the dark, something squeaks.", 6600);
 
   // ── character creation: stats, 2 classes, 2 starting skills ──
   // The React overlay renders on phase='creation'. requestCreation resolves
@@ -512,6 +521,9 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.desiredPitch = 0.62;
   h.spawnStars(starPos);
   await delay(900);
+  // the wake narration picks up now that Greg is on his feet
+  await h.narrate('narr_premise', 'You stand. The room spins. You are not sure if it\'s the hangover or the dungeon. Both, probably.', 4800);
+  await h.narrate('narr_premise_2', "A bag of basic supplies sits by your head: a rusty dagger, a health potion, and a torch that never burns out. Somewhere in the dark, something squeaks.", 6600);
   await h.narrate('narr_floor', 'Floor 50 — The Sewer Cellar. The bottom of everything. The bonfire behind you is the last warm thing you\'ll see for a long, long time. Get up, Greg. We\'ve got fifty floors of regret to climb.', 6800);
   if (h.introSkipped) { finishIntro(h); return; }
   finishIntro(h);

@@ -62,7 +62,7 @@ export async function playSporeMotherCutscene(h: CutsceneHost) {
     v.rig.anim.lunge = 1;
   }
   h.showCine(throneBroken
-    ? 'The Spore Mother sees her CRUMBLED throne. The dreaming stops. The waking begins. You did this. You magnificent idiot, you did this.'
+    ? 'The Spore Mother sees her CRUMBLED throne. The dreaming stops. The waking begins. You did this. You walked into a god\'s bedroom and broke the furniture.'
     : 'The Spore Mother opens her eyes. They are the colour of the deepest pool. She has been dreaming of you. Now she will dream OF you.');
   h.speakDialogue('spore_mother', throneBroken ? 'wake_broken' : 'wake');
   await h.cineDelay(3400);

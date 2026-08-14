@@ -435,6 +435,40 @@ export class AudioManager {
     mk(t + 0.11, 1800, 1400);
   }
 
+  /** Dead Space sting — noise slam + falling two-note, then silence. */
+  jumpScare(volume = 1) {
+    this.noiseBurst(0.18, volume * 0.85, 'highpass', 4200, 900);
+    this.beep(220, 70, 0.28, volume * 0.55, 'sawtooth');
+    this.beep(880, 140, 0.22, volume * 0.28, 'square', 0.04);
+  }
+
+  /** far-pipe shriek, quieter than a sting */
+  distantScream(volume = 0.7) {
+    if (!this.ctx || this.muted || !this.ambGain) {
+      this.noiseBurst(0.9, volume * 0.18, 'bandpass', 2100, 1400);
+      return;
+    }
+    this.ambScream(this.ctx.currentTime);
+  }
+
+  /** footstep in standing water */
+  waterStep(volume = 0.75) {
+    this.noiseBurst(0.16, volume * 0.45, 'bandpass', 1400, 400);
+    this.beep(240, 90, 0.12, volume * 0.18, 'sine');
+  }
+
+  /** delayed slapback of a footstep in a large chamber */
+  echoFoot(volume = 0.4) {
+    this.noiseBurst(0.08, volume * 0.25, 'lowpass', 900, 220);
+    this.beep(160, 90, 0.18, volume * 0.12, 'sine', 0.09);
+  }
+
+  /** raise drip/scream density when standing in flooded rooms */
+  setAmbienceWet(wet: boolean) {
+    if (!this.ambGain || !this.ctx) return;
+    this.ambGain.gain.linearRampToValueAtTime(wet ? 0.72 : 0.5, this.ctx.currentTime + 0.6);
+  }
+
 
   /** procedural crash for destructible props: filtered-noise burst + low thump */
   crumble(volume = 0.9) {
@@ -541,6 +575,51 @@ export class AudioManager {
   boneRattle(volume = 0.8) {
     for (let i = 0; i < 5; i++) this.noiseBurst(0.05, volume * 0.4, 'highpass', 4000, 3500);
     this.beep(300, 180, 0.15, volume * 0.25, 'square', 0.02);
+  }
+  /** weapon swing whoosh — plays as the attacker lunges */
+  swing(volume = 0.55) {
+    this.noiseBurst(0.18, volume * 0.6, 'bandpass', 1800, 500);
+    this.beep(900, 320, 0.12, volume * 0.14, 'sine');
+  }
+  /** a clean miss — the swing sails through empty air */
+  whiff(volume = 0.5) {
+    this.noiseBurst(0.14, volume * 0.5, 'bandpass', 2400, 900);
+  }
+  /** a dodge — quick airy swish as a target slips a blow */
+  dodge(volume = 0.6) {
+    this.noiseBurst(0.12, volume * 0.5, 'highpass', 3200, 2400);
+    this.beep(1200, 2000, 0.1, volume * 0.2, 'sine');
+  }
+  /** a blocked blow — metallic clank off armour or a raised shield */
+  block(volume = 0.7) {
+    this.noiseBurst(0.08, volume * 0.6, 'highpass', 5200, 3800);
+    this.beep(1600, 900, 0.09, volume * 0.4, 'square', 0.01);
+    this.beep(800, 500, 0.12, volume * 0.3, 'square', 0.03);
+  }
+  /** an arcane cast — rising chime for spells without their own asset */
+  cast(volume = 0.6) {
+    this.beep(440, 880, 0.22, volume * 0.3, 'triangle');
+    this.beep(880, 1320, 0.25, volume * 0.22, 'sine', 0.08);
+    this.beep(660, 1980, 0.3, volume * 0.18, 'triangle', 0.16);
+  }
+  /** weapon impact — character follows the damage type (blade / point / blunt) */
+  hitImpact(kind: string, volume = 0.9) {
+    switch (kind) {
+      case 'slashing':
+        this.noiseBurst(0.12, volume * 0.65, 'highpass', 4200, 2600);
+        this.beep(900, 220, 0.08, volume * 0.25, 'square');
+        break;
+      case 'piercing':
+        this.noiseBurst(0.06, volume * 0.6, 'highpass', 5000, 3600);
+        this.beep(1600, 700, 0.05, volume * 0.3, 'square');
+        break;
+      case 'bludgeoning':
+        this.noiseBurst(0.14, volume * 0.7, 'lowpass', 700, 160);
+        this.beep(220, 70, 0.12, volume * 0.35, 'sine');
+        break;
+      default:
+        this.noiseBurst(0.1, volume * 0.5, 'bandpass', 2000, 700);
+    }
   }
   /** short sting to open the boss fight */
   bossSting(volume = 1) {

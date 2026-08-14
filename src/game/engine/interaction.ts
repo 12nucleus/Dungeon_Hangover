@@ -15,18 +15,13 @@ import { unitWorld } from './visuals';
 import { clearHighlights, showAoePreview, pingAt } from './targeting';
 
 // ══ fog of war ══════════════════════════════════════════════
-// One InstancedMesh covers EVERY unexplored tile map-wide (not just a
-// window around the leader), so scrolled-away unexplored areas stay
-// completely black. Matrices are rebuilt lazily only when tiles become
-// explored (engine.fogDirty), keeping the per-frame cost at zero.
-const fogDummy = new THREE.Object3D();
-
+// No canvas overlay: the dungeon is always visible and lit by the hero's
+// torch pool (the "illuminated circle"). `explored` is the ONLY artifact —
+// it inks the minimap / full map, so the map shows exactly the ground the
+// player has seen. Reveal is a CIRCLE around the leader and walls block
+// sight, so adjacent rooms never appear on the map until entered.
 export function updateFog(engine: any, _dt: number) {
   if (!engine.explored.length || engine.phase === 'menu' || engine.busy) return;
-  // the fog-of-war overlay is hidden on the title screen / returnToTitle and
-  // re-shown here (the intro/load paths only reveal world/props/dressing, so
-  // without this the fog stays off forever and every room is visible).
-  if (engine.fogGroup) engine.fogGroup.visible = true;
   const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat?.living('party')[0];
   if (!leader) return;
 
@@ -34,90 +29,26 @@ export function updateFog(engine: any, _dt: number) {
   const radius = engine.torchLit ? engine.visionRadius + 2 : engine.visionRadius;
   const px = leader.pos.x, pz = leader.pos.z;
   const S = engine.explored.length;
+  const R2 = radius * radius;
   const x0 = Math.max(0, px - radius), x1 = Math.min(S - 1, px + radius);
   const z0 = Math.max(0, pz - radius), z1 = Math.min(S - 1, pz + radius);
+
+  // ── reveal: CIRCULAR radius + walls block sight ──
   for (let x = x0; x <= x1; x++) {
     for (let z = z0; z <= z1; z++) {
-      const dist = Math.max(Math.abs(x - px), Math.abs(z - pz));
+      if (engine.explored[x][z]) continue;
+      const dx = x - px, dz = z - pz;
+      if (dx * dx + dz * dz > R2) continue;      // Euclidean, not Chebyshev
       // Reveal walkable tiles plus decorative tiles in the current vision
       // radius. Props can intentionally occupy blocked tiles (bonfires,
       // braziers), so those tiles must still become visible when nearby.
       const onSelf = x === px && z === pz;
       const hasDecor = (engine.world.exploredObjects ?? []).some((o: any) => o.x === x && o.z === z);
-      if (dist <= radius && (onSelf || engine.world.isWalkable(x, z) || hasDecor) && !engine.explored[x][z]) {
-        engine.explored[x][z] = true;
-        engine.fogDirty = true;
-      }
+      if (!onSelf && !engine.world.isWalkable(x, z) && !hasDecor) continue;
+      // a wall between us and the tile blocks sight — adjacent rooms stay dark
+      if (!onSelf && !engine.hasLineOfSight({ x: px, z: pz }, { x, z })) continue;
+      engine.explored[x][z] = true;
     }
-  }
-
-  // Lazy-create the full-map fog mesh (recreated fresh on every floor build).
-  // IMPORTANT: the fog is a THIN flat slab resting on the floor, not a tall
-  // column. Tall opaque boxes become black "pillars" when viewed edge-on and
-  // block the whole room from grazing camera angles. A flat dark tile reads
-  // as "unexplored black floor" from any angle without occluding the scene.
-  if (!engine.fogMesh && engine.fogGroup) {
-    // Tall opaque columns on UNEXPLORED FLOOR tiles. A column as tall as the
-    // tallest wall hides rooms beyond it from every camera angle (a flat slab
-    // let the camera see over low walls). Walls themselves are never fogged —
-    // they're opaque voxels, and fogging them turned the explored room's own
-    // walls into black monoliths.
-    const g = new THREE.BoxGeometry(1.08, 4.8, 1.08);
-    const m = new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 1, transparent: false, depthWrite: true });
-    const mesh = new THREE.InstancedMesh(g, m, S * S);
-    mesh.renderOrder = 5;
-    mesh.frustumCulled = false;
-    mesh.count = 0;
-    engine.fogGroup.add(mesh);
-    engine.fogMesh = mesh;
-    engine.fogDirty = true;
-  }
-
-  // Rebuild instance matrices only when exploration actually changed.
-  if (engine.fogDirty && engine.fogMesh) {
-    engine.fogDirty = false;
-    let n = 0;
-    for (let x = 0; x < S; x++) {
-      for (let z = 0; z < S; z++) {
-        if (engine.explored[x][z]) continue;
-        // Only unexplored WALKABLE tiles are fogged — the walls stay as
-        // terrain. The leader's own tile is never fogged.
-        const onSelf = x === px && z === pz;
-        if (onSelf || !engine.world.isWalkable(x, z)) continue;
-        const wp = unitWorld(engine, { x, z });
-        const floorY = engine.world.heightAt(x, z);
-        fogDummy.position.set(wp.x, floorY + 2.4, wp.z);
-        fogDummy.updateMatrix();
-        engine.fogMesh.setMatrixAt(n, fogDummy.matrix);
-        n++;
-      }
-    }
-    engine.fogMesh.count = n;
-    engine.fogMesh.instanceMatrix.needsUpdate = true;
-  }
-}
-
-/** Hide all tile-owned decoration while its tile is unexplored. */
-export function updateExploredVisibility(engine: any) {
-  for (const entry of engine.world?.exploredObjects ?? []) {
-    const visible = !!engine.explored?.[entry.x]?.[entry.z];
-    entry.object.visible = true;
-    entry.object.traverse((o: any) => {
-      if (o.isLight) {
-        const base = o.userData.fogBaseIntensity ?? o.intensity;
-        o.userData.fogBaseIntensity = base;
-        o.intensity = visible ? base : 0;
-      }
-      if (o.material?.isSpriteMaterial) {
-        const base = o.userData.fogBaseOpacity ?? o.material.opacity;
-        o.userData.fogBaseOpacity = base;
-        o.material.opacity = visible ? base : 0;
-      }
-    });
-  }
-  for (const torch of engine.world?.torches ?? []) {
-    const tile = engine.world.worldToTile(torch.pos.x, torch.pos.z);
-    if (tile) torch.light.visible = !!engine.explored?.[tile.x]?.[tile.z];
   }
 }
 
@@ -290,14 +221,11 @@ function refreshPathPreview(engine: any, tile: GridPos | null, suppressed: boole
   if (!tile || suppressed) return;
   const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat?.living('party')[0];
   if (!leader) return;
-  const seen = !!engine.explored[tile.x]?.[tile.z];
   if (!engine.world.isWalkable(tile.x, tile.z)) {
-    // walls/voids are always rendered → red "can't stand there" ring;
-    // unexplored floor stays silent (you can't see it anyway)
+    // walls/voids are always rendered → red "can't stand there" ring
     showDestRing(engine, tile, 0xef4444);
     return;
   }
-  if (!seen) return;
   const path = engine.combat.pathTo(leader, tile.x, tile.z, 90);
   if (!path || !path.length) { showDestRing(engine, tile, 0xef4444); return; }
   ensurePathPreview(engine);
@@ -497,14 +425,15 @@ function companionClick(engine: any, leader: Unit | null, u: Unit) {
 }
 
 /**
- * Walk click — BG3 rules: you may only plot a route to tiles you can SEE
- * (explored) and STAND on (walkable). Clicking a wall/fog/void snaps to the
- * closest reachable explored tile within 3 (never to the far side of a
- * wall), and anything deeper is refused with a message instead of sending
- * the hero wandering across the map.
+ * Walk click — BG3 rules: you may only plot a route to tiles you can STAND
+ * on (walkable). There is no fog overlay on the canvas anymore, so every
+ * visible tile is walkable; clicking a wall/void snaps to the closest
+ * reachable walkable tile within 3 (never to the far side of a wall), and
+ * anything deeper is refused with a message instead of sending the hero
+ * wandering across the map. (`explored` only inks the minimap now.)
  */
 function walkClick(engine: any, leader: Unit, tile: GridPos) {
-  const seenOk = (x: number, z: number) => engine.world.isWalkable(x, z) && !!engine.explored[x]?.[z];
+  const seenOk = (x: number, z: number) => engine.world.isWalkable(x, z);
   let dest: GridPos | null = null;
   let path: GridPos[] | null = null;
   if (seenOk(tile.x, tile.z)) {
@@ -512,7 +441,7 @@ function walkClick(engine: any, leader: Unit, tile: GridPos) {
     if (p && p.length) { dest = tile; path = p; }
   }
   if (!dest) {
-    // spiral out from the clicked tile — nearest explored+walkable+reachable
+    // spiral out from the clicked tile — nearest walkable+reachable
     let bestScore = Infinity;
     for (let r = 1; r <= 3; r++) {
       for (let dx = -r; dx <= r; dx++) {
@@ -530,8 +459,7 @@ function walkClick(engine: any, leader: Unit, tile: GridPos) {
     }
   }
   if (!dest || !path) {
-    const dark = !engine.explored[tile.x]?.[tile.z];
-    setHoverInfoOnce(engine, dark ? '🌑 Unscouted darkness — move closer first.' : '🧱 Can\'t walk there — that\'s a wall.');
+    setHoverInfoOnce(engine, '🧱 Can\'t walk there — that\'s a wall.');
     return;
   }
   engine.audio.play('ui_click', 0.5);

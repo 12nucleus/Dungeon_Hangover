@@ -18,7 +18,7 @@ import { mulberry32 } from './gen/dungeonGen';
 export const ROOM_NARRATION: Record<string, string> = {
   r1: "You enter the Fungal Grotto. It's beautiful. It's glowing. It's ALIVE. It's also judging you. You can tell. The mushrooms have opinions, and one of them is about your posture. Whatever. You're here. You're breathing. The mushrooms hate that.",
   r2: "The spores. Everywhere. You can see them because they are literally in your face. You can breathe them. You probably shouldn't. You're going to anyway, because you're you, and 'you' is the word for 'a person who breathes the spores.'",
-  r3: "The vines move. The vines are alive. The vines are not your friends. I know, I know — 'vines are plants, plants are chill.' That's what the LAST guy thought. The last guy is mulch. The vines are NEVER your friends.",
+  r3: "The vines move. The vines are alive. The vines are not your friends. I know, I know — 'vines are plants, plants are chill.' That's what the LAST guy thought. The last guy is mulch. The last guy was also extremely chill about it, right up until the end.",
   r4: "A pool. Crystal clear. Underground. This is fine. Everything is fine. Do not drink the water. Do not even LOOK at the water. Look at the water, Greg. Drink the water, Greg. You know you want to. You KNOW you want to.",
   r5: "Seven mushrooms. Seven colors. Seven is a MAGIC number. This is either a ritual or a party. Either way, you're not invited. Unless you bring a mushroom. Then you're the main course AND the entertainment.",
   r6: "The central grotto. The HEART of the fungal forest. The mushrooms here are bigger. Older. Wiser. WATCHING. It's like walking into a library where every librarian is a mushroom and every book is a judgment.",
@@ -325,7 +325,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
         // Sporefriend evolves — +5 max HP and a full heal, as celebration
         const sf = e.combat?.units.find((u) => u.name === 'Sporefriend');
         if (sf && sf.maxHp != null) { sf.maxHp += 5; sf.hp = sf.maxHp; }
-        void e.narrate('f49_seventh', 'You place the Seventh Cap in the circle. The colors align. The mushrooms light up like a festival. Seven mushrooms. Seven colors. Seven friends, reunited at last. The circle hums. The party begins. You are invited. You were ALWAYS invited. The small mushroom bounces so hard it levitates.', 5400);
+        void e.narrate('f49_seventh', 'You place the Seventh Cap in the circle. The colors align. The mushrooms light up like a festival. Seven mushrooms. Seven colors. Seven friends, reunited at last. The circle hums. The party begins. You are invited. The small mushroom bounces so hard it levitates.', 5400);
         e.pushLog('🎉 The circle is whole! Sporefriend grows stronger (+5 max HP) and glows with pride. It is a mushroom. It is YOUR mushroom.', 'system');
       },
     });
@@ -419,7 +419,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     once('search_waterfall_r9', r.x0, midZ(r), '[R] Search behind the waterfall', (e) => {
       if (e.abilityCheck('wis', 12)) {
         e.setFlag('waterfall_found');
-        void e.narrate('f49_waterfall', 'Behind the curtain of water, a stone staircase, going up. The waterfall was hiding it. The waterfall is a terrible secret-keeper but an excellent shower. You found the way forward. You beautiful, dripping idiot. You found it.', 5400);
+        void e.narrate('f49_waterfall', 'Behind the curtain of water, a stone staircase, going up. The waterfall was hiding it. The waterfall is a terrible secret-keeper but an excellent shower. You found the way forward. Dripping wet, standing behind a waterfall, having an excellent time. You found it.', 5400);
         e.pushLog('Behind the curtain of water — a stone staircase, going up!', 'system');
       } else {
         e.pushLog('You duck behind the waterfall and get soaked. Just rock. The water is very confident about being here. The water has never doubted itself for one second.', 'system');
@@ -435,7 +435,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       visibleIf: (e) => e.hasFlag('waterfall_found') && e.hasFlag('spore_mother_dead'),
       run: (e) => {
         e.completeQuest('through_grotto');
-        void e.narrate('f49_departure', 'The staircase is cold. The staircase is stone. The staircase goes UP. Behind you, the grotto dims. The mushrooms wave. Some of them are crying. Some of them are laughing. It is hard to tell with mushrooms. You climb toward Floor 48. You climb toward the DREAMER. You climb because that is what you do.', 5800);
+        void e.narrate('f49_departure', 'The staircase is cold. The staircase is stone. The staircase goes UP. Behind you, the grotto dims. The mushrooms wave. Some of them are crying. Some of them are laughing. It is hard to tell with mushrooms. You climb toward Floor 48. You climb toward the DREAMER. You climb because the mushrooms are already starting to gossip.', 5800);
         e.winGame?.();
       },
     });
@@ -479,7 +479,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     once('read_journal_r13', (r.x0 + r.x1) >> 1, (r.z0 + r.z1) >> 1, '[R] Read the Spore Mother\'s journal', (e) => {
       grant(e, ['glowing_spore', 'glowing_spore', 'moon_cap']);
       e.runStats.secretsFound += 1;
-      void e.narrate('f49_nursery', 'You read the Spore Mother\'s journal. It is written in a careful, motherly hand: "Baby 3 tried to grow legs today. So proud. Note to self: do not let Baby 3 near the waterfall." The last entry is from yesterday. It says: "Someone is coming. Someone always comes. This time I will keep the nursery safe. This time I will dream louder." You put the journal down. You feel like garbage. You still have to go fight her. That is what you do.', 5800);
+      void e.narrate('f49_nursery', 'You read the Spore Mother\'s journal. It is written in a careful, motherly hand: "Baby 3 tried to grow legs today. So proud. Note to self: do not let Baby 3 near the waterfall." The last entry is from yesterday. It says: "Someone is coming. Someone always comes. This time I will keep the nursery safe. This time I will dream louder." You put the journal down. You feel like garbage. You still have to go fight her. You do not want to. You are going to anyway.', 5800);
       e.pushLog('🗝 Secret found — the nursery behind the throne! (2 Glowing Spores + a Moon Cap)', 'system');
     });
     once('open_stash_r13', r.x1, r.z1, '[R] Open the mother\'s stash', (e) => {
@@ -554,7 +554,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       run: (e) => {
         e.setFlag('giant_woke');
         e.aggroGroup?.('r18_giant');
-        void e.narrate('f49_giant_wake', 'You touch the giant mushroom. It stops snoring. One eye opens. It is the size of a dinner plate, and it is FULL of the surface it has never seen. "Oh," it says, in a voice like falling trees, "so YOU are the one." The grotto holds its breath. You did this. You magnificent idiot, you woke the giant.', 5400);
+        void e.narrate('f49_giant_wake', 'You touch the giant mushroom. It stops snoring. One eye opens. It is the size of a dinner plate, and it is FULL of the surface it has never seen. "Oh," it says, in a voice like falling trees, "so YOU are the one." The grotto holds its breath. You did this. You saw a sleeping mountain and decided it looked like it needed a nudge. You woke the giant.', 5400);
       },
     });
     out.push({

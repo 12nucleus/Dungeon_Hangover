@@ -87,6 +87,19 @@ export function CharacterCreationPanel({ engine }: Props) {
   const canConfirm =
     classes.length === 2 && selectedSkills.length === 2 && remaining === 0;
 
+  // Step tabs: jumping forward is gated the same way the Next button is;
+  // jumping back is always allowed (no data loss). Disabled tabs explain why.
+  const canJumpTo = (target: 'stats' | 'classes' | 'skills') => {
+    if (target === 'stats') return true;
+    if (target === 'classes') return remaining === 0;
+    return classes.length === 2;
+  };
+  const jumpTo = (target: 'stats' | 'classes' | 'skills') => {
+    if (canJumpTo(target)) setStep(target);
+  };
+  const stepDone = (id: 'stats' | 'classes' | 'skills') =>
+    id === 'classes' ? remaining === 0 : id === 'skills' ? classes.length === 2 : false;
+
   const confirm = () => {
     const build: CharacterBuild = {
       classes: [classes[0], classes[1]],
@@ -104,10 +117,30 @@ export function CharacterCreationPanel({ engine }: Props) {
           <div className="creation-rune">◆ ◆ ◆</div>
           <h1>WHO THE HELL AM I?</h1>
           <p>Greg the Dim, apparently. Time to remember what that means.</p>
-          <div className="creation-steps">
-            <span className={step === 'stats' ? 'on' : ''}>1 · Ability Scores</span>
-            <span className={step === 'classes' ? 'on' : ''}>2 · Two Classes</span>
-            <span className={step === 'skills' ? 'on' : ''}>3 · Starting Skills</span>
+          <div className="creation-steps" role="tablist" aria-label="Creation steps">
+            {([
+              { id: 'stats', label: '1 · Ability Scores' },
+              { id: 'classes', label: '2 · Two Classes' },
+              { id: 'skills', label: '3 · Starting Skills' },
+            ] as const).map((t) => {
+              const active = step === t.id;
+              const ready = canJumpTo(t.id);
+              const done = stepDone(t.id);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`step-tab ${active ? 'on' : ''} ${done && !active ? 'done' : ''}`}
+                  disabled={!ready}
+                  onClick={() => jumpTo(t.id)}
+                  title={!ready ? (t.id === 'classes' ? 'Spend all 14 points first' : 'Pick both classes first') : undefined}
+                >
+                  {done && !active ? '✓ ' : ''}{t.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 

@@ -252,9 +252,12 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
     legLX = -1.492; legRX = -1.702; kneeL = 1.368; kneeR = 1.688;
     elbowL = -1.192; elbowLZ = 0.998; elbowR = 0.128; elbowRZ = 0.148;
   } else if (a.mode === 'crack') {
+    // knuckles pump at the chest — a slow rhythmic squeeze so the crack reads
+    // as an action, not a frozen pose. `a.t` drives the pulse.
+    const pump = Math.sin(a.t * 7) * 0.1;
     torsoX = 0.06; headX = -0.05;
-    armLX = -0.732; armLZ = -0.192; armRX = -1.552; armRZ = -0.212;
-    elbowL = -1.3; elbowR = -0.842;
+    armLX = -0.732 + pump; armLZ = -0.192; armRX = -1.552 - pump; armRZ = -0.212;
+    elbowL = -1.3 - pump * 0.6; elbowR = -0.842 - pump * 0.6;
   } else if (a.mode === 'cross') {
     armLX = -1.032; armRX = -1.192;
     armLZ = 0.128;  armRZ = 0.088;

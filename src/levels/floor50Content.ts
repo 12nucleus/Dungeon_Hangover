@@ -550,7 +550,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         }
         e.setFlag('footlocker_r10_open');
         grant(e, ['guards_cap', 'love_letter'], 10);
-        void e.narrate('f50_letter', "A love letter. It's addressed to Scrag. It's from someone named 'Bliss.' It's... it's very romantic. It's very GRAPHIC. You put it back. You put it back and you NEVER speak of it.", 4600);
+        void e.narrate('f50_letter', "A love letter. It's addressed to Scrag. It's from someone named 'Bliss.' It's... it's very romantic. It's very GRAPHIC. You put it back. You put it back slowly, like it might read your expression. You will be thinking about it for the rest of the climb.", 4600);
       },
     });
     out.push({
@@ -592,7 +592,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r12');
     once('search_corpse_r12', r.x0, r.z0, '[R] Search the floating corpse', (e) => {
       grant(e, ['rat_whisker'], 8);
-      void e.narrate('f50_corpse', "A note: 'The Hermit lies. Trust no one. Especially not the one who smiles.' The Hermit smiles. The Hermit is ALWAYS smiling.", 4200);
+      void e.narrate('f50_corpse', "A note: 'The Hermit lies. Trust no one. Especially not the one who smiles.' The Hermit smiles. He has had centuries of practice.", 4200);
     });
     out.push({
       id: 'open_drain_r12', pos: { x: r.x1, z: r.z1 }, radius: 2,

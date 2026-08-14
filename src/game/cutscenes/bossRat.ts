@@ -48,7 +48,7 @@ export async function playBossRatCutscene(h: CutsceneHost) {
   h.audio.squeak();
   h.audio.screech();
   h.iso.shake = Math.max(h.iso.shake ?? 0, 0.15);
-  await h.narrate('boss_rat_2', 'In the center, on a little bone pedestal, is a finger. It has a ring on it. The rat is watching you. The rat is ALWAYS watching.', 3400);
+  await h.narrate('boss_rat_2', 'In the center, on a little bone pedestal, is a finger. It has a ring on it. The rat is watching you. The rat has not blinked since you walked in.', 3400);
 
   // ── BEAT 3: round on the party, fight ──
   if (v) {

@@ -36,7 +36,7 @@ export interface CharacterScheme {
   bulk?: number;        // group scale (goblins ~0.85, bosses ~1.15)
   orc?: boolean;        // green-skin features: pointed ears, tusks, brow
   style?: 'normal' | 'chibi';  // normal proportions or chibi stubby
-  monster?: 'rat' | 'bat' | 'skeleton' | 'leech' | 'blob' | 'mushroom' | 'crawler' | 'fish' | 'frog';  // beast/undead rigs (characters.ts)
+  monster?: 'rat' | 'bat' | 'skeleton' | 'leech' | 'blob' | 'mushroom' | 'crawler' | 'fish' | 'frog' | 'totem';  // beast/undead rigs (characters.ts)
   kind?: 'wizard' | 'barmaid' | 'bouncer' | 'barkeep';  // distinct tavern NPC silhouettes
   /**
    * "naked" rebuilds the rig as underwear only — no shirt, no pants, no boots,
@@ -334,6 +334,8 @@ export type CombatEvent =
   | { type: 'heal'; unitId: string; amount: number }
   | { type: 'float'; unitId: string; text: string; cls: string }
   | { type: 'save'; unitId: string; success: boolean; total: number }
+  | { type: 'miss'; unitId: string; targetId: string; why: 'miss' | 'dodge' | 'block' }
+  | { type: 'block'; unitId: string }
   | { type: 'death'; unitId: string }
   | { type: 'revive'; unitId: string }
   | { type: 'turn'; unitId: string; round: number }

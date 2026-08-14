@@ -9,6 +9,7 @@ import { useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot } from '@/game/types';
 import type { Item } from '@/game/items';
+import { isThrowable } from '@/game/improvised';
 import { SKILLS } from '@/game/skills';
 import { ALL_CLASS_SKILLS } from '@/game/classSkills';
 
@@ -53,7 +54,7 @@ export function Hotbar({ snap, engine }: Props) {
   const inventoryItems = snap.inventory ?? [];
   const stackMap = new Map<string, { key: string; item: Item; count: number }>();
   for (const it of inventoryItems) {
-    if (it.kind !== 'consumable' && it.kind !== 'weapon') continue;
+    if (!isThrowable(it)) continue;
     const key = it._baseId ?? it.id;
     const e = stackMap.get(key);
     if (e) e.count++;
@@ -86,10 +87,10 @@ export function Hotbar({ snap, engine }: Props) {
           <div className="item-bar-slots">
             {barKeys.map((key) => {
               const st = stackMap.get(key)!;
-              const isWeapon = st.item.kind === 'weapon';
+              const throwOnly = st.item.kind !== 'consumable';
               return (
                 <div key={key} className={`item-slot ${phase === 'combat' && !active.hasBonus ? 'no-bonus' : ''}`}>
-                  {isWeapon ? (
+                  {throwOnly ? (
                     <button
                       className={`item-throw ${snap.selectedSkill === `THROW:${key}` ? 'on' : ''} ${enemyTurn ? 'disabled' : ''}`}
                       onClick={() => !enemyTurn && engine.startThrow(key)}
@@ -110,14 +111,14 @@ export function Hotbar({ snap, engine }: Props) {
                       {phase === 'combat' && <span className="item-cost">B</span>}
                     </button>
                   )}
-                  {!isWeapon && phase === 'combat' && (
+                  {!throwOnly && phase === 'combat' && (
                     <button
                       className={`item-throw ${snap.selectedSkill === `THROW:${key}` ? 'on' : ''}`}
                       onClick={() => !enemyTurn && engine.startThrow(key)}
                       title={`Throw ${st.item.name} at a unit (bonus action)`}
                     >🎯</button>
                   )}
-                  {!isWeapon && phase === 'combat' && (
+                  {!throwOnly && phase === 'combat' && (
                     <button
                       className={`item-throw ${snap.selectedSkill === `GIVE:${key}` ? 'on' : ''}`}
                       onClick={() => !enemyTurn && engine.startGive(key)}

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot } from '@/game/types';
 import type { Item, Rarity } from '@/game/items';
-import { ENCHANTS, ITEM_BASES } from '@/game/items';
-import type { EquipSlot } from '@/game/types';
+import { ENCHANTS } from '@/game/items';
+import { canEquipIn, itemUses, formatUseLine } from '@/game/improvised';
 import { effAC, effMaxHp, xpProgress } from '@/game/stats';
 import { comboTitleFor } from '@/game/classes';
 import { GregDoll } from './GregDoll';
@@ -59,13 +59,10 @@ export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: Gam
    *  into the off hand); otherwise the normal auto-slot equip happens. */
   const armOnSlot = (slot: string) => {
     if (!sel) return;
-    if (sel.kind === 'consumable') { engine.useConsumable(sel.id, u.id); setSelId(null); return; }
-    const native = sel.slot ?? (sel._baseId ? ITEM_BASES[sel._baseId]?.slot ?? null : null)
-      ?? (sel.kind === 'weapon' ? 'weapon' : sel.kind === 'armor' ? 'chest' : null);
-    const allowed = slot === native
-      || (sel.altSlots ?? []).includes(slot as EquipSlot)
-      || (sel.kind === 'weapon' && !sel.twoHanded && slot === 'offHand');
-    engine.equipItem(u.id, sel.id, allowed ? slot : undefined);
+    if (sel.kind === 'consumable' && itemUses(sel).length === 0) {
+      engine.useConsumable(sel.id, u.id); setSelId(null); return;
+    }
+    engine.equipItem(u.id, sel.id, canEquipIn(sel, slot) ? slot : undefined);
     setSelId(null);
   };
 
@@ -130,11 +127,16 @@ export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: Gam
       {sel && (
         <div className="inv-selbar" style={{ borderColor: RARITY_COLOR[sel.rarity] }}>
           <span>{sel.icon} <b style={{ color: RARITY_COLOR[sel.rarity] }}>{sel.name}</b> — {sel.desc}</span>
+          <div className="inspect-uses">
+            {itemUses(sel).map((use) => (
+              <span key={use.slot} className="inspect-use">{use.slot}: {use.role} · {formatUseLine(use)}</span>
+            ))}
+          </div>
           <div className="inv-sel-actions">
-            <span className="inv-sel-hint">{sel.kind === 'consumable' ? '🥤 click a hero to drink' : '🦸 click a slot to equip'} · click item again to cancel</span>
-            <button className="inv-inspect-btn" onClick={() => setInspect(sel)}>🔍 Inspect</button>
+            <span className="inv-sel-hint">{sel.kind === 'consumable' && itemUses(sel).length === 0 ? 'click a hero to drink' : 'click a slot to equip · every object has a job'} · click item again to cancel</span>
+            <button className="inv-inspect-btn" onClick={() => setInspect(sel)}>Inspect</button>
             <button className="inv-drop-btn" onClick={() => { engine.dropItem(sel.id); setSelId(null); }}>
-              🗑 Drop
+              Drop
             </button>
           </div>
         </div>

@@ -5,14 +5,22 @@
 // ─────────────────────────────────────────────────────────────
 import type { Unit } from './types';
 import { ENCHANTS, type Item } from './items';
+import { useForSlot } from './improvised';
+
+function equippedPairs(u: Unit): { slot: string; item: Item }[] {
+  const e = u.equipment;
+  const pairs: { slot: string; item: Item }[] = [];
+  const add = (slot: string, item?: Item) => { if (item) pairs.push({ slot, item }); };
+  add('head', e.head); add('chest', e.chest); add('legs', e.legs);
+  add('boots', e.boots); add('gloves', e.gloves); add('arms', e.arms);
+  add('belt', e.belt); add('cloak', e.cloak); add('weapon', e.weapon);
+  add('offHand', e.offHand); add('amulet', e.amulet); add('trinket', e.trinket);
+  add('ring1', e.ring1); add('ring2', e.ring2);
+  return pairs;
+}
 
 function allItems(u: Unit): (Item | undefined)[] {
-  return [
-    u.equipment.head, u.equipment.chest, u.equipment.legs,
-    u.equipment.boots, u.equipment.gloves, u.equipment.arms, u.equipment.belt, u.equipment.cloak,
-    u.equipment.weapon, u.equipment.offHand, u.equipment.amulet, u.equipment.trinket,
-    u.equipment.ring1, u.equipment.ring2,
-  ];
+  return equippedPairs(u).map((p) => p.item);
 }
 
 function allEnchs(u: Unit) {
@@ -21,7 +29,10 @@ function allEnchs(u: Unit) {
 
 export function effAC(u: Unit): number {
   let bonus = 0;
-  for (const item of allItems(u)) bonus += item?.acBonus ?? 0;
+  for (const { slot, item } of equippedPairs(u)) {
+    const use = useForSlot(item, slot);
+    bonus += use?.acBonus ?? ((slot === item.slot || slot === 'chest') ? (item.acBonus ?? 0) : 0);
+  }
   for (const e of allEnchs(u)) bonus += e?.acBonus ?? 0;
   let cond = 0;
   if (u.conditions.some((c) => c.id === 'shielded')) cond += 2;
@@ -37,20 +48,27 @@ export function effAC(u: Unit): number {
 export function effMove(u: Unit): number {
   let bonus = 0;
   for (const e of allEnchs(u)) bonus += e?.moveBonus ?? 0;
+  for (const { slot, item } of equippedPairs(u)) bonus += useForSlot(item, slot)?.moveBonus ?? 0;
   return u.moveRange + bonus + u.bonusMove;
 }
 
 export function effMaxHp(u: Unit): number {
   let bonus = 0;
   for (const e of allEnchs(u)) bonus += e?.hpBonus ?? 0;
-  for (const item of allItems(u)) bonus += item?.hpBonus ?? 0;
+  for (const { slot, item } of equippedPairs(u)) {
+    const use = useForSlot(item, slot);
+    bonus += use?.hpBonus ?? item.hpBonus ?? 0;
+  }
   return u.maxHp + bonus;
 }
 
 /** flat physical-damage reduction from armor (sturdy boots, pipe helmet, …) */
 export function effPhysResist(u: Unit): number {
   let resist = 0;
-  for (const item of allItems(u)) resist += item?.physResist ?? 0;
+  for (const { slot, item } of equippedPairs(u)) {
+    const use = useForSlot(item, slot);
+    resist += use?.physResist ?? item.physResist ?? 0;
+  }
   return resist;
 }
 
@@ -61,7 +79,9 @@ export function effACBonusFromConditions(u: Unit): number {
 
 export function effAtkBonus(u: Unit): number {
   const wEnch = u.equipment.weapon?.enchantId ? ENCHANTS[u.equipment.weapon.enchantId] : undefined;
-  return wEnch?.atkBonus ?? 0;
+  let bonus = wEnch?.atkBonus ?? 0;
+  for (const { slot, item } of equippedPairs(u)) bonus += useForSlot(item, slot)?.atkBonus ?? 0;
+  return bonus;
 }
 
 // ── XP / levels (Greg starts at level 1) ────────────────────

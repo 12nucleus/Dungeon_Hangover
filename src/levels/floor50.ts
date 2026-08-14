@@ -609,9 +609,12 @@ glowAt('glow_mushroom_blue', R23.x0 + 2, R23.z0 + 2, 0.25);
 glowAt('glow_mushroom_green', R23.x0 + 8, R23.z0 + 4, 0.55);
 glowAt('glow_mushroom_blue', R23.x0 + 3, R23.z1 - 2, 0.75);
 glowAt('glow_mushroom_green', R23.x1 - 2, R23.z1 - 4, 0.95);
-// r3 Sewer Tunnel — 1–2 crystals so the FIRST corridor has a cold accent
 glowAt('crystal_blue', R3.x0 + 3, R3.z1, 0.4);
 glowAt('crystal_blue', R3.x1 - 3, R3.z0, 0.7);
+glowAt('crystal_blue', R7.x0 + 2, R7.z0 + 1, 0.35);
+glowAt('glow_mushroom_blue', R7.x1 - 2, R7.z1 - 1, 0.55);
+glowAt('crystal_blue', R11.x0 + 1, R11.z0 + 2, 0.3);
+glowAt('glow_mushroom_green', R19.x0 + 2, R19.z1 - 1, 0.5);
 // extra braziers down the r21→r24 spine (barracks → armory → deep → throne):
 // warm firelight beads along the grand main so the long walk has rhythm and
 // the player can read the corridor's depth. Placed on the OUTER lane of the
@@ -700,7 +703,8 @@ const FLOOR50_SPAWNS: Floor50Spawns = {
   party: partySpawn,
   rooms: {
     r3: map.rooms.r3, r4: map.rooms.r4, r5: map.rooms.r5, r6: map.rooms.r6, r7: map.rooms.r7,
-    r8: map.rooms.r8, r11: map.rooms.r11, r12: map.rooms.r12, r15: map.rooms.r15,
+    r8: map.rooms.r8, r11: map.rooms.r11, r12: map.rooms.r12, r14: map.rooms.r14, r15: map.rooms.r15,
+    r18: map.rooms.r18, r19: map.rooms.r19,
     r20: map.rooms.r20, r21: map.rooms.r21, r22: map.rooms.r22, r23: map.rooms.r23,
     r24: map.rooms.r24, r25: map.rooms.r25,
   },

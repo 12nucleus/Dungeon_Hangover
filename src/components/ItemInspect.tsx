@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 import type { Item } from '@/game/items';
 import { ENCHANTS } from '@/game/items';
+import { itemUses, formatUseLine, isThrowable } from '@/game/improvised';
 import { VoxelItemIcon } from './VoxelItemIcon';
 
 const RARITY_COLOR: Record<string, string> = {
@@ -35,12 +36,23 @@ export function ItemInspect({ item, onClose }: Props) {
           <div className="inspect-meta">
             <span>Tier {item.tier}</span>
             <span>{item.kind}</span>
-            {item.slot && <span>{item.slot}</span>}
-            <span>🪙 {item.value}g</span>
+            {item.slot && <span>native {item.slot}</span>}
+            {isThrowable(item) && <span>throwable</span>}
+            <span>{item.value}g</span>
+          </div>
+          <div className="inspect-uses">
+            {itemUses(item).map((use) => (
+              <div key={use.slot} className="inspect-use">
+                <b>{use.role}</b>
+                <span>{use.slot}</span>
+                <em>{formatUseLine(use)}</em>
+                <p>{use.note}</p>
+              </div>
+            ))}
           </div>
           <div className="inspect-stats">
-            {item.damageDice && <div className="inspect-stat"><span>Damage</span><b>{item.damageDice} {item.damageType}</b></div>}
-            {item.acBonus ? <div className="inspect-stat"><span>Armor</span><b>+{item.acBonus} AC</b></div> : null}
+            {item.damageDice && <div className="inspect-stat"><span>Native damage</span><b>{item.damageDice} {item.damageType}</b></div>}
+            {item.acBonus ? <div className="inspect-stat"><span>Native armor</span><b>+{item.acBonus} AC</b></div> : null}
             {item.healDice && <div className="inspect-stat"><span>Heal</span><b>{item.healDice} HP</b></div>}
             {item.condition && <div className="inspect-stat"><span>Cures</span><b>{item.condition}</b></div>}
             {ench && (

@@ -37,7 +37,9 @@ DEVICE = "cuda:0"
 DTYPE = torch.bfloat16
 
 # ids whose mp3 exists but carries the OLD (pre-floor-50) text → always regen
-CHANGED = {"narr_wake", "narr_premise", "narr_premise_2", "narr_floor"}
+CHANGED = {"narr_wake", "narr_premise", "narr_premise_2", "narr_floor",
+           "f50_baron_summon", "f50_baron_death", "f50_duck_choir", "f50_tpk_3",
+           "f50_letter", "f50_corpse", "boss_rat_2"}
 
 
 def unescape(s: str) -> str:
@@ -110,9 +112,9 @@ def lines_from_floor50_text() -> dict[str, str]:
         "f50_grib_25": "My bubbles. You are popping my BUBBLES. Each bubble had a NAME.",
         "f50_grib_phase2": "Enough lukewarm hospitality. Now the water gets SERIOUS.",
         "f50_grib_death": "I yield. I yield. The bath is yours. Just... just keep the cap. Please. It was a gift from the Suds himself. It is all I have. It is all I have EVER had.",
-        "f50_baron_summon": "The bath king calls, and Baron Gnaw ANSWERS. Mostly because he was promised snacks.",
-        "f50_baron_death": "Baron Gnaw collapses into a pile of wet fur and bad decisions. The bath is quieter now. The bath is ALWAYS quieter after the snacks arrive.",
-        "f50_duck_choir": "The rubber ducks begin to sing. It is not a song you know. It is not a song ANYONE knows. But the ducks are committed. The ducks are ALWAYS committed.",
+        "f50_baron_summon": "Baron Gnaw whistles. The whistle, in rat, means 'everyone.' You are about to meet everyone.",
+        "f50_baron_death": "Baron Gnaw collapses into a pile of wet fur and bad decisions. The surviving rats look at the body, look at each other, and immediately start campaigning to be the new Baron.",
+        "f50_duck_choir": "The rubber ducks begin to sing. It is not a song you know. It is not a song ANYONE knows. But the ducks are committed. The ducks have been practicing.",
         "f50_chandelier": "You look up at the chandelier. It glitters. It sways. You once thought you would marry a chandelier. Tonight, the chandelier looks back. It remembers.",
         "f50_well_wish": "You toss a penny into the well. It flashes once, twice, and vanishes. Somewhere deep below, a wish is granted. It is probably not yours.",
         "f50_well_wish_fail": "You have no penny to toss. The well stares back. The well has seen this before. The well is not impressed.",
@@ -121,7 +123,7 @@ def lines_from_floor50_text() -> dict[str, str]:
         "f50_mq_door": "The bath chamber door yields. Steam curls around your ankles. Somewhere in the pink water, a king is singing. He is always singing. He is terrible at it.",
         "f50_tpk_1": "Your party falls. All of you. In your underwear. At the bottom of a dungeon. The narrator would like you to know: this is the funniest thing that has ever happened.",
         "f50_tpk_2": "You are dead. The rats are already holding a meeting about who gets your socks. The meeting is surprisingly civil.",
-        "f50_tpk_3": "Game over, Greg. The bath wins. The bath ALWAYS wins. But hey. You can try again. The dungeon has a sense of humor. It wants to see what you do next.",
+        "f50_tpk_3": "Game over, Greg. The bath wins. It was going to win from the first splinter, but it appreciates the effort. You can try again. The dungeon has a sense of humor. It wants to see what you do next.",
     }
 
 

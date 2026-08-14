@@ -668,8 +668,8 @@ export const SUMMON_TEMPLATES: Record<string, () => Unit> = {
     maxHp: 5, hp: 5, ac: 18, level: 1,
     abilities: { str: 8, dex: 8, con: 10, int: 8, wis: 12, cha: 6 },
     knownSkills: ['totem_burst'], moveRange: 0, xpValue: 0, turnsLeft: 3, dormant: false,
-    scheme: { skin: 0x8a5a2a, cloth: 0x5a3a1a, accent: 0xe8b46a, hair: 0x3a2a1a, hood: false, bulk: 0.8, monster: 'rat' },
-    weapon: 'dagger',
+    scheme: { skin: 0x8a5a2a, cloth: 0x5a3a1a, accent: 0xe8b46a, hair: 0x3a2a1a, hood: false, bulk: 0.8, monster: 'totem' },
+    weapon: 'unarmed',
   }),
   door_wall: () => mkSummon({
     name: 'Door Wall', title: 'Animated Wall', team: 'enemy', klass: 'goblin', pos: { x: 0, z: 0 },
@@ -849,9 +849,12 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
   // R7 — sewer leeches
   leech(sp.rooms.r7, 'r7_leeches');
   leech(sp.rooms.r7, 'r7_leeches');
-  // R8 / R20 — lone rats
   rat(sp.rooms.r8, 'r8_rat');
   rat(sp.rooms.r20, 'r20_rat');
+  if (rng() < 0.5) rat(sp.rooms.r14, 'r14_rat');
+  if (rng() < 0.4) leech(sp.rooms.r3, 'r3_leech');
+  if (rng() < 0.45) goblinGuard(sp.rooms.r18, 'r18_lost');
+  if (rng() < 0.35) smallRat(sp.rooms.r19, 'r19_rats', 2);
   // R11 — two small rats
   smallRat(sp.rooms.r11, 'r11_rats', 2);
   // R12 — ambush pack: large rat + 3 small rats

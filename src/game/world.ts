@@ -90,6 +90,11 @@ export class VoxelWorld {
   inBounds(x: number, z: number) { return x >= 0 && z >= 0 && x < WORLD_SIZE && z < WORLD_SIZE; }
   isWalkable(x: number, z: number) { return this.inBounds(x, z) && !this.blocked[x][z]; }
   heightAt(x: number, z: number) { return this.inBounds(x, z) ? this.heights[x][z] : 0; }
+  hidePropAt(x: number, z: number) {
+    for (const o of this.exploredObjects) {
+      if (o.x === x && o.z === z && o.object.userData.propKind) o.object.visible = false;
+    }
+  }
 
   private generate() {
     const S = WORLD_SIZE;

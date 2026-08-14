@@ -10,6 +10,7 @@ import { skillById } from './skillLookup';
 import { rollD20, rollDice, abilityMod, fmtMod } from './dice';
 import { VoxelWorld } from './world';
 import { ENCHANTS, rollLootTable, type Item } from './items';
+import { throwProfile } from './improvised';
 import { effAC, effMove, effMaxHp, effAtkBonus, effPhysResist, hangoverPenalty, XP_THRESHOLDS, MAX_LEVEL } from './stats';
 
 /** damage-over-time by condition id (ticked at the start of the carrier's turn) */
@@ -434,6 +435,7 @@ export class Combat {
     if (!u.conditions.some((c) => c.id === 'defending')) {
       u.conditions.push({ id: 'defending', name: CONDITIONS.defending?.name ?? 'Defending', roundsLeft: 1 });
     }
+    ev.push({ type: 'block', unitId: u.id });
     ev.push({ type: 'log', text: `${u.name} takes a defensive posture — +1 AC until their next turn.`, kind: 'system' });
     ev.push({ type: 'float', unitId: u.id, text: '🛡 +1 AC', cls: 'buff' });
     return ev;
@@ -880,11 +882,11 @@ export class Combat {
       return ev;
     }
 
-    // attacks
+    // attacks — projectiles and skill fx fire once; melee swings fire per
+    // strike (so a dual-wield Attack swings main + off-hand separately)
     const needsProjectile = !!s.projectile;
-    if (s.kind === 'melee') ev.push({ type: 'melee', unitId: u.id, targetId: targets[0].id });
-    else if (needsProjectile) ev.push({ type: 'projectile', unitId: u.id, from: u.pos, to: center, color: s.fxColor, fx: s.fx });
-    else ev.push({ type: 'skillfx', skill: s, at: center, targets: targets.map((t) => t.id) });
+    if (needsProjectile) ev.push({ type: 'projectile', unitId: u.id, from: u.pos, to: center, color: s.fxColor, fx: s.fx });
+    else if (s.kind !== 'melee') ev.push({ type: 'skillfx', skill: s, at: center, targets: targets.map((t) => t.id) });
 
     for (const t of targets) {
       // saving-throw skills: half or negate
@@ -911,16 +913,22 @@ export class Combat {
         this.applyDamage(ev, t, amount, s.damageType, false);
         continue;
       }
-      // attack-roll skills
-      // weapon attacks use the equipped weapon's dice; skill = the "move"
-      // quick_strike (bonus flourish) hits with the OFF-HAND weapon when a
-      // real off-hand weapon is equipped (bucket in the left hand, etc.)
-      let weapon = (s.kind === 'melee' || s.kind === 'ranged') ? u.equipment.weapon : undefined;
-      if (s.id === 'quick_strike' && u.equipment.offHand?.kind === 'weapon') weapon = u.equipment.offHand;
-      const diceExpr = weapon?.damageDice ?? s.damageDice;
-      const ench = weapon?.enchantId ? ENCHANTS[weapon.enchantId] : undefined;
-      const blessed = u.conditions.some((c) => c.id === 'blessed');
-      const keen = weapon ? effAtkBonus(u) : 0;
+      // attack-roll skills — weapon attacks use the equipped weapon's dice;
+      // the skill is the "move". quick_strike hits with the OFF-HAND weapon
+      // when one is equipped; the basic Attack dual-wields (main + off-hand).
+      const strikeWeapons: (Item | undefined)[] = [];
+      if (s.id === 'quick_strike' && u.equipment.offHand?.kind === 'weapon') {
+        strikeWeapons.push(u.equipment.offHand);
+      } else {
+        strikeWeapons.push((s.kind === 'melee' || s.kind === 'ranged') ? u.equipment.weapon : undefined);
+      }
+      if (s.id === 'attack' && u.equipment.offHand?.kind === 'weapon') strikeWeapons.push(u.equipment.offHand);
+      for (const weapon of strikeWeapons) {
+        if (s.kind === 'melee') ev.push({ type: 'melee', unitId: u.id, targetId: t.id });
+        const diceExpr = weapon?.damageDice ?? s.damageDice;
+        const ench = weapon?.enchantId ? ENCHANTS[weapon.enchantId] : undefined;
+        const blessed = u.conditions.some((c) => c.id === 'blessed');
+        const keen = weapon ? effAtkBonus(u) : 0;
       // ── condition modifiers on the attack roll (floor 50) ──
       let atkMod = abilityMod(u.abilities[s.attackAbility]) + u.proficiency + keen;
       for (const c of u.conditions) {
@@ -935,6 +943,8 @@ export class Combat {
           case 'inspired': atkMod += 2; break;
         }
       }
+      // dual-wielding: an off-hand strike is harder to land
+      if (weapon === u.equipment.offHand) atkMod -= 2;
       // ── BG3 / 5e advantage & disadvantage (roll 2d20, take high/low) ──
       // disadvantage: blinded attacker, a ranged attacker with a foe on top of him, or low ground
       // advantage: target is Prone/Blinded, or the attacker on high ground / shrouded
@@ -969,6 +979,10 @@ export class Combat {
         kind: crit ? 'crit' : hit ? 'hit' : 'miss',
       });
       if (!hit) {
+        const why: 'miss' | 'dodge' | 'block' = t.conditions.some((c) => c.id === 'defending') ? 'block'
+          : (t.conditions.some((c) => c.id === 'evading') || abilityMod(t.abilities.dex) >= 3) ? 'dodge'
+          : 'miss';
+        ev.push({ type: 'miss', unitId: u.id, targetId: t.id, why });
         ev.push({ type: 'float', unitId: t.id, text: 'Miss', cls: 'miss' });
         continue;
       }
@@ -1032,6 +1046,8 @@ export class Combat {
       if (ench?.slowChance && t.alive && Math.random() < ench.slowChance && !t.conditions.some((c) => c.id === 'slowed')) {
         t.conditions.push({ id: 'slowed', name: CONDITIONS.slowed.name, roundsLeft: 2 });
         ev.push({ type: 'float', unitId: t.id, text: '❄ Slowed', cls: 'debuff' });
+      }
+      if (!t.alive) break;
       }
     }
     ev.push(...this.checkEnd());
@@ -1224,31 +1240,19 @@ export class Combat {
       return ev;
     }
     ev.push({ type: 'log', text: `${u.name} hurls ${item.icon} ${item.name} at ${target.name}!`, kind: 'info' });
-    if (target.team === u.team) {
-      // thrown into friendly hands — the item's normal drink/eat effect at range
+    if (target.team === u.team && item.kind === 'consumable' && item.healDice) {
       ev.push(...this.useConsumable(u, item, target.id));
-    } else if (item.kind === 'weapon') {
-      // a hurled weapon hits with its own dice (bucket! bottle! torch!)
-      u.hasBonus = false;
-      const wd = rollDice(item.damageDice ?? '1d4');
-      this.applyDamage(ev, target, wd.total, item.damageType ?? 'bludgeoning', false);
-      ev.push({ type: 'log', text: `${item.icon} ${item.name} thuds into ${target.name} for ${wd.total} ${item.damageType ?? 'bludgeoning'}!`, kind: 'hit' });
-      if (item.onHitCondition && Math.random() < item.onHitCondition.chance) {
-        const oc = item.onHitCondition;
-        if (!target.conditions.some((x) => x.id === oc.id)) {
-          target.conditions.push({ id: oc.id, name: CONDITIONS[oc.id]?.name ?? oc.id, roundsLeft: oc.rounds });
-          ev.push({ type: 'float', unitId: target.id, text: `❄ ${CONDITIONS[oc.id]?.name ?? oc.id}`, cls: 'debuff' });
-        }
-      }
     } else {
-      u.hasBonus = false;   // useConsumable pays this for the ally case
-      this.applyDamage(ev, target, 1 + Math.floor(Math.random() * 4), 'bludgeoning', false);
-      ev.push({ type: 'log', text: `${item.icon} shatters against ${target.name}!`, kind: 'hit' });
-      if (item.consumeCondition && Math.random() < item.consumeCondition.chance) {
-        const cc = item.consumeCondition;
-        if (!target.conditions.some((x) => x.id === cc.id)) {
-          target.conditions.push({ id: cc.id, name: CONDITIONS[cc.id]?.name ?? cc.id, roundsLeft: cc.rounds });
-          ev.push({ type: 'float', unitId: target.id, text: `❄ ${CONDITIONS[cc.id]?.name ?? cc.id}`, cls: 'debuff' });
+      u.hasBonus = false;
+      const profile = throwProfile(item);
+      const wd = rollDice(profile.dice);
+      this.applyDamage(ev, target, wd.total, profile.type, false);
+      ev.push({ type: 'log', text: `${item.icon} ${item.name} slams ${target.name} for ${wd.total} ${profile.type}!`, kind: 'hit' });
+      const cond = item.onHitCondition ?? item.consumeCondition;
+      if (cond && Math.random() < cond.chance) {
+        if (!target.conditions.some((x) => x.id === cond.id)) {
+          target.conditions.push({ id: cond.id, name: CONDITIONS[cond.id]?.name ?? cond.id, roundsLeft: cond.rounds });
+          ev.push({ type: 'float', unitId: target.id, text: `❄ ${CONDITIONS[cond.id]?.name ?? cond.id}`, cls: 'debuff' });
         }
       }
     }

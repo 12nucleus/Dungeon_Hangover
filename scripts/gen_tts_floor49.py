@@ -25,7 +25,7 @@ BASE_DIR = r"F:\qwen3tts\Qwen3-TTS-12Hz-1.7B-Base"
 DEVICE = "cuda:0"
 DTYPE = torch.bfloat16
 
-CHANGED: set[str] = set()
+CHANGED: set[str] = {"f49_room_r3", "f49_seventh", "f49_departure", "f49_nursery", "f49_giant_wake", "f49_waterfall"}
 
 
 def unescape(s: str) -> str:

@@ -314,9 +314,14 @@ export const FX = {
       ps.burst({ pos: _amb, count: 2, color: [0x9fd8e4, 0xd8f2f0], speed: [0.02, 0.14], life: [0.5, 0.9], size: [0.3, 0.55], gravity: 9, drag: 0, endScale: 0.5 });
     }
   },
-  /** low earthy dust plume + a few body-coloured flecks when a corpse hits the floor */
   impactDust(ps: ParticleSystem, p: THREE.Vector3, flecks: number[] = []) {
     ps.burst({ pos: p, count: 22, color: [0x6b5a44, 0x8a7659, 0x9c8f74, 0x5a4d3a], speed: [0.7, 2.6], life: [0.5, 1.2], size: [0.7, 1.6], gravity: -0.6, up: 0.5, drag: 0.6, endScale: 2.1, solid: true });
     if (flecks.length) ps.burst({ pos: p, count: 8, color: flecks, speed: [1, 3], life: [0.4, 0.9], size: [0.4, 0.9], gravity: 9, up: 1.4, drag: 0.4, endScale: 0.5, solid: true });
+  },
+  waterSplash(ps: ParticleSystem, p: THREE.Vector3) {
+    ps.burst({ pos: p, count: 14, color: [0x7ec8c0, 0xc8f0ea, 0x2e8a80], speed: [0.8, 2.4], life: [0.25, 0.55], size: [0.3, 0.7], gravity: 8, up: 2.2, drag: 0.4, endScale: 0.2 });
+  },
+  scareFlash(ps: ParticleSystem, p: THREE.Vector3) {
+    ps.burst({ pos: p, count: 28, color: [0xffffff, 0xd8e8ff, 0x8aa0c8], speed: [3, 8], life: [0.12, 0.28], size: [0.5, 1.4], gravity: 0, drag: 2.8, up: 0.4, endScale: 0.05 });
   },
 };

@@ -48,6 +48,19 @@ export async function animate(engine: any, ev: CombatEvent) {
     case 'damage': {
       const v = engine.visuals.get(ev.unitId);
       if (v) { v.rig.anim.flinch = 1; refreshBar(engine, ev.unitId); }
+      // weapon strikes land here — blood + a per-damage-type impact give the
+      // swing weight that animMelee no longer carries (so a whiff stays clean)
+      if (ev.kind === 'slashing' || ev.kind === 'piercing' || ev.kind === 'bludgeoning') {
+        const target = engine.byId(ev.unitId);
+        if (target) {
+          const wp = unitWorld(engine, target.pos).clone().add(new THREE.Vector3(0, 0.9, 0));
+          FX.slash(engine.particles, wp);
+          FX.blood(engine.particles, wp);
+          engine.audio.hitImpact(ev.kind);
+          engine.iso.shake = Math.max(engine.iso.shake, 0.14);
+          await delay(45);
+        }
+      }
       if (ev.crit) {
         // big hit: heavy shake + burst + a brief hitstop + fullscreen flash
         engine.iso.shake = Math.max(engine.iso.shake ?? 0, 0.55);
@@ -61,6 +74,18 @@ export async function animate(engine: any, ev: CombatEvent) {
       // Gribnab parley + boss HP-threshold barks (first crossing, once per fight)
       engine.maybeParley?.(ev.unitId);
       barkOnHpThreshold(engine, ev.unitId);
+      break;
+    }
+    case 'miss': {
+      if (ev.why === 'block') engine.audio.block();
+      else if (ev.why === 'dodge') engine.audio.dodge();
+      else engine.audio.whiff();
+      break;
+    }
+    case 'block': {
+      const bu = engine.byId(ev.unitId);
+      if (bu) FX.buff(engine.particles, unitWorld(engine, bu.pos).add(new THREE.Vector3(0, 0.6, 0)));
+      engine.audio.block();
       break;
     }
     case 'heal': {
@@ -201,21 +226,30 @@ export async function animate(engine: any, ev: CombatEvent) {
         }
         const aiParty = u.team === 'party' && u.aiControlled;
         const downed = !u.alive || u.unconscious;
-        if (u.team === 'party' && engine.phase === 'combat' && !aiParty && !downed) showMoveTiles(engine);
+        // terrain summons (the shaman totem) auto-act: no move tiles, no player
+        // input — they pulse once and the rotation advances past them.
+        const isTotem = u.team === 'party' && !aiParty && !downed
+          && !!u.knownSkills?.includes('totem_burst') && (u.moveRange ?? 6) === 0;
+        if (u.team === 'party' && engine.phase === 'combat' && !aiParty && !downed && !isTotem) showMoveTiles(engine);
         // M8: enemy turns AND ai-controlled companions are driven by the AI —
         // resolve the full turn (skills + movement, then advance initiative)
         // right here so the turn actually resolves instead of stalling. Dead or
         // knocked-out units auto-advance past themselves (endTurn skips them).
-        if ((u.team === 'enemy' || aiParty || downed) && engine.combat.inCombat) {
+        if ((u.team === 'enemy' || aiParty || downed || isTotem) && engine.combat.inCombat) {
           if (u.alive && !u.unconscious) {
-            const aiEvents: CombatEvent[] = [];
-            for (let i = 0; i < 8; i++) {
-              const step = aiParty ? engine.combat.partyAiStep() : engine.combat.aiStep();
-              if (!step) break;
-              aiEvents.push(...step);
-              if (!engine.combat.inCombat) break;   // combat may end mid-turn
+            if (isTotem) {
+              const pulse = engine.combat.useSkill(u, 'totem_burst', u.pos);
+              if (pulse.length) engine.enqueue(pulse);
+            } else {
+              const aiEvents: CombatEvent[] = [];
+              for (let i = 0; i < 8; i++) {
+                const step = aiParty ? engine.combat.partyAiStep() : engine.combat.aiStep();
+                if (!step) break;
+                aiEvents.push(...step);
+                if (!engine.combat.inCombat) break;   // combat may end mid-turn
+              }
+              if (aiEvents.length) engine.enqueue(aiEvents);
             }
-            if (aiEvents.length) engine.enqueue(aiEvents);
           }
           engine.enqueue(engine.combat.endTurn());
         }
@@ -344,20 +378,13 @@ export async function animMelee(engine: any, unitId: string, targetId: string) {
   v.targetYaw = Math.atan2(tp.x - vp.x, tp.z - vp.z);
   const dir = tp.clone().sub(vp).setY(0).normalize();
   const home = vp.clone();
+  engine.audio.swing();
   v.rig.anim.lunge = 1;
   for (let k = 0; k <= 1 && !engine.disposed; k += 0.12) {
     vp.copy(home).addScaledVector(dir, Math.sin(k * Math.PI) * 0.5);
     await delay(16);
   }
   vp.copy(home);
-  const impact = tp.clone().add(new THREE.Vector3(0, 0.9, 0));
-  FX.slash(engine.particles, impact);
-  FX.blood(engine.particles, impact);
-  engine.audio.play('sword_hit', 0.85);
-  engine.iso.shake = Math.max(engine.iso.shake, 0.14);
-  // hit-stop: a few frames of freeze on impact give the swing weight —
-  // the follow-up 'damage' event lands right after, so the number pops.
-  await delay(45);
 }
 
 export async function smashProp(engine: any, u: Unit, prop: any, skill?: SkillDef) {
@@ -544,7 +571,7 @@ export async function animSkillFx(engine: any, s: SkillDef, at: GridPos, targets
     case 'heal': FX.heal(engine.particles, p); break;
     case 'buff': for (const id of targets) { const u = engine.byId(id); if (u) FX.buff(engine.particles, unitWorld(engine, u.pos).add(new THREE.Vector3(0, 0.6, 0))); } engine.audio.play('heal', 0.7, 1.2); break;
     case 'slash': FX.slash(engine.particles, p, 0xffb054); engine.audio.play('sword_hit', 0.9, 0.85); engine.iso.shake = Math.max(engine.iso.shake, 0.2); break;
-    default: FX.arcane(engine.particles, p); engine.audio.play('magic_missile', 0.7);
+    default: FX.arcane(engine.particles, p); engine.audio.cast();
   }
   if (s.aoeRadius > 0 && (s.fx === 'fire' || s.fx === 'ice')) {
     for (const prop of engine.props.inBlast(at, s.aoeRadius)) destroyProp(engine, prop);

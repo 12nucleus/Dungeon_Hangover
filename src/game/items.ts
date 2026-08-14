@@ -7,7 +7,7 @@
 // No rendering here — pure data + dice. Add content, not code.
 // ─────────────────────────────────────────────────────────────
 import type { DamageType, EquipSlot, WeaponKind } from './types';
-
+import { extraSlotsFor } from './improvised';
 export type ItemKind = 'weapon' | 'armor' | 'trinket' | 'consumable';
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic';
 export type Tier = 1 | 2 | 3;
@@ -232,7 +232,7 @@ export function makeItem(baseId: string, enchantId?: string, rarity?: Rarity): I
   const name = en ? `${en.prefix} ${b.name} +${b.tier}` : b.name;
   const value = b.value + (en ? 20 * b.tier : 0);
   return {
-    id: `it${iid++}`, kind: b.kind, slot: b.slot, altSlots: b.altSlots, twoHanded: b.twoHanded, name, icon: b.icon, tier: b.tier, rarity: r,
+    id: `it${iid++}`, kind: b.kind, slot: b.slot, altSlots: b.altSlots ?? extraSlotsFor(baseId, b.slot), twoHanded: b.twoHanded, name, icon: b.icon, tier: b.tier, rarity: r,
     weaponKind: b.weaponKind, damageDice: b.damageDice, damageType: b.damageType,
     acBonus: b.acBonus, healDice: b.healDice, enchantId, value, desc: b.desc,
     _baseId: baseId,

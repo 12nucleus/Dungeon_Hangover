@@ -8,9 +8,10 @@ import * as THREE from 'three';
 import { setWeapon, equip, unequip, itemToEquipVisual } from '../characters';
 import { FX } from '../particles';
 import { effMaxHp, MAX_LEVEL, XP_THRESHOLDS } from '../stats';
-import type { GridPos, EquipSlot } from '../types';
+import type { GridPos } from '../types';
 import { canUnlock, treeFor } from '../skilltree';
 import { ITEM_BASES, type Item } from '../items';
+import { canEquipIn } from '../improvised';
 import { unitWorld } from './visuals';
 import { spawnBonfireFlame } from './gameFlow';
 
@@ -298,7 +299,7 @@ export function equipItem(engine: any, unitId: string, itemId: string, slotHint?
   const idx = engine.inventory.findIndex((i: Item) => i.id === itemId || (i._baseId && i._baseId === itemId));
   if (!u || u.team !== 'party' || idx < 0) return;
   const item = engine.inventory[idx];
-  if (item.kind === 'consumable') {
+  if (item.kind === 'consumable' && !canEquipIn(item, slotHint ?? item.slot ?? '')) {
     engine.setHoverInfoOnce('Consumables are used, not equipped.');
     return;
   }
@@ -313,18 +314,15 @@ export function equipItem(engine: any, unitId: string, itemId: string, slotHint?
     if (n.includes('ring')) nativeSlot = 'ring';
     else if (n.includes('amulet')) nativeSlot = 'amulet';
   }
+  if (slotHint && canEquipIn(item, slotHint)) nativeSlot = nativeSlot ?? slotHint;
   if (!nativeSlot) {
     engine.setHoverInfoOnce('No valid slot for this item.');
     return;
   }
   // paper-doll clicks may override the native slot when the item allows it
-  // (the bucket is a weapon that also fits off-hand / head; any one-handed
-  // weapon can be held in the off hand for dual-wielding)
   let slot: string = nativeSlot;
   if (slotHint && slotHint !== nativeSlot) {
-    const allowed = (item.altSlots ?? []).includes(slotHint as EquipSlot)
-      || (item.kind === 'weapon' && !item.twoHanded && slotHint === 'offHand');
-    if (allowed) slot = slotHint;
+    if (canEquipIn(item, slotHint)) slot = slotHint;
   }
   // two-handed main weapon + off-hand item → refuse (both hands busy)
   if (slot === 'offHand' && u.equipment.weapon?.twoHanded) {

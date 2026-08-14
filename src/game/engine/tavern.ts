@@ -368,7 +368,7 @@ export function buildTavern(hooks: TavernHooks): THREE.Group {
     bar: new THREE.Vector3(-3.6, 1.2, -1.0),
     fire: new THREE.Vector3(2.6, 1.3, -3.5),
     wizard: new THREE.Vector3(3.4, 1.35, -2.8),
-    bouncer: new THREE.Vector3(3.4, 1.25, 3.2),
+    bouncer: new THREE.Vector3(3.75, 1.25, -0.1),
     barmaid: new THREE.Vector3(-2.2, 1.2, 0.2),
     door: new THREE.Vector3(0, 1.0, (ZF - 1) * CUBE),
   };
