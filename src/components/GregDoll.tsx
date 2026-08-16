@@ -10,6 +10,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { buildCharacter, setWeapon, updateRig, equip, itemToEquipVisual } from '@/game/characters';
 import type { Unit } from '@/game/types';
+import { attachVoxelView, addTicker, removeTicker } from './voxelView';
 
 interface Props {
   unit: Unit;
@@ -17,84 +18,88 @@ interface Props {
   height?: number;
 }
 
-export function GregDoll({ unit, width = 130, height = 200 }: Props) {
+export function GregDoll({ unit, width = 160, height = 240 }: Props) {
   const mount = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const host = mount.current;
     if (!host) return;
 
+    // Use the shared WebGL context from voxelView (prevents context loss evictions)
+    const view = attachVoxelView(host, width, height);
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b0b12);
+    scene.background = new THREE.Color(0x0a0c14);
 
-    // Full standing body framing (same as the class portraits).
-    const camera = new THREE.PerspectiveCamera(34, width / height, 0.1, 50);
-    camera.position.set(1.7, 1.4, 3.1);
-    camera.lookAt(0, 0.95, 0);
+    // Full standing body framing with a cinematic 3/4 perspective
+    const camera = new THREE.PerspectiveCamera(32, width / height, 0.1, 50);
+    camera.position.set(1.8, 1.45, 3.2);
+    camera.lookAt(0, 0.9, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    renderer.shadowMap.enabled = true;
-    host.appendChild(renderer.domElement);
-
-    // lights
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x222233, 1.1);
+    // lights — warm key, cool ambient fill, dramatic gold rim light
+    const hemi = new THREE.HemisphereLight(0xeef2ff, 0x181a26, 1.2);
     scene.add(hemi);
-    const key = new THREE.DirectionalLight(0xffe6c0, 1.4);
-    key.position.set(2, 4, 2);
+    const key = new THREE.DirectionalLight(0xffe8c8, 1.6);
+    key.position.set(2.5, 4.5, 2.5);
     key.castShadow = true;
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x88aaff, 0.6);
-    rim.position.set(-2, 1, -2);
+    const rim = new THREE.DirectionalLight(0xe8c466, 0.8);
+    rim.position.set(-2.5, 1.5, -2.5);
     scene.add(rim);
 
-    // floor disc
+    // floor disc with ornate gold border ring
     const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(1.1, 40),
-      new THREE.MeshLambertMaterial({ color: 0x1a1a26 }),
+      new THREE.CircleGeometry(1.2, 48),
+      new THREE.MeshLambertMaterial({ color: 0x121522 }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
 
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(1.15, 1.2, 48),
+      new THREE.MeshBasicMaterial({ color: 0x8a6d14, side: THREE.DoubleSide }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.002;
+    scene.add(ring);
+
     // build Greg + apply equipped items so the paperdoll reflects the gear
-    const rig = buildCharacter(unit.scheme, unit.weapon ?? 'unarmed');
+    // (a first-spawn unit can be missing scheme/weapon — fall back to the
+    //  stock Greg build so the doll never renders blank)
+    const FALLBACK_SCHEME = {
+      skin: 0xd9a066, cloth: 0xffffff, accent: 0xffeb3b, hair: 0x4a2f1a,
+      hood: false, style: 'normal', naked: true,
+    } as const;
+    const scheme = (unit.scheme ?? FALLBACK_SCHEME) as typeof unit.scheme;
+    const rig = buildCharacter(scheme, unit.weapon ?? 'unarmed');
     rig.group.position.y = 0;
     rig.anim.mode = 'idle';
     scene.add(rig.group);
 
     // weapon
-    setWeapon(rig, unit.weapon ?? 'unarmed', unit.scheme.accent);
-    // worn armor / head / legs etc. (weapon has no equip visual — setWeapon handles it)
+    setWeapon(rig, unit.weapon ?? 'unarmed', scheme.accent);
+    // worn armor / head / legs etc.
     for (const [slot, item] of Object.entries(unit.equipment ?? {})) {
       if (!item) continue;
       const vis = itemToEquipVisual(item, slot);
       if (vis) equip(rig, vis);
     }
 
-    let raf = 0;
-    let disposed = false;
-    const loop = () => {
-      if (disposed) return;
+    let ticker: (() => void) | null = () => {
       rig.anim.t += 0.016;
       updateRig(rig, 0.016);
-      rig.group.rotation.y += 0.004; // slow turn so the doll reads
-      renderer.render(scene, camera);
-      raf = requestAnimationFrame(loop);
+      rig.group.rotation.y += 0.0035; // gentle idle rotation
+      view.renderOnce(scene, camera);
     };
-    loop();
+    addTicker(ticker);
 
     return () => {
-      disposed = true;
-      cancelAnimationFrame(raf);
-      rig.group.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.geometry) m.geometry.dispose();
-        if (m.material) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
-      });
-      renderer.dispose();
-      if (renderer.domElement.parentNode === host) host.removeChild(renderer.domElement);
+      if (ticker) {
+        removeTicker(ticker);
+        ticker = null;
+      }
+      view.dispose();
     };
   }, [unit, width, height]);
 

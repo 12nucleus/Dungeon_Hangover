@@ -68,8 +68,9 @@ export interface LevelStructures {
   exitStairs?: GridPos;
   /** all authored rooms (id → rect), for entry narration + minimap markers */
   rooms?: { id: string; name: string; rect: Rect }[];
-  /** hand-authored NPCs to spawn (id → tile) */
-  npcs?: { npcId: string; pos: GridPos }[];
+  /** hand-authored NPCs to spawn (id → tile); `unlessFlag` skips the spawn
+   *  while that flag is set (companions away with the party) */
+  npcs?: { npcId: string; pos: GridPos; unlessFlag?: string }[];
   /** boss-door override: open on this flag instead of the iron-key check */
   bossDoorOpenFlag?: string;
 }

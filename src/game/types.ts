@@ -72,6 +72,38 @@ export type ParticleFX =
   | 'slash' | 'fire' | 'heal' | 'arcane' | 'ice'
   | 'arrow' | 'holy' | 'bash' | 'buff' | 'blood';
 
+export type SkillId = string;
+export type SkillAudioCue = 'melee' | 'ranged' | 'fire' | 'fireball_cast' | 'fireball_impact' | 'ice' | 'holy' | 'heal' | 'buff' | 'arcane' | 'impact' | 'none';
+
+/** Presentation is data, not an ID-based animation special case. */
+export interface SkillPresentation {
+  castAudio: SkillAudioCue;
+  impactAudio?: SkillAudioCue;
+  trail?: ParticleFX;
+  burst?: ParticleFX;
+  shake?: number;
+  flash?: number;
+}
+
+export interface SkillState {
+  learned: SkillId[];
+  loadout: (SkillId | null)[];
+  unlockedNodes: string[];
+  passiveRanks: Record<string, number>;
+}
+
+export type SkillEffect =
+  | { type: 'damage'; dice: string; damageType: DamageType; save?: { ability: Ability; dc: number; result: 'half' | 'negate' } }
+  | { type: 'heal'; dice: string }
+  | { type: 'condition'; id: string; rounds: number; chance?: number }
+  | { type: 'summon'; template: string; count?: number }
+  | { type: 'script'; handler: string };
+
+export interface SkillRuntimeDefinition extends SkillDef {
+  effects: SkillEffect[];
+  presentation: SkillPresentation;
+}
+
 export interface SkillDef {
   id: string;
   name: string;
@@ -183,6 +215,9 @@ export interface Unit {
   attackUsed?: boolean;
   movementLeft: number;
   initiative: number;
+
+  /** Canonical skill ownership/loadout state. Legacy arrays are synchronized during migration. */
+  skillState?: SkillState;
   conditions: Condition[];
   scheme: CharacterScheme;
   weapon?: WeaponKind;
@@ -265,9 +300,13 @@ export interface UISnapshot {
   showInventory: boolean;
   showSkillTree: boolean;
   showStats: boolean;
+  /** help overlay open (H key / ? button) */
+  showHelp: boolean;
   sneaking: boolean;
   running: boolean;
   throwing: boolean;
+  /** first-person camera active (P key) — HUD shows the crosshair dot */
+  firstPerson: boolean;
   /** overhead tactical camera view active (top-down on the field) */
   tacticalView: boolean;
   torchLit: boolean;
@@ -278,6 +317,8 @@ export interface UISnapshot {
   busy?: boolean;
   /** true while the in-game pause menu is open (simulation frozen) */
   paused?: boolean;
+  /** new-game tutorial card step (1..N active, 0/undefined = off) */
+  tutorialStep?: number;
   minimapTiles?: { walk: boolean[][]; heights: number[][]; units: { x: number; z: number; team: 'party' | 'enemy' }[] };
   /** party leader's facing (radians, THREE rotation.y) — drives the rotating minimap */
   heroYaw?: number;
@@ -327,9 +368,9 @@ export interface UISnapshot {
 export type CombatEvent =
   | { type: 'log'; text: string; kind: LogKind }
   | { type: 'move'; unitId: string; path: GridPos[] }
-  | { type: 'melee'; unitId: string; targetId: string }
-  | { type: 'projectile'; unitId: string; from: GridPos; to: GridPos; color: number; fx: ParticleFX }
-  | { type: 'skillfx'; skill: SkillDef; at: GridPos; targets: string[] }
+  | { type: 'melee'; unitId: string; targetId: string; audioCue?: SkillAudioCue }
+  | { type: 'projectile'; unitId: string; from: GridPos; to: GridPos; color: number; fx: ParticleFX; audioCue?: SkillAudioCue; impactAudio?: SkillAudioCue }
+  | { type: 'skillfx'; skill: SkillDef; at: GridPos; targets: string[]; presentation?: SkillPresentation }
   | { type: 'damage'; unitId: string; amount: number; kind: DamageType; crit: boolean }
   | { type: 'heal'; unitId: string; amount: number }
   | { type: 'float'; unitId: string; text: string; cls: string }

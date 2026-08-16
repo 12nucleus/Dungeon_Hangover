@@ -176,8 +176,21 @@ export function CharacterCreationPanel({ engine }: Props) {
         {/* STEP 2 — classes */}
         {step === 'classes' && (
           <div className="creation-step">
-            <h2>Choose Two Classes</h2>
-            <p className="creation-sub">Pick 2 of the 15. Your build is a hybrid — choose wisely.</p>
+            <div className="creation-step-title-row">
+              <div>
+                <h2>Choose Two Classes</h2>
+                <p className="creation-sub">Pick 2 of the 15 disciplines to forge your hybrid build ({classes.length}/2 selected).</p>
+              </div>
+              {classes.length > 0 && (
+                <div className="classes-selected-badge">
+                  {classes.map((cid) => (
+                    <span key={cid} className="chosen-class-pill" onClick={() => toggleClass(cid)}>
+                      {classById(cid)?.icon} {classById(cid)?.name} ✕
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="class-grid">
               {CLASSES.map((c) => {
                 const selected = classes.includes(c.id);
@@ -215,9 +228,9 @@ export function CharacterCreationPanel({ engine }: Props) {
             </div>
             <div className="creation-footer">
               <button className="btn-ghost" onClick={() => setStep('stats')}>← Back</button>
-              <span className={`points-left ${classes.length === 2 ? 'ok' : ''}`}>{classes.length}/2 classes</span>
+              <span className={`points-left ${classes.length === 2 ? 'ok' : ''}`}>{classes.length}/2 classes chosen</span>
               <button className="btn-primary" disabled={classes.length !== 2} onClick={() => setStep('skills')}>
-                Next →
+                Next: Choose Skills →
               </button>
             </div>
           </div>

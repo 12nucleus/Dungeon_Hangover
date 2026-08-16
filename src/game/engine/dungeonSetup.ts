@@ -74,22 +74,32 @@ export function setupDungeon(engine: any, L: LevelDef) {
     const roomRect = (id: string) => st.rooms?.find((r) => r.id === id)?.rect;
     const r1 = roomRect('r1');
     if (r1 && engine.world) {
-      const spots: { tile: GridPos; b: () => any; off: number }[] = [
-        { tile: { x: r1.x0 + 1, z: r1.z0 }, b: propPuddle, off: 0.01 },
-        { tile: { x: r1.x0, z: r1.z0 + 2 }, b: propBucket, off: 0 },
-        { tile: { x: r1.x0 + 2, z: r1.z0 + 2 }, b: propScratches, off: 0 },
+      const spots: { tile: GridPos; b: () => any; off: number; kind: string }[] = [
+        { tile: { x: r1.x0 + 1, z: r1.z0 }, b: propPuddle, off: 0.01, kind: 'puddle' },
+        { tile: { x: r1.x0, z: r1.z0 + 2 }, b: propBucket, off: 0, kind: 'bucket' },
+        { tile: { x: r1.x0 + 2, z: r1.z0 + 2 }, b: propScratches, off: 0, kind: 'scratches' },
       ];
       for (const s of spots) {
         const t = s.tile;
         if (!engine.world.inBounds(t.x, t.z)) continue;
-        place(engine, mk(s.b), t, s.off);
+        const g = mk(s.b);
+        place(engine, g, t, s.off);
+        // register so hidePropAt() (taking the bucket) and the decor hover
+        // label ("🪣 A wooden bucket") work — kind matches PROP_HOVER
+        g.userData.propKind = s.kind;
+        engine.world.exploredObjects.push({ object: g, x: t.x, z: t.z });
       }
     }
     // R3 — the skeleton the narrator mentions, floating in the shallow water.
     const r3 = roomRect('r3');
     if (r3 && engine.world) {
       const t = { x: r3.x1, z: r3.z0 };   // matches the search_skeleton_r3 interactable
-      if (engine.world.inBounds(t.x, t.z)) place(engine, mk(propSkeleton), t, 0);
+      if (engine.world.inBounds(t.x, t.z)) {
+        const g = mk(propSkeleton);
+        place(engine, g, t, 0);
+        g.userData.propKind = 'skeleton';
+        engine.world.exploredObjects.push({ object: g, x: t.x, z: t.z });
+      }
     }
   }
 
@@ -161,33 +171,13 @@ export function setupDungeon(engine: any, L: LevelDef) {
     }
   }
 
-  // hand-authored NPCs (hermit, other hermit, Scrag) — generic registry
+  // hand-authored NPCs (hermit, other hermit, Scrag, …) — generic registry.
+  // Flag-gated entries (Sporefriend) only stand around when their flag is
+  // clear — i.e. when they're NOT travelling with the party.
   engine.npcs = [];
   for (const n of st.npcs ?? []) {
-    const npc = NPCS[n.npcId];
-    if (!npc) continue;
-    const rig = buildCharacter(npc.scheme);
-    const wp = unitWorld(engine, n.pos);
-    rig.group.position.set(wp.x, wp.y, wp.z);
-    rig.group.rotation.y = 0;
-    rig.group.userData.baseY = wp.y;
-    // the Hermits sit on the ground (criss-cross); everyone else idles
-    rig.anim.mode = (n.npcId === 'hermit' || n.npcId === 'other_hermit') ? 'myPose' : 'idle';
-    engine.scene.add(rig.group);
-
-    const bb = new THREE.Box3().setFromObject(rig.group);
-    const rigH = Math.max(0.7, isFinite(bb.max.y - bb.min.y) ? bb.max.y - bb.min.y : 1.8);
-    const rigR = Math.max(0.45, Math.min(0.9, isFinite(bb.max.x - bb.min.x) ? Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 + 0.15 : 0.5));
-    const yOff = (isFinite(bb.min.y) ? bb.min.y - wp.y : 0) + rigH / 2;
-    const proxy = new THREE.Mesh(
-      new THREE.CylinderGeometry(rigR, rigR, rigH, 8),
-      new THREE.MeshBasicMaterial({ visible: false }),
-    );
-    proxy.userData.npcId = n.npcId;
-    proxy.position.copy(wp).y += yOff;
-    engine.scene.add(proxy);
-    engine.unitProxies.push(proxy);
-    engine.npcs.push({ npcId: n.npcId, pos: { ...n.pos }, rig, proxy });
+    if (n.unlessFlag && engine.flags?.has(n.unlessFlag)) continue;
+    spawnNpc(engine, n.npcId, n.pos);
   }
 
   // authored room lookup + narration (floor 50)
@@ -212,6 +202,39 @@ export function setupDungeon(engine: any, L: LevelDef) {
   engine.hiddenTreasures = L.makeHiddenTreasures ? L.makeHiddenTreasures(engine.runSeed ?? 0) : [];
   engine.chaos = new FloorChaos(engine, engine.runSeed ?? 0);
   engine.chaos.install(L);
+}
+
+/**
+ * Spawn a hand-authored NPC (rig + invisible click proxy) at a tile and
+ * register it in engine.npcs. Used by setupDungeon for every floor and by
+ * dismissCompanion when a companion returns to his home spot.
+ */
+export function spawnNpc(engine: any, npcId: string, pos: GridPos) {
+  const npc = NPCS[npcId];
+  if (!npc) return null;
+  const rig = buildCharacter(npc.scheme);
+  const wp = unitWorld(engine, pos);
+  rig.group.position.set(wp.x, wp.y, wp.z);
+  rig.group.rotation.y = 0;
+  rig.group.userData.baseY = wp.y;
+  // the Hermits sit on the ground (criss-cross); everyone else idles
+  rig.anim.mode = (npcId === 'hermit' || npcId === 'other_hermit') ? 'myPose' : 'idle';
+  engine.scene.add(rig.group);
+
+  const bb = new THREE.Box3().setFromObject(rig.group);
+  const rigH = Math.max(0.7, isFinite(bb.max.y - bb.min.y) ? bb.max.y - bb.min.y : 1.8);
+  const rigR = Math.max(0.45, Math.min(0.9, isFinite(bb.max.x - bb.min.x) ? Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 + 0.15 : 0.5));
+  const yOff = (isFinite(bb.min.y) ? bb.min.y - wp.y : 0) + rigH / 2;
+  const proxy = new THREE.Mesh(
+    new THREE.CylinderGeometry(rigR, rigR, rigH, 8),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  );
+  proxy.userData.npcId = npcId;
+  proxy.position.copy(wp).y += yOff;
+  engine.scene.add(proxy);
+  engine.unitProxies.push(proxy);
+  engine.npcs.push({ npcId, pos: { ...pos }, rig, proxy });
+  return { npcId, pos: { ...pos }, rig, proxy };
 }
 
 /** Mount a burning torch in the hero's off-hand */

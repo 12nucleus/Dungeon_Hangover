@@ -342,7 +342,7 @@ export function propBrazier(seed = 0.5) {
   }
   return {
     name: 'brazier', voxels: v.list(), cube, blocks: true,
-    glow: { color: 0xff7a2a, intensity: 12, dist: 9, decay: 1.7, y: 13 * cube, flicker: 2.2 },
+    glow: { color: 0xff7a2a, intensity: 9.5, dist: 9, decay: 1.7, y: 13 * cube, flicker: 2.2 },
     particles: { type: 'flame', color: 0xffb545, y: 15 * cube, spread: 0.22, rate: 10, count: 18 },
     flame: { y: 15 * cube, big: true },
     anim: 'flicker',
@@ -520,7 +520,7 @@ export function propCampfire(seed = 0.5) {
   v.add(1, 6, 0, 0xff7a1f); v.add(-1, 5, 0, 0xff9a2a); v.add(0, 6, 1, 0xff9a2a);
   return {
     name: 'campfire', voxels: v.list(), cube, blocks: true,
-    glow: { color: 0xff7a2a, intensity: 10, dist: 8, decay: 1.7, y: 7 * cube, flicker: 2.4 },
+    glow: { color: 0xff7a2a, intensity: 8, dist: 8, decay: 1.7, y: 7 * cube, flicker: 2.4 },
     particles: { type: 'flame', color: 0xffb545, y: 8 * cube, spread: 0.16, rate: 9, count: 16 },
     flame: { y: 8 * cube, big: false },
     anim: 'flicker',

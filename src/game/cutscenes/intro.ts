@@ -73,6 +73,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // joint in the hierarchy, so the mug follows the grip instead of floating at
   // the elbow when the drinking pose bends the arm.
   const mug = new THREE.Group();
+  mug.name = 'intro_mug';   // wake path detaches it by name (no closure coupling)
   const mugBody = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.24, 0.20), new THREE.MeshLambertMaterial({ color: 0x8a5a2e }));
   const mugFoam = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.22), new THREE.MeshLambertMaterial({ color: 0xf2ead2 }));
   mugFoam.position.y = 0.14; mug.add(mugBody, mugFoam);
@@ -151,6 +152,18 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.iso.target.copy(h.iso.desiredTarget);
   h.fadeTo(0);
   h.audio.stopMusic(); h.audio.stopTavernMusic(); h.audio.playTavernMusic();
+
+  // ── ESC-skip during the tavern: never let the async race through the rest
+  //    of the scene (that's what fired the wizard's spell sound + sheep +
+  //    pass-out all at once). A wrapped cineDelay/narrate throws a bail marker
+  //    the instant skip is set; the catch below jumps straight to the wake,
+  //    which replays WITH its full narration. ──
+  const TAIL = Symbol('intro-wake-bail');
+  const origCineDelay = h.cineDelay.bind(h);
+  const origNarrate = h.narrate.bind(h);
+  h.cineDelay = (async (ms: number) => { await origCineDelay(ms); if (h.introSkipped) throw TAIL; }) as typeof h.cineDelay;
+  h.narrate = (async (id: string, text: string, minMs = 4200) => { await origNarrate(id, text, minMs); if (h.introSkipped) throw TAIL; }) as typeof h.narrate;
+  try {
   await h.cineDelay(1100);   // hold the establishing shot while the fade completes
 
   // == BEAT 1: establishing - the warm, dingy room; Greg mid-bender ==
@@ -432,8 +445,36 @@ export async function playIntroCutscene(h: CutsceneHost) {
   await h.cineDelay(1800);
   await h.narrate('narr_bridge', 'He drank the tavern dry, insulted a man with a sword, challenged a wizard to a fistfight, and spent four seconds as livestock. Then the floor rose up to introduce itself.', 6800);
 
+  } catch (err) {
+    // ESC during the tavern: swallow the bail marker — the spell sound,
+    // sheep FX and pass-out race never run. Any other error rethrows.
+    if (err !== TAIL) throw err;
+  } finally {
+    h.cineDelay = origCineDelay;
+    h.narrate = origNarrate;
+  }
+  // both paths land here — the tavern finished normally, or ESC bailed to
+  // the wake: the dungeon wake plays with its full narration either way.
+  await playWakeSequence(h);
+}
+
+/**
+ * The dungeon wake — shared by the normal run and the ESC-skip path. Tavern
+ * torn down, Greg sprawled on the spawn tile (passout pose), the wake
+ * narration plays, then character creation. ESC during the wake (or at
+ * creation) falls through to finishIntro() as before.
+ */
+async function playWakeSequence(h: CutsceneHost) {
+  // an ESC during the tavern must not mute the wake VO — the skip jumps here
+  // and the narration plays in full
+  h.resetSkipState();
+  const hero = h.combat.living('party')[0];
+  if (!hero) { finishIntro(h); return; }
+  const hv = h.visuals.get(hero.id);
+  if (!hv) { finishIntro(h); return; }
+
   // ── wake at the bottom of the dungeon ──
-  h.scene.remove(h.tavern); h.tavern = null; h.tavernRigs = []; h.tavernActors = {}; h.iso.box = null;
+  if (h.tavern) h.scene.remove(h.tavern); h.tavern = null; h.tavernRigs = []; h.tavernActors = {}; h.iso.box = null;
   h.worldGroup.visible = true;
   h.propsGroup.visible = true;
   if (h.dressingGroup) h.dressingGroup.visible = true;
@@ -444,7 +485,7 @@ export async function playIntroCutscene(h: CutsceneHost) {
   h.scene.fog = null;
   h.inTavern = false;
   for (const [id, v] of h.visuals) { if (id !== hero.id) v.rig.group.visible = true; }
-  h.setWeapon(hv.rig, hero.weapon ?? 'unarmed', hero.scheme.accent);
+  h.setWeapon(hv.rig, hero.weapon ?? 'unarmed', hero.scheme?.accent ?? 0xffeb3b);
 
   // Greg wakes LYING on the dungeon floor, sprawled in the exact same
   // `loading_passout` pose as the loading screen (via bakePassedOut). unitWorld
@@ -455,15 +496,18 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // Swap the fully-clothed tavern rig back to Greg's actual gameplay rig — his
   // underwear-only dungeon rig — so the "wake in your underwear" gag still
   // lands (the tavern copy is built clothed now, so there's nothing to strip).
-  const introGameplayRig = (hv as unknown as { introGameplayRig?: typeof gameplayRig }).introGameplayRig;
+  const introGameplayRig = (hv as unknown as { introGameplayRig?: typeof hv.rig }).introGameplayRig;
   if (introGameplayRig) {
+    // detach the tankard so the tavern rig subtree is plain geometry again
+    const mugNode = hv.rig.group.getObjectByName('intro_mug');
+    if (mugNode?.parent) mugNode.parent.remove(mugNode);
     hv.rig.group.parent?.remove(hv.rig.group);
     hv.rig = introGameplayRig;
     hv.rig.group.visible = true;
     h.scene.add(hv.rig.group);
     // the swap is done — clear the stash so the final finishIntro() does not
     // re-enter this block and dispose the GAMEPLAY rig's geometry
-    (hv as unknown as { introGameplayRig?: typeof gameplayRig }).introGameplayRig = undefined;
+    (hv as unknown as { introGameplayRig?: typeof hv.rig }).introGameplayRig = undefined;
   }
   hv.rig.group.position.copy(floorWp);
   hv.rig.group.userData.baseY = floorWp.y;
@@ -476,7 +520,6 @@ export async function playIntroCutscene(h: CutsceneHost) {
   // reset → standing Greg. Pin it to the static 'passout' mode so updateRig
   // leaves the baked pose completely alone until the player confirms.
   hv.rig.anim.mode = 'passout';
-  if (mugHand) mugHand.remove(mug);
 
   // camera dips low to read Greg flat on the floor, then holds him while he
   // mutters to himself.
@@ -579,7 +622,7 @@ export function finishIntro(h: CutsceneHost) {
       if (hv.rig.parts.padL) hv.rig.parts.padL.visible = true;
       if (hv.rig.parts.padR) hv.rig.parts.padR.visible = true;
       hv.yaw = hv.targetYaw = Math.PI;
-      h.setWeapon(hv.rig, hero.weapon ?? 'unarmed', hero.scheme.accent);
+      h.setWeapon(hv.rig, hero.weapon ?? 'unarmed', hero.scheme?.accent ?? 0xffeb3b);
       // snap the rig to the hero's ACTUAL spawn tile — the tavern left it
       // somewhere else entirely
       const wp = h.unitWorld(hero.pos);

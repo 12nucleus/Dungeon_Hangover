@@ -6,8 +6,9 @@
 // ─────────────────────────────────────────────────────────────
 import type { CombatEvent, GridPos, SkillDef, Unit, GamePhase, DamageType } from './types';
 import { CONDITIONS, SUMMON_TEMPLATES } from './skills';
-import { skillById } from './skillLookup';
+import { activeSkillIds, canUseSkill, effectsForSkill, presentationForSkill } from './skillRuntime';
 import { rollD20, rollDice, abilityMod, fmtMod } from './dice';
+import { skillById } from './skillLookup';
 import { VoxelWorld } from './world';
 import { ENCHANTS, rollLootTable, type Item } from './items';
 import { throwProfile } from './improvised';
@@ -506,20 +507,47 @@ export class Combat {
   }
 
   // ── skill use (player) ─────────────────────────────────────
-  canUse(u: Unit, s: SkillDef): string | null {
-    if (!u.alive) return 'dead';
-    // the basic attack is FREE and once per turn (attackUsed) — it must never
-    // eat the action, or the skill attacks gray out right after it (the ⚔️
-    // attack then the 🔸 skill are BOTH expected each round)
-    if (s.id === 'attack') {
-      if (u.attackUsed) return 'Already attacked this turn';
-      return null;
+  private executeTypedEffects(u: Unit, s: SkillDef, center: GridPos, targets: Unit[]): CombatEvent[] {
+    const ev: CombatEvent[] = [];
+    const presentation = presentationForSkill(s);
+    if (s.projectile) ev.push({ type: 'projectile', unitId: u.id, from: u.pos, to: center, color: s.fxColor, fx: s.fx, audioCue: presentation.castAudio });
+    else ev.push({ type: 'skillfx', skill: s, at: center, targets: targets.map((t) => t.id), presentation });
+    for (const target of targets) {
+      for (const effect of effectsForSkill(s)) {
+        if (effect.type === 'damage') {
+          let amount = rollDice(effect.dice).total;
+          if (effect.save) {
+            const save = rollD20(abilityMod(target.abilities[effect.save.ability]));
+            const success = save.total >= effect.save.dc;
+            ev.push({ type: 'save', unitId: target.id, success, total: save.total });
+            ev.push({ type: 'dice', die: 'd20', total: save.total, reason: `${effect.save.ability.toUpperCase()} save` });
+            if (success && effect.save.result === 'negate') amount = 0;
+            else if (success) amount = Math.floor(amount / 2);
+          }
+          if (amount > 0) this.applyDamage(ev, target, amount, effect.damageType, false);
+        } else if (effect.type === 'heal') {
+          const amount = Math.min(rollDice(effect.dice).total, effMaxHp(target) - target.hp);
+          target.hp += amount;
+          ev.push({ type: 'heal', unitId: target.id, amount });
+        } else if (effect.type === 'condition') {
+          if (Math.random() <= (effect.chance ?? 1) && !target.conditions.some((c) => c.id === effect.id)) {
+            const def = CONDITIONS[effect.id];
+            if (def) {
+              target.conditions.push({ id: effect.id, name: def.name, roundsLeft: effect.rounds });
+              ev.push({ type: 'float', unitId: target.id, text: def.name, cls: 'debuff' });
+            }
+          }
+        }
+      }
     }
-    if (s.cost === 'action' && !u.hasAction) return 'No action left';
-    if (s.cost === 'bonus' && !u.hasBonus) return 'No bonus action left';
-    if ((u.cooldowns[s.id] ?? 0) > 0) return `Cooldown: ${u.cooldowns[s.id]} round(s)`;
-    if (s.oncePerFight && (u.cooldowns[`once_${s.id}`] ?? 0) > 0) return 'Already used this fight.';
-    return null;
+    ev.push(...this.checkEnd());
+    return ev;
+  }
+
+  private readonly typedSkillIds = new Set(['fireball', 'cure_wounds', 'bless', 'arcane_shield']);
+
+  canUse(u: Unit, s: SkillDef): string | null {
+    return canUseSkill(u, s);
   }
 
   /** targets = explicit tile (AoE) or unit id (single). Returns events or throws string reason. */
@@ -537,7 +565,7 @@ export class Combat {
         name: w ? `Attack (${w.name ?? 'weapon'})` : 'Punch',
       } as SkillDef;
     }
-    if (!s || (skillId !== 'attack' && skillId !== 'shove' && !u.equippedSkills.includes(skillId))) return [];
+    if (!s || (skillId !== 'attack' && skillId !== 'shove' && !activeSkillIds(u).includes(skillId))) return [];
     const deny = this.canUse(u, s);
     if (deny) return [{ type: 'log', text: deny, kind: 'info' }];
     // BG3 phase advance: action → bonus (if any left), bonus → back to walk
@@ -614,6 +642,7 @@ export class Combat {
     if (s.cost === 'bonus') u.hasBonus = false;
     if (s.cooldown > 0) u.cooldowns[s.id] = s.cooldown + 1; // +1 because it ticks at next turn start
     if (s.oncePerFight) u.cooldowns[`once_${s.id}`] = 999;
+    if (this.typedSkillIds.has(s.id)) return [...ev, ...this.executeTypedEffects(u, s, center, targets)];
 
     // ── shove: a contested shove, resolved here (no attack roll) ──
     if (s.id === 'shove') {
@@ -885,7 +914,7 @@ export class Combat {
     // attacks — projectiles and skill fx fire once; melee swings fire per
     // strike (so a dual-wield Attack swings main + off-hand separately)
     const needsProjectile = !!s.projectile;
-    if (needsProjectile) ev.push({ type: 'projectile', unitId: u.id, from: u.pos, to: center, color: s.fxColor, fx: s.fx });
+    if (needsProjectile) ev.push({ type: 'projectile', unitId: u.id, from: u.pos, to: center, color: s.fxColor, fx: s.fx, audioCue: presentationForSkill(s).castAudio });
     else if (s.kind !== 'melee') ev.push({ type: 'skillfx', skill: s, at: center, targets: targets.map((t) => t.id) });
 
     for (const t of targets) {
@@ -924,7 +953,7 @@ export class Combat {
       }
       if (s.id === 'attack' && u.equipment.offHand?.kind === 'weapon') strikeWeapons.push(u.equipment.offHand);
       for (const weapon of strikeWeapons) {
-        if (s.kind === 'melee') ev.push({ type: 'melee', unitId: u.id, targetId: t.id });
+        if (s.kind === 'melee') ev.push({ type: 'melee', unitId: u.id, targetId: t.id, audioCue: presentationForSkill(s).castAudio });
         const diceExpr = weapon?.damageDice ?? s.damageDice;
         const ench = weapon?.enchantId ? ENCHANTS[weapon.enchantId] : undefined;
         const blessed = u.conditions.some((c) => c.id === 'blessed');

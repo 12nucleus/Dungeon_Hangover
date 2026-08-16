@@ -303,7 +303,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
         e.completeQuest('mushroom_child');
         void e.narrate('f49_offering', 'You place the mushroom in the bowl. The circle glows. A small mushroom bounces out of the circle, looks up at you, and bounces once. Twice. It has decided. I have been adopted by a very small, very angry mushroom. The anger is because I am six feet tall and it is six inches. We have a lot in common.', 5400);
         e.pushLog('🍄 Sporefriend joins your party! It glows with loyalty and simmering resentment.', 'system');
-        e.addCompanion?.('Sporefriend', 'Mushroom Child', { skin: 0xe8e0d0, cloth: 0xff8ac0, accent: 0xe8e0d0, hair: 0x2a2a3a, hood: false, monster: 'mushroom', bulk: 0.6 }, 15);
+        e.addCompanion?.('Sporefriend', 'Mushroom Child', { skin: 0xe8e0d0, cloth: 0xff8ac0, accent: 0xe8e0d0, hair: 0x2a2a3a, hood: false, monster: 'mushroom', bulk: 0.6 }, 15, { x: cx, z: cz });
       },
     });
     once('meditate_r5', cx + 2, cz, '[R] Sit in the circle and meditate', (e) => {

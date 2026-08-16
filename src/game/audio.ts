@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 
 const SFX_FILES = [
-  'sword_hit', 'fireball', 'heal', 'magic_missile',
+  'sword_hit', 'fireball', 'fireball_cast', 'fireball_impact', 'heal', 'magic_missile',
   'arrow', 'dice', 'victory', 'ui_click', 'bonfire_lit',
 ] as const;
 
@@ -27,7 +27,7 @@ export class AudioManager {
   private tavernPending = false;
   private pendingMusic: string | null = null;
 
-  // ── dungeon ambience (fully procedural, no assets) ─────────
+  // ── dungeon ambience (procedural + floor-50 droplet bed) ───
   private ambGain: GainNode | null = null;      // master ambience bus
   private ambReverb: ConvolverNode | null = null;
   private ambNoise: AudioBufferSourceNode | null = null;
@@ -35,6 +35,12 @@ export class AudioManager {
   private ambTimer: number | null = null;
   private ambNext: number[] = [];
   private ambActive = false;
+  // floor-50 cave-drip bed: a looping wav of real cave-water droplets, faded
+  // under the ambience bus. `dropletWanted` is set by the engine when the
+  // party is on floor 50; the loop only *sounds* while the ambience runs.
+  private dropletWanted = false;
+  private dropletSource: AudioBufferSourceNode | null = null;
+  private dropletGain: GainNode | null = null;
 
   /** must be called from a user gesture.
    *
@@ -102,17 +108,20 @@ export class AudioManager {
     });
   }
 
-  /** internal: fetch + decode one mp3 into the buffer cache. Silent on
+  /** internal: fetch + decode one mp3/wav into the buffer cache. Silent on
    *  network failure so a missing file doesn't break gameplay. */
   private async _loadBuffer(name: string): Promise<void> {
     if (!this.ctx) return;
     if (this.buffers.has(name)) return;
-    try {
-      const res = await fetch(`${import.meta.env.BASE_URL}audio/${name}.mp3`);
-      if (!res.ok) return;
-      const buf = await res.arrayBuffer();
-      this.buffers.set(name, await this.ctx.decodeAudioData(buf));
-    } catch { /* missing file → silently skip */ }
+    for (const ext of ['mp3', 'wav']) {
+      try {
+        const res = await fetch(`${import.meta.env.BASE_URL}audio/${name}.${ext}`);
+        if (!res.ok) continue;
+        const buf = await res.arrayBuffer();
+        this.buffers.set(name, await this.ctx.decodeAudioData(buf));
+        return;
+      } catch { /* try the next extension */ }
+    }
   }
 
   /** public lazy loader — exposed so other modules can warm the cache
@@ -251,12 +260,14 @@ export class AudioManager {
     this.stopDungeonAmbience();
   }
 
-  // ══ dungeon ambience — fully procedural soundscape ═════════
+  // ══ dungeon ambience — procedural soundscape (+ floor-50 droplet bed) ══
   // A low wind/cave drone sits underneath the dungeon music track, and a
-  // scheduler sprinkles randomized events (water drips, distant screams,
-  // echoed farts, rat squeaks) through a reverb bus so they feel far away
-  // and cavernous. No audio assets required — everything is synthesized at
-  // runtime. Auto-starts with the dungeon music and stops on exit.
+  // scheduler sprinkles randomized events (water drips, echoed footsteps,
+  // distant screams, wet squelches, rat squeaks, creaks, occasional rude
+  // farts) through a reverb bus so they feel far away and cavernous. All
+  // events are synthesized at runtime except the floor-50 cave-water-droplet
+  // bed, which loops a real recording. Auto-starts with the dungeon music
+  // and stops on exit.
 
   private ambReverbIR(): AudioBuffer {
     const ctx = this.ctx!;
@@ -303,47 +314,61 @@ export class AudioManager {
     this.ambDrone.push(osc);
   }
 
-  /** start the layered dungeon soundscape (drone + drip/scream/fart scheduler) */
+  /** start the layered dungeon soundscape (drone + drip/scream/footstep scheduler) */
   startDungeonAmbience() {
     if (!this.ctx || this.ambActive) return;
     this.ambActive = true;
 
     // ── ambience bus → reverb bus → master ──
     const amb = this.ctx.createGain();
-    amb.gain.value = 0.5;
+    amb.gain.value = 0.9;
     const reverb = this.ctx.createConvolver();
     reverb.buffer = this.ambReverbIR();
     const reverbGain = this.ctx.createGain();
-    reverbGain.gain.value = 0.55;
+    reverbGain.gain.value = 0.8;
     amb.connect(this.master);
     amb.connect(reverb).connect(reverbGain).connect(this.master);
     this.ambGain = amb;
     this.ambReverb = reverb;
 
     // ── low wind drone (two detuned sine + a breathy triangle) ──
-    this.ambDroneNote(52, 0.05, 'sine');
-    this.ambDroneNote(52.7, 0.04, 'sine');
-    this.ambDroneNote(104, 0.02, 'triangle');
+    this.ambDroneNote(52, 0.11, 'sine');
+    this.ambDroneNote(52.7, 0.09, 'sine');
+    this.ambDroneNote(104, 0.06, 'triangle');
+
+    // floor-50 real droplet bed rides the same bus
+    if (this.dropletWanted) this.startDroplet();
 
     // ── scheduler tick — sprinkle random distant events ──
+    const fire = (t: number) => {
+      const roll = Math.random();
+      if (roll < 0.36) this.ambDrip(t);
+      else if (roll < 0.53) this.ambFootstep(t);
+      else if (roll < 0.67) this.ambScream(t);
+      else if (roll < 0.78) this.ambWaterStep(t);
+      else if (roll < 0.89) this.ambSqueak(t);
+      else if (roll < 0.95) this.ambFart(t);
+      else this.ambCreak(t);
+    };
     const schedule = () => {
       if (!this.ambActive) return;
       const now = this.ctx!.currentTime;
-      while (this.ambNext.length < 3) this.ambNext.push(now + Math.random() * 6);
-      const t = this.ambNext.shift()!;
-      const roll = Math.random();
-      if (roll < 0.42) this.ambDrip(t);
-      else if (roll < 0.68) this.ambScream(t);
-      else if (roll < 0.88) this.ambFart(t);
-      else this.ambSqueak(t);
+      while (this.ambNext.length < 3) this.ambNext.push(now + Math.random() * 5);
+      fire(this.ambNext.shift()!);
+      // ~45% of ticks carry a second, slightly-later event for texture
+      if (Math.random() < 0.45) {
+        const t = this.ambNext.shift() ?? now + 0.8 + Math.random() * 1.5;
+        fire(t);
+      }
     };
     schedule();
-    this.ambTimer = window.setInterval(schedule, 3200);
+    this.ambTimer = window.setInterval(schedule, 2200);
   }
 
   /** stop the dungeon ambience (drone + scheduler) — safe to call anytime */
   stopDungeonAmbience() {
     this.ambActive = false;
+    this.stopDroplet();
     if (this.ambTimer !== null) { clearInterval(this.ambTimer); this.ambTimer = null; }
     this.ambNext = [];
     for (const osc of this.ambDrone) { try { osc.stop(); } catch { /* */ } }
@@ -361,6 +386,62 @@ export class AudioManager {
     return this.ambActive;
   }
 
+  /** floor-50 cave-drip bed on/off. The engine calls this on every floor
+   *  build; the loop itself only starts when the ambience is running. */
+  setDropletWanted(wanted: boolean) {
+    this.dropletWanted = wanted;
+    if (!wanted) this.stopDroplet();
+    else if (this.ambActive) this.startDroplet();
+  }
+
+  /** loop the real cave-water-droplet recording under the ambience bus */
+  private startDroplet() {
+    if (!this.ctx || !this.ambGain || this.dropletSource) return;
+    void (async () => {
+      if (this.dropletSource || !this.dropletWanted || !this.ctx || !this.ambGain) return;
+      try {
+        const res = await fetch(`${import.meta.env.BASE_URL}audio/395258__selulance__cave-water-droplet-1.wav`);
+        if (!res.ok) return;
+        const buf = await this.ctx.decodeAudioData(await res.arrayBuffer());
+        // ambience may have stopped (or floor changed) during the fetch
+        if (!this.dropletWanted || !this.ambGain || this.dropletSource) return;
+        const src = this.ctx.createBufferSource();
+        src.buffer = buf;
+        src.loop = true;
+        const g = this.ctx.createGain();
+        const t = this.ctx.currentTime;
+        g.gain.setValueAtTime(0.0001, t);
+        // slow fade-in so the drip bed doesn't pop over the music start
+        g.gain.linearRampToValueAtTime(0.4, t + 3);
+        src.connect(g).connect(this.ambGain);
+        src.start();
+        this.dropletSource = src;
+        this.dropletGain = g;
+      } catch {
+        // missing/corrupt wav → stay silent, never crash the soundscape
+      }
+    })();
+  }
+
+  /** fade the droplet bed out and release its nodes */
+  private stopDroplet() {
+    const src = this.dropletSource;
+    const g = this.dropletGain;
+    if (src && g && this.ctx) {
+      const t = this.ctx.currentTime;
+      g.gain.cancelScheduledValues(t);
+      g.gain.setValueAtTime(g.gain.value, t);
+      g.gain.linearRampToValueAtTime(0.0001, t + 0.4);
+      window.setTimeout(() => {
+        try { src.stop(); } catch { /* */ }
+        try { src.disconnect(); } catch { /* */ }
+        try { g.disconnect(); } catch { /* */ }
+      }, 450);
+    }
+    this.dropletSource = null;
+    this.dropletGain = null;
+  }
+
   private ambDrip(t: number) {
     if (!this.ctx || !this.ambGain) return;
     // small plink: short sine blip with fast decay, pitched at 900-1800Hz
@@ -371,10 +452,10 @@ export class AudioManager {
     osc.frequency.exponentialRampToValueAtTime(f * 0.75, t + 0.08);
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.14, t + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    g.gain.exponentialRampToValueAtTime(0.34, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
     osc.connect(g).connect(this.ambGain);
-    osc.start(t); osc.stop(t + 0.12);
+    osc.start(t); osc.stop(t + 0.15);
   }
 
   private ambScream(t: number) {
@@ -390,7 +471,7 @@ export class AudioManager {
     f.Q.value = 9;
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.06, t + 0.25);
+    g.gain.linearRampToValueAtTime(0.17, t + 0.25);
     g.gain.linearRampToValueAtTime(0.0001, t + len);
     src.connect(f).connect(g).connect(this.ambGain);
     src.start(t); src.stop(t + len);
@@ -410,7 +491,7 @@ export class AudioManager {
     f.frequency.exponentialRampToValueAtTime(90, t + 0.5);
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.09, t + 0.05);
+    g.gain.linearRampToValueAtTime(0.2, t + 0.05);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
     osc.connect(f).connect(g).connect(this.ambGain);
     osc.start(t); osc.stop(t + 0.75);
@@ -426,13 +507,76 @@ export class AudioManager {
       o.frequency.exponentialRampToValueAtTime(f1, at + 0.06);
       const g = this.ctx!.createGain();
       g.gain.setValueAtTime(0.0001, at);
-      g.gain.exponentialRampToValueAtTime(0.045, at + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.13, at + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, at + 0.07);
       o.connect(g).connect(this.ambGain!);
       o.start(at); o.stop(at + 0.09);
     };
     mk(t, 1500 + Math.random() * 400, 2200);
     mk(t + 0.11, 1800, 1400);
+  }
+
+  private ambFootstep(t: number) {
+    if (!this.ctx || !this.ambGain) return;
+    // echoed heavy footstep — dull thump + a slapback echo down the hall
+    const thump = (at: number, vol: number) => {
+      const o = this.ctx!.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(95 + Math.random() * 20, at);
+      o.frequency.exponentialRampToValueAtTime(42, at + 0.18);
+      const g = this.ctx!.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(vol, at + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.22);
+      o.connect(g).connect(this.ambGain!);
+      o.start(at); o.stop(at + 0.25);
+    };
+    thump(t, 0.2);
+    thump(t + 0.27, 0.09);
+  }
+
+  private ambWaterStep(t: number) {
+    if (!this.ctx || !this.ambGain) return;
+    // wet squelch — bandpassed noise blip + a low sine thud
+    const len = 0.35;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.ambNoiseBuf(len);
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(480 + Math.random() * 260, t);
+    f.Q.value = 2.2;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.2, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    const o = this.ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(80, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.15);
+    const og = this.ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.14, t + 0.01);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    src.connect(f).connect(g).connect(this.ambGain);
+    o.connect(og).connect(this.ambGain);
+    src.start(t); src.stop(t + len + 0.05);
+    o.start(t); o.stop(t + 0.2);
+  }
+
+  private ambCreak(t: number) {
+    if (!this.ctx || !this.ambGain) return;
+    // slow dungeon creak — sine sweep up-down, like an old door/beam shifting
+    const o = this.ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(230 + Math.random() * 90, t);
+    o.frequency.exponentialRampToValueAtTime(110, t + 0.55);
+    o.frequency.exponentialRampToValueAtTime(260, t + 1.1);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.13, t + 0.4);
+    g.gain.linearRampToValueAtTime(0.0001, t + 1.2);
+    o.connect(g).connect(this.ambGain);
+    o.start(t); o.stop(t + 1.25);
   }
 
   /** Dead Space sting — noise slam + falling two-note, then silence. */
@@ -466,7 +610,7 @@ export class AudioManager {
   /** raise drip/scream density when standing in flooded rooms */
   setAmbienceWet(wet: boolean) {
     if (!this.ambGain || !this.ctx) return;
-    this.ambGain.gain.linearRampToValueAtTime(wet ? 0.72 : 0.5, this.ctx.currentTime + 0.6);
+    this.ambGain.gain.linearRampToValueAtTime(wet ? 1.0 : 0.9, this.ctx.currentTime + 0.6);
   }
 
 

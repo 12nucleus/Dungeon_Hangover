@@ -365,7 +365,7 @@ export function spawnBonfireFlame(engine: any) {
     im.name = 'bf_flame';
     engine.bonfireGroup.add(im);
   }
-  const light = new THREE.PointLight(0xff9540, 26, 16, 1.7);
+  const light = new THREE.PointLight(0xff9540, 20, 16, 1.7);
   light.position.set(0, 0.7, 0);
   light.name = 'bf_light';
   engine.bonfireGroup.add(light);

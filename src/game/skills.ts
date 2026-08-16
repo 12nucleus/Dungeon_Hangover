@@ -498,16 +498,20 @@ export const CONDITIONS: Record<string, { name: string; desc: string }> = {
 // ── unit factory ─────────────────────────────────────────────
 let uid = 0;
 function mkUnit(partial: Partial<Unit> & Pick<Unit, 'name' | 'title' | 'team' | 'klass' | 'pos' | 'scheme' | 'weapon' | 'knownSkills'>): Unit {
+  const learned = [...(partial.knownSkills ?? [])];
+  const loadout = [...(partial.hotbarLoadout ?? learned)].slice(0, 12);
+  while (loadout.length < 12) loadout.push(null);
   return {
     id: `u${uid++}`,
     level: 3, xp: 0, skillPoints: 1, equipment: {},
-    equippedSkills: [...(partial.knownSkills ?? [])], unlockedNodes: [], bonusAC: 0, bonusMove: 0,
+    equippedSkills: loadout.filter((id): id is string => !!id), unlockedNodes: [], bonusAC: 0, bonusMove: 0,
     maxHp: 30, hp: 30, ac: 13,
     abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
     proficiency: 2, moveRange: 6,
     alive: true, cooldowns: {},
     hasAction: true, hasBonus: true, movementLeft: 6,
     initiative: 0, conditions: [], xpValue: 50,
+    skillState: { learned, loadout, unlockedNodes: [], passiveRanks: {} },
     ...partial,
   } as Unit;
 }
@@ -661,6 +665,17 @@ export const SUMMON_TEMPLATES: Record<string, () => Unit> = {
     companion: true, npcId: 'hermit',
     scheme: { skin: 0xb8a888, cloth: 0x6a5a3a, accent: 0x2a2a2a, hair: 0xd8c890, hood: false, style: 'normal', kind: 'barkeep', beard: true },
     weapon: 'staff',
+  }),
+  // ── Sporefriend (talk re-recruit at the mushroom circle) — mirrors the
+  //    offering-bowl recruit in addCompanion; level tracks the hero ──
+  sporefriend_companion: () => mkSummon({
+    name: 'Sporefriend', title: 'Mushroom Child', team: 'party', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 15, hp: 15, ac: 12, level: 1,
+    abilities: { str: 8, dex: 12, con: 10, int: 6, wis: 10, cha: 10 },
+    knownSkills: ['spore_throw', 'shove'], moveRange: 5, xpValue: 0,
+    npcId: 'sporefriend',
+    scheme: { skin: 0xe8e0d0, cloth: 0xff8ac0, accent: 0xe8e0d0, hair: 0x2a2a3a, hood: false, monster: 'mushroom', bulk: 0.6 },
+    weapon: 'unarmed',
   }),
   // ── skills-audit: party-side terrain summons (lifetime = turnsLeft) ──
   totem: () => mkSummon({

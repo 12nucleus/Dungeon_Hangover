@@ -8,7 +8,18 @@ export function bindInput(engine: any) {
   const el = engine.renderer.domElement;
   el.addEventListener('pointermove', engine.onPointerMove);
   el.addEventListener('pointerdown', engine.onPointerDown);
-  el.addEventListener('pointerup', () => { engine.fpDrag = false; });
+  el.addEventListener('pointerup', (e: PointerEvent) => {
+    engine.fpDrag = false;
+    if (engine.firstPerson && e.button === 0 && !engine.isOverlayOpen()) {
+      // under pointer lock every release is a click; otherwise a quick,
+      // still press (drag-look fallback) counts as one too
+      const locked = document.pointerLockElement === el;
+      const d = engine.fpClickDown;
+      const quick = !!d && performance.now() - d.t < 260 && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 8;
+      if (locked || quick) engine.fpClickInteract?.();
+    }
+    engine.fpClickDown = null;
+  });
   el.addEventListener('pointerleave', () => { engine.fpDrag = false; });
   document.addEventListener('pointerlockchange', () => {
     if (document.pointerLockElement !== el) engine.fpDrag = false;
@@ -44,8 +55,9 @@ export function bindInput(engine: any) {
 }
 
 export function onPointerMove(engine: any, e: PointerEvent) {
-  // first-person mouse look: pointer-locked (or dragging) deltas rotate the view
-  if (engine.firstPerson) {
+  // first-person mouse look: pointer-locked (or dragging) deltas rotate the
+  // view — but a menu being up hands the mouse back to the UI cursor
+  if (engine.firstPerson && !engine.isOverlayOpen()) {
     const locked = document.pointerLockElement === engine.renderer.domElement;
     const dragging = engine.fpDrag;
     if (locked || dragging) {
@@ -54,6 +66,9 @@ export function onPointerMove(engine: any, e: PointerEvent) {
       engine.fpPitch = Math.max(-1.35, Math.min(1.35, engine.fpPitch - e.movementY * sens));
       return;
     }
+    // in FP the centre crosshair is the pointer — hover follows the dot,
+    // not the cursor (evaluated per-frame in the engine tick)
+    return;
   }
   const r = engine.renderer.domElement.getBoundingClientRect();
   engine.pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -62,11 +77,14 @@ export function onPointerMove(engine: any, e: PointerEvent) {
 
 export function onPointerDown(engine: any, e: PointerEvent) {
   if (engine.paused) return;
+  // a menu is up — canvas clicks never grab the mouse or walk the hero
+  if (engine.isOverlayOpen()) return;
   if (e.button === 2) { cancelTargeting(engine); return; }
   // first-person: clicking the canvas grabs the mouse (pointer lock), and
   // drag-look as a fallback when the browser refuses the lock. Clicks never
   // move the hero in FP — W/S do that.
   if (engine.firstPerson && e.button === 0) {
+    engine.fpClickDown = { t: performance.now(), x: e.clientX, y: e.clientY };
     engine.fpDrag = true;
     try {
       const el = engine.renderer.domElement as HTMLCanvasElement;
@@ -128,7 +146,7 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   // (handled per-frame in the engine update loop via engine.keys)
   if (k === 'q' && !cutscene && !engine.firstPerson) engine.iso.rotate(1);
   if (k === 'e' && !cutscene && !engine.firstPerson) engine.iso.rotate(-1);
-  if (k === 'r' && !cutscene) {
+  if (k === 'r' && !cutscene && !engine.isOverlayOpen()) {
     // interact with the active prompt (puddle, chest, valve…)
     if (engine.activeInteractable && engine.phase === 'explore' && !engine.combat.inCombat) engine.triggerActiveInteractable();
     else engine.setHoverInfoOnce('Nothing to interact with here.');
@@ -138,6 +156,7 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   if (k === 'i' && engine.phase !== 'menu') { engine.toggleInventory(); return; }
   if (k === 'k' && engine.phase !== 'menu') { engine.toggleSkillTree(); return; }
   if (k === 'u' && engine.phase !== 'menu') { engine.toggleStats(); return; }
+  if (k === 'h' && engine.phase !== 'menu') { engine.toggleHelp(); return; }
   if (k === 'c' && engine.phase === 'explore' && !engine.combat.inCombat) { engine.toggleSneak(); return; }
   if (k === 't') { engine.toggleTorch(); return; }
   if (k === 'v') { engine.followCam = !engine.followCam; engine.pushLog(`Follow camera ${engine.followCam ? 'ON' : 'OFF'}`, 'system'); engine.emitSnapshot(); return; }
@@ -159,6 +178,7 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
     if (engine.showStats) { engine.showStats = false; engine.emitSnapshot(); return; }
     if (engine.showQuestLog) { engine.showQuestLog = false; engine.emitSnapshot(); return; }
     if (engine.showSkillTree) { engine.showSkillTree = false; engine.emitSnapshot(); return; }
+    if (engine.showHelp) { engine.closeHelp(); return; }
     // Esc leaves first person before it pauses — exiting FP also releases
     // the pointer lock, so the cursor is back for the pause menu
     if (engine.firstPerson) { engine.toggleFirstPerson(); return; }

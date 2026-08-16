@@ -23,6 +23,7 @@ import { rollD20, abilityMod, fmtMod } from './dice';
 import { SaveManager, SettingsManager, type GameSettings, type SaveData, type SaveSlotMeta, SAVE_VERSION_NUMBER } from './save';
 import { canUnlock, treeFor } from './skilltree';
 import { TrapManager } from './traps';
+import { ensureSkillState, syncSkillState } from './skillRuntime';
 import { SurfaceSystem } from './surfaces';
 import { PhysicsWorld } from './physics';
 import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot, Ability } from './types';
@@ -40,9 +41,9 @@ import { addUnit, updateDroppedWeapons } from './engine/visuals';
 import { buildTavernExterior } from './engine/tavernExterior';
 import { buildTavern } from './engine/tavern';
 import { buildSheep } from './engine/sheep';
-import { setupDungeon, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone, grantKey as grantKeyModule, winGame as winGameModule, grantLoot as grantLootModule } from './engine/dungeonSetup';
+import { setupDungeon, spawnNpc, attachHeroTorch, updateDungeon, aggroGroup, inEnemyCone, grantKey as grantKeyModule, winGame as winGameModule, grantLoot as grantLootModule } from './engine/dungeonSetup';
 import { smashProp, checkCombatTrigger, enqueue, setAnimScale, spawnFloater, refreshBar, triggerTrap as triggerTrapModule, disarmTrap as disarmTrapModule } from './engine/combatAnimation';
-import { updateFog, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule, hidePathPreview, type InteractPick } from './engine/interaction';
+import { updateFog, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, pickInteractable as pickInteractableModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule, hidePathPreview, type InteractPick } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
 import { respawn as respawnModule, levelUpAtBonfire as levelUpAtBonfireModule } from './engine/camping';
 import { executeCheatCommand as executeCheatCommandModule } from './engine/cheats';
@@ -50,6 +51,24 @@ import { offerLoot, flushLootQueue, takeAllLoot, takeLootItem, leaveLootItem, di
 import { showTargeting as showTargetingModule, showMoveTiles as showMoveTilesModule } from './engine/targeting';
 import { bindInput as bindInputModule, onPointerMove as onPointerMoveModule, onPointerDown as onPointerDownModule, onKeyDown as onKeyDownModule, onResize as onResizeModule } from './engine/input';
 interface Floater { el: HTMLDivElement; wp: THREE.Vector3; t: number; }
+
+// ── companion registry: npcId → recruitment flag, home floor, join/dismiss logs ──
+const COMPANION_FLAGS: Record<string, string> = {
+  hermit: 'hermit_joined',
+  sporefriend: 'sporefriend',
+};
+const COMPANION_FLOORS: Record<string, number> = {
+  hermit: 50,
+  sporefriend: 49,
+};
+const COMPANION_JOIN_LOG: Record<string, string> = {
+  hermit: '🌿 The Hermit falls in behind you, cane in hand. "Try not to die. I have not finished needing you."',
+  sporefriend: '🍄 Sporefriend bounces twice — the "fine, I will come, but I am keeping score" bounce. It falls in beside you, glowing with loyalty and simmering resentment.',
+};
+const COMPANION_LEAVE_LOG: Record<string, string> = {
+  hermit: '👋 The Hermit nods and shuffles back to his cell. "I\'ll keep the fire stoked. Shout if you need patching up."',
+  sporefriend: '🍄 Sporefriend hops off toward the mushroom circle, radiating small, dignified betrayal. It will forgive you. It will make you work for it.',
+};
 interface Walker { path: THREE.Vector3[]; tiles: GridPos[]; idx: number; }
 
 // art-designer contract: particles.ts gains FX.ambient(ps, center, dt). The
@@ -93,6 +112,9 @@ export class GameEngine {
   public surfaces = new SurfaceSystem();
   public physics = new PhysicsWorld();
   private surfaceTickAt = 0;
+  /** out-of-combat world-cycle clock: 1 cycle per second (skills reset,
+   *  conditions age, totems pulse/despawn) — frozen while a fight runs */
+  private worldCycleAt = 0;
   /** last resolution preset we resized the window to (only resize on change) */
   private lastAppliedRes: number | null = null;
   public pickables: THREE.Object3D[] = [];
@@ -135,6 +157,8 @@ export class GameEngine {
   public showSkillTree = false;
   public showStats = false;
   public showQuestLog = false;
+  /** help overlay open (H key / ? button) */
+  public showHelp = false;
   public questLog = new QuestLog();
 
   // ── floor 50 — run state ──
@@ -155,12 +179,19 @@ export class GameEngine {
   /** monotonically increasing phase-banner id (React re-mounts on change) */
   public phaseBannerId = 0;
   public activeInteractable: Interactable | null = null;
+  /** pointer currently over the active interactable — the [E] prompt only
+   *  shows on hover, never from proximity alone */
+  public hoverOnActive = false;
+  /** last-published hoverOnActive (lets updateHover detect flag flips) */
+  public hoverOnActivePrev = false;
   /** environmental hazard tiles (shove targets): key = wine_press | bath */
   public hazardTiles = new Set<string>();
   public hazardKind = new Map<string, string>();
   public hazardUsed = new Set<string>();
   /** spawned NPCs (id → tile + rig + proxy) */
   public npcs: { npcId: string; pos: GridPos; rig: Rig | null; proxy: THREE.Object3D | null }[] = [];
+  /** where each companion hangs his hat (npcId → tile) — dismiss sends him back here */
+  public companionHomes: Record<string, GridPos> = {};
   /** run recap for the victory screen */
   public runStats = { kills: 0, deaths: 0, questsDone: 0, secretsFound: 0, startedAt: Date.now() };
   public showDialogue: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null = null;
@@ -208,10 +239,23 @@ export class GameEngine {
   /** first-person look direction (yaw/pitch) — mouse + Q/E drive these */
   public fpYaw = Math.PI * 0.25;
   public fpPitch = -0.12;
-  /** WASD step cooldown (seconds) so holding W walks continuously */
+  /** footstep-cadence timer (seconds) — continuous FP walking paces the audio */
   private fpStepAt = 0;
   /** drag-look active (pointer-lock fallback) */
   public fpDrag = false;
+  /** any modal/menu overlay is up — FP look-drag, crosshair aim and WASD
+   *  movement stand down so the mouse pointer stays free for the UI */
+  public isOverlayOpen(): boolean {
+    return !!(this.showInventory || this.showStats || this.showQuestLog || this.showSkillTree
+      || this.showHelp || this.showDialogue || this.shopOpen || this.consoleOpen
+      || this.showBonfireUI || this.pendingLoot);
+  }
+  /** FP crosshair click candidate — pointerdown info, released decides */
+  public fpClickDown: { t: number; x: number; y: number } | null = null;
+  /** last crosshair-aim key (kind:id:tile) — hover republishes only when the
+   *  centre target changes, throttled, so sweeping the view can't spam snapshots */
+  private fpAimKey = '';
+  private fpAimAt = 0;
   /** dim warm headlamp shown only in first person (off in iso) */
   public fpLight: THREE.PointLight | null = null;
   public crouchLerp = 0;
@@ -223,6 +267,15 @@ export class GameEngine {
   /** the weapon kind held before the last 'T' torch-equip — restored on toggle-off */
   public heroPrevWeapon: string | null = null;
   public torchLight: THREE.PointLight | null = null;
+  /** scene hemisphere light — kept so the tavern/title can brighten it */
+  public hemiLight: THREE.HemisphereLight | null = null;
+  /** static dungeon lights (torches, braziers, prop glows, bonfire) with their
+   *  world tiles. Rebuilt on floor build / dressing change / bonfire lit; the
+   *  per-frame cull hides any light the hero has no line of sight to, so the
+   *  free camera can't preview other rooms. */
+  private roomLights: { light: THREE.PointLight; halo: THREE.Sprite | null; points: THREE.Points | null; tx: number; tz: number }[] | null = null;
+  private roomLightsBfLit = false;
+  private roomLightsDressing: THREE.Group | null = null;
   public bonfireGroup: THREE.Group | null = null;
   public bonfirePos: GridPos | null = null;
   /** every bonfire spot on the floor (checkpoint first) — the ACTIVE checkpoint is bonfirePos */
@@ -240,6 +293,8 @@ export class GameEngine {
   public pendingSmash: { unitId: string; propId: string } | null = null;
   public bigMessage: string | null = null;
   public cinematic = false;
+  /** new-game tutorial pager: 0 = off; 1..N = active step (see HUD card) */
+  public tutorialStep = 0;
 
   // -- save / load --
   /** global audio settings (persisted, shared across all slots) */
@@ -395,9 +450,7 @@ export class GameEngine {
   public gameWon = false;
 
   // -- fog of war ---------------------------------------------
-  /** tiles the player has seen at least once — drives the minimap / full map.
-   *  No canvas fog overlay: the dungeon is always visible and lit by the
-   *  hero's torch pool; `explored` only inks the map. */
+  /** tiles the player has seen at least once — drives the minimap / full map. */
   public explored: boolean[][] = [];
   /** vision radius (tiles) — torch extends it; base is a small cone */
   public visionRadius = 6;
@@ -484,27 +537,13 @@ export class GameEngine {
     this.scene.fog = new THREE.FogExp2(L.fogColor, L.fogDensity);
     this.scene.background = new THREE.Color(L.fogColor);
 
-    // lights ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ cave (dim ambient + no sun + crystal/torch fills)
-    const hemi = new THREE.HemisphereLight(0x93a8d0, 0x3a3226, L.ambient);
+    // lights — the dungeon is DARK. A trace of hemisphere ambient (0.03) so
+    // unlit geometry isn't pure black (you can barely make out silhouettes),
+    // but the hero's shadow-casting PointLight is the only real light source.
+    // No sun, no fill — the torch carries everything.
+    const hemi = new THREE.HemisphereLight(0x5a6a8a, 0x1a1410, 0.03);
     this.scene.add(hemi);
-    {
-      // Always present so the dungeon (L.sun === 0) still gets a dim key light
-      // and real shadows for every character/object. Bright levels keep their
-      // full sun intensity; dark caves fall back to a soft minimum.
-      const sun = new THREE.DirectionalLight(0xffc890, L.sun > 0 ? L.sun : 0.22);
-      sun.position.set(20, 30, 10);
-      sun.castShadow = true;
-      sun.shadow.mapSize.set(2048, 2048);
-      sun.shadow.camera.left = -32; sun.shadow.camera.right = 32;
-      sun.shadow.camera.top = 32; sun.shadow.camera.bottom = -32;
-      sun.shadow.camera.far = 90;
-      sun.shadow.bias = -0.0008;
-      this.scene.add(sun);
-      this.scene.add(sun.target);
-    }
-    const fill = new THREE.DirectionalLight(0x6a80b8, L.fill);
-    fill.position.set(-15, 20, -18);
-    this.scene.add(fill);
+    this.hemiLight = hemi;
 
     // PERFORMANCE (Fix A): the heaviest single operation in init() is
     // `new VoxelWorld(...)` which builds ~150k voxel cubes synchronously
@@ -572,6 +611,11 @@ export class GameEngine {
     this.trapManager.init(trapSpots);
     this.scene.add(this.trapManager.group);
 
+    // cache this floor's static lights so the per-frame cull can hide the ones
+    // the hero has no line of sight to (dressing-group lights are picked up
+    // lazily when setupDungeon creates it)
+    this.refreshRoomLights();
+
     // combat + units
     this.combat = new Combat(this.world);
     // monster barks: every combat start plays one bark per new monster type
@@ -613,6 +657,8 @@ export class GameEngine {
       this.spawnUnits();
     }
     this.setupDungeon(levelForFloor(this.floorNumber));
+    // floor-50 cave-drip bed follows the floor (floor transitions rebuild)
+    this.audio.setDropletWanted(this.floorNumber === 50);
     const first = this.combat.units.find((u) => u.alive) ?? this.combat.units[0];
     if (first) this.iso.focus(this.unitWorld(first.pos));
   }
@@ -633,6 +679,9 @@ export class GameEngine {
     const hadCompanion = (this.combat?.units ?? []).some((u) => u.team === 'party' && u.companion && u.alive);
     if (hadCompanion) {
       this.pushLog?.('👋 The Hermit stops at the foot of the stairs. "This is as far as I go. The Spire remembers me. I would rather not be remembered twice."', 'system');
+      // he stays on his floor — and since he's "home" now, the join choice
+      // is live again the next time the player talks to him on floor 50
+      this.flags.delete('hermit_joined');
     }
     const party = (this.combat?.units ?? []).filter((u) => u.team === 'party' && !u.companion).map((u) => ({
       ...u,
@@ -660,6 +709,7 @@ export class GameEngine {
     this.showDialogue = null;
     this.dialogueNodeId = null;
     this.activeInteractable = null;
+    this.hoverOnActive = false;
     this.pendingLoot = null;
     this.lootQueue = [];
     this.cutsceneSkip = false;
@@ -1754,6 +1804,15 @@ export class GameEngine {
   }
   public closeQuestLog() { this.showQuestLog = false; this.emitSnapshot(); }
 
+  // -- help overlay (H key / ? button) ------------------------
+  public toggleHelp() {
+    if (this.phase === 'menu') return;
+    this.showHelp = !this.showHelp;
+    this.audio.play('ui_click', 0.5);
+    this.emitSnapshot();
+  }
+  public closeHelp() { this.showHelp = false; this.emitSnapshot(); }
+
   // -- HUD API (called from React) ----------------------------
   startGame() {
     void this.audio.init();
@@ -1850,6 +1909,7 @@ export class GameEngine {
     //    splash gesture handler starts it the same way; the title narration
     //    and enterDungeon unmuffle/swap it when the next run begins).
     this.audio.stopMusic();
+    this.audio.setDropletWanted(false);
     this.audio.playTavernMusic({ muffled: true, volume: 0.10 });
     this.audio.setMusicDucked(true);
 
@@ -2197,6 +2257,9 @@ export class GameEngine {
       : (L.traps ?? []).map((t) => [t.defId, t.x, t.z] as [string, number, number]);
     this.trapManager.init(trapSpots);
     this.setupDungeon(L);
+    // a new run always starts on floor 50 — the cave-drip bed will fade in
+    // once the intro hands control over (startDungeonAmbience → startDroplet)
+    this.audio.setDropletWanted(this.floorNumber === 50);
 
     // in-session restart: the tavern/title backdrop was consumed on the first
     // run — rebuild it so the wake intro can play again, then drop into it
@@ -2296,6 +2359,7 @@ export class GameEngine {
 
     // -- restore state --
     this.combat.units = data.units.map((u) => this.clone(u));
+    for (const u of this.combat.units) ensureSkillState(u);
     this.gold = data.gold;
     this.inventory = data.inventory.map((i) => this.clone(i));
     this.questLog.load(data.questStates);
@@ -2367,6 +2431,7 @@ export class GameEngine {
     this.audio.resume();
     this.applyAudioSettings();
     this.audio.stopTavernMusic();
+    this.audio.setDropletWanted(this.floorNumber === 50);
     this.audio.playMusic('music_ambient');
 
     // -- hero rig + camera focus --
@@ -2435,6 +2500,22 @@ export class GameEngine {
       this.setFlag('mq_start_narrated');
       void this.narrate('f50_mq_start', MAIN_QUEST_F50.stages.start, 5200);
     }
+    // new-game tutorial: one small card sequence covering the basics (move,
+    // interact, gear, bonfire, combat). Only the intro path lands here, so
+    // loaded saves never replay it.
+    this.tutorialStep = 1;
+  }
+
+  /** advance the new-game tutorial card (HUD "Next" button) */
+  public tutorialNext() {
+    this.tutorialStep += 1;
+    this.emitSnapshot();
+  }
+
+  /** dismiss the new-game tutorial card (HUD close / last-step button) */
+  public tutorialClose() {
+    this.tutorialStep = 0;
+    this.emitSnapshot();
   }
 
   // -- character creation -------------------------------------
@@ -2615,8 +2696,19 @@ export class GameEngine {
       this.exitFirstPerson();
     }
     this.audio.play('ui_click', 0.5);
-    this.pushLog(this.firstPerson ? '🎥 First person. Mouse looks · W/S walk · A/D strafe · Q/E turn · P/Esc exits.' : '🎥 Back to the isometric view.', 'system');
+    this.pushLog(this.firstPerson ? '🎥 First person. Mouse looks · W/S/A/D move · Q/E turn · Click to interact · P/Esc exits.' : '🎥 Back to the isometric view.', 'system');
     this.emitSnapshot();
+  }
+
+  /** first-person crosshair click — interact with whatever the centre dot is
+   *  on (units, props, interactables, bonfires, NPCs, or walk there) */
+  public fpClickInteract() {
+    if (this.paused || this.busy) return;
+    this.pointer.set(0, 0);
+    const pick = pickInteractableModule(this);
+    const tile = pickTileModule(this);
+    if (this.phase === 'explore') this.clickExplore(pick, tile);
+    else if (this.phase === 'combat') this.clickCombat(pick, tile);
   }
 
   /** leave first person: release the mouse, restore the hero model BY ID,
@@ -3013,8 +3105,9 @@ export class GameEngine {
   }
 
   /** recruit a party companion (the Mushroom Child / Sporefriend) — builds a
-   *  party unit + its visuals so it fights alongside the hero from now on. */
-  public addCompanion(name: string, title: string, scheme: any, maxHp: number) {
+   *  party unit + its visuals so it fights alongside the hero from now on.
+   *  `home` is the tile dismiss sends him back to. */
+  public addCompanion(name: string, title: string, scheme: any, maxHp: number, home?: GridPos) {
     const hero = this.combat?.living('party')[0];
     if (!hero) return;
     const u: Unit = {
@@ -3029,8 +3122,10 @@ export class GameEngine {
       unlockedNodes: [], bonusAC: 0, bonusMove: 0, cooldowns: {},
       hasAction: true, hasBonus: true, movementLeft: 5, initiative: 0,
       conditions: [], scheme, weapon: 'unarmed', xpValue: 0,
-      classes: [], hotbarLoadout: ['spore_throw', 'shove', null, null, null, null, null, null, null, null, null, null],
+      npcId: 'sporefriend', classes: [],
+      hotbarLoadout: ['spore_throw', 'shove', null, null, null, null, null, null, null, null, null, null],
     };
+    if (home) this.companionHomes['sporefriend'] = { ...home };
     this.combat.units.push(u);
     this.addUnit(u);
     this.pushLog(`🍄 ${name} joins the party! It bounces twice, thrilled.`, 'system');
@@ -3086,12 +3181,14 @@ export class GameEngine {
     if (!node) return;
     const reason = canUnlock(u, node);
     if (reason) { this.setHoverInfoOnce(reason); return; }
+    const state = ensureSkillState(u);
     u.skillPoints -= node.cost;
-    u.unlockedNodes.push(node.id);
-    if (node.unlockSkill && !u.knownSkills.includes(node.unlockSkill)) {
-      u.knownSkills.push(node.unlockSkill);
-      if (u.equippedSkills.length < 12 && !u.equippedSkills.includes(node.unlockSkill)) {
-        u.equippedSkills.push(node.unlockSkill);
+    state.unlockedNodes.push(node.id);
+    if (node.unlockSkill && !state.learned.includes(node.unlockSkill)) {
+      state.learned.push(node.unlockSkill);
+      if (state.loadout.filter(Boolean).length < 12) {
+        const slot = state.loadout.findIndex((id) => id === null);
+        if (slot >= 0) state.loadout[slot] = node.unlockSkill;
       }
     }
     if (node.passive) {
@@ -3101,12 +3198,11 @@ export class GameEngine {
       } else if (p.stat === 'maxHp') {
         u.maxHp += p.amount;
         u.hp = Math.min(u.hp + p.amount, u.maxHp);
-      } else if (p.stat === 'ac') {
-        u.bonusAC += p.amount;
-      } else if (p.stat === 'move') {
-        u.bonusMove += p.amount;
-      }
+      } else if (p.stat === 'ac') u.bonusAC += p.amount;
+      else if (p.stat === 'move') u.bonusMove += p.amount;
     }
+    if (node.passiveSkill) state.passiveRanks[node.passiveSkill] = (state.passiveRanks[node.passiveSkill] ?? 0) + 1;
+    syncSkillState(u);
     this.pushLog(`${u.name} learns ${node.name} from the ${node.branch} branch!`, 'system');
     this.audio.play('heal', 0.9, 1.3);
     this.emitSnapshot();
@@ -3129,20 +3225,28 @@ export class GameEngine {
   equipSkill(unitId: string, skillId: string) {
     if (this.combat.inCombat) return;
     const u = this.byId(unitId);
-    if (!u || !u.knownSkills.includes(skillId) || u.equippedSkills.includes(skillId) || u.equippedSkills.length >= 12) return;
-    u.equippedSkills.push(skillId);
+    if (!u) return;
+    const state = ensureSkillState(u);
+    if (!state.learned.includes(skillId) || state.loadout.includes(skillId) || state.loadout.filter(Boolean).length >= 12) return;
+    const slot = state.loadout.findIndex((id) => id === null);
+    if (slot < 0) return;
+    state.loadout[slot] = skillId;
+    syncSkillState(u);
+    this.audio.play('ui_click', 0.5);
+    this.emitSnapshot();
+  }
+  unequipSkill(unitId: string, skillId: string) {
+    if (this.combat.inCombat) return;
+    const u = this.byId(unitId);
+    if (!u) return;
+    const state = ensureSkillState(u);
+    if (!state.loadout.includes(skillId) || state.loadout.filter(Boolean).length <= 1) return;
+    state.loadout = state.loadout.map((id) => id === skillId ? null : id);
+    syncSkillState(u);
     this.audio.play('ui_click', 0.5);
     this.emitSnapshot();
   }
 
-  unequipSkill(unitId: string, skillId: string) {
-    if (this.combat.inCombat) return;
-    const u = this.byId(unitId);
-    if (!u || !u.equippedSkills.includes(skillId) || u.equippedSkills.length <= 1) return;
-    u.equippedSkills = u.equippedSkills.filter((s) => s !== skillId);
-    this.audio.play('ui_click', 0.5);
-    this.emitSnapshot();
-  }
 
   /** drink a potion — self-target; in combat only on the drinker's turn (bonus action) */
   useConsumable(itemId: string, unitId: string) {
@@ -3245,15 +3349,23 @@ export class GameEngine {
   /** Recruit the Hermit as a temporary companion: converts the static NPC
    *  into a following, AI-controlled party unit. Sets `hermit_joined`. */
   public joinCompanion(npcId = 'hermit') {
-    if (this.flags.has('hermit_joined')) return;
-    const tpl = SUMMON_TEMPLATES['hermit_companion'];
+    const flag = COMPANION_FLAGS[npcId];
+    if (flag && this.flags.has(flag)) return;
+    const tpl = SUMMON_TEMPLATES[`${npcId}_companion`];
     if (!tpl) return;
     const entry = this.npcs.find((n) => n.npcId === npcId);
     const leader = this.combat?.living('party')[0];
     const near = entry?.pos ?? leader?.pos ?? { x: 0, z: 0 };
+    // remember his home tile so a later dismiss sends him back there
+    this.companionHomes[npcId] = { ...near };
     const unit = this.combat.summon(tpl(), near);
     if (!unit) return;
-    // remove the static NPC rig + proxy so there aren't two Hermits
+    // Sporefriend tracks the hero like the offering-bowl recruit does
+    if (npcId === 'sporefriend' && leader) {
+      unit.level = Math.max(1, leader.level);
+      unit.proficiency = Math.max(2, leader.proficiency);
+    }
+    // remove the static NPC rig + proxy so there aren't two of him
     if (entry) {
       if (entry.rig?.group?.parent) entry.rig.group.parent.remove(entry.rig.group);
       if (entry.proxy?.parent) entry.proxy.parent.remove(entry.proxy);
@@ -3261,15 +3373,19 @@ export class GameEngine {
       this.npcs = this.npcs.filter((n) => n.npcId !== npcId);
     }
     this.addUnit(unit);
-    this.setFlag('hermit_joined');
-    this.pushLog('🌿 The Hermit falls in behind you, cane in hand. "Try not to die. I have not finished needing you."', 'system');
+    if (flag) this.setFlag(flag);
+    this.pushLog(COMPANION_JOIN_LOG[npcId] ?? `${unit.name} falls in behind you.`, 'system');
     this.audio.play('heal', 0.6, 1.2);
     this.emitSnapshot();
   }
 
-  /** The Hermit departs (staircase / run end). */
-  public dismissCompanion() {
-    const u = this.combat.units.find((x) => x.team === 'party' && x.companion && x.name === 'The Hermit');
+  /** Dismiss the companion by talking to him: he leaves the party and
+   *  reappears as a static NPC at his home spot (Hermit → his cell on
+   *  floor 50, Sporefriend → the mushroom circle on floor 49), where he
+   *  can be re-recruited by talking to him again. */
+  public dismissCompanion(npcId = 'hermit') {
+    if (this.combat?.inCombat) return; // no abandoning ship mid-fight
+    const u = this.combat.units.find((x) => x.team === 'party' && x.npcId === npcId && x.alive);
     if (!u) return;
     u.alive = false;
     this.combat.units = this.combat.units.filter((x) => x !== u);
@@ -3281,9 +3397,24 @@ export class GameEngine {
       this.unitProxies = this.unitProxies.filter((p) => p !== v.proxy);
       this.visuals.delete(u.id);
     }
-    this.setFlag('hermit_left');
-    this.pushLog('👋 The Hermit stops at the foot of the stairs. "This is as far as I go. The Spire remembers me. I would rather not be remembered twice."', 'system');
+    // he's back home — the join choice reappears, so the player can
+    // re-recruit him by talking to him again
+    const flag = COMPANION_FLAGS[npcId];
+    if (flag) this.flags.delete(flag);
+    // the join-time tile is preferred; loaded saves fall back to his home
+    // floor's authored spawn tile
+    const home = this.companionHomes[npcId] ?? this.companionHomeFromLevel(npcId);
+    if (home && this.floorNumber === COMPANION_FLOORS[npcId]) spawnNpc(this, npcId, home);
+    this.pushLog(COMPANION_LEAVE_LOG[npcId] ?? '👋 Your companion heads home.', 'system');
     this.emitSnapshot();
+  }
+
+  /** a companion's home tile from his home floor's authored NPC spawn
+   *  (used when a loaded save hasn't recorded the join-time home) */
+  private companionHomeFromLevel(npcId: string): GridPos | null {
+    const L = levelForFloor(COMPANION_FLOORS[npcId]);
+    const rec = L?.structures?.npcs?.find((n) => n.npcId === npcId);
+    return rec ? { ...rec.pos } : null;
   }
 
   public hotkeySkill(i: number) {
@@ -3344,10 +3475,10 @@ export class GameEngine {
   // would crash. After this fix, memory stays flat at ~150 MB.
   // ──────────────────────────────────────────────────────────────
   public disposeFloor() {
-    // 0. Loose-body physics (weapon drops) — free the bodies before the
+    // 1. Loose-body physics (weapon drops) — free the bodies before the
     //    meshes they reference are disposed below.
     this.physics.dispose();
-    // 1. Voxel terrain — the biggest contributor.
+    this.roomLights = null; // cached lights are disposed with their groups
     if (this.world) {
       this.scene.remove(this.world.group);
       this.world.dispose();
@@ -3472,6 +3603,7 @@ export class GameEngine {
   public updateDungeon(dt: number) { updateDungeon(this, dt); }
   public setAnimScale(s: number) { setAnimScale(s); }
 
+
   public inEnemyCone(p: GridPos, enemy: Unit): boolean { return inEnemyCone(this, p, enemy); }
   public aggroGroup(groupId: string | undefined) { aggroGroup(this, groupId); }
 
@@ -3491,6 +3623,68 @@ export class GameEngine {
       if (e2 < dx) { err += dx; z0 += sz; }
     }
     return true;
+  }
+
+  /** Scan the floor's static groups for point lights (torches, braziers, prop
+   *  glows, bonfire) and cache each one's tile + emissive siblings (halo
+   *  sprite, flame particles) so cullRoomLights can hide them cheaply. */
+  private refreshRoomLights(): void {
+    const list: { light: THREE.PointLight; halo: THREE.Sprite | null; points: THREE.Points | null; tx: number; tz: number }[] = [];
+    const seen: Record<number, boolean> = {};
+    const add = (o: THREE.Object3D) => {
+      const l = o as THREE.PointLight;
+      if (!l.isPointLight) return;
+      if (seen[l.id]) return;
+      seen[l.id] = true;
+      let halo: THREE.Sprite | null = null;
+      let points: THREE.Points | null = null;
+      if (l.parent) {
+        for (const c of l.parent.children) {
+          if (!halo && (c as THREE.Sprite).isSprite) halo = c as THREE.Sprite;
+          else if (!points && (c as THREE.Points).isPoints) points = c as THREE.Points;
+        }
+      }
+      const wp = new THREE.Vector3();
+      l.getWorldPosition(wp);
+      list.push({
+        light: l, halo, points,
+        tx: Math.round(wp.x + WORLD_SIZE / 2 - 0.5),
+        tz: Math.round(wp.z + WORLD_SIZE / 2 - 0.5),
+      });
+    };
+    if (this.world?.group) this.world.group.traverse(add);
+    if (this.props?.group) this.props.group.traverse(add);
+    if (this.dressingGroup) this.dressingGroup.traverse(add);
+    this.roomLights = list;
+    this.roomLightsBfLit = this.bonfireLit;
+    this.roomLightsDressing = this.dressingGroup;
+  }
+
+  /** Hide every dungeon light the hero can't actually see (blocked by a wall
+   *  or door, or beyond reach) — the panning camera can't spoil other rooms.
+   *  The bonfire light appears only after kindling, and the dressing group is
+   *  rebuilt per floor, so refresh the cache when either of those changes. */
+  private cullRoomLights(player: Unit): void {
+    if (!this.roomLights || this.bonfireLit !== this.roomLightsBfLit || this.dressingGroup !== this.roomLightsDressing) {
+      this.refreshRoomLights();
+    }
+    if (!this.roomLights) return;
+    const px = player.pos.x;
+    const pz = player.pos.z;
+    const R2 = 22 * 22;
+    for (const rl of this.roomLights) {
+      const dx = rl.tx - px;
+      const dz = rl.tz - pz;
+      const ok = dx * dx + dz * dz <= R2 && this.hasLineOfSight(player.pos, { x: rl.tx, z: rl.tz });
+      rl.light.visible = ok;
+      if (rl.halo) rl.halo.visible = ok;
+      if (rl.points) rl.points.visible = ok;
+      // the bonfire flame mesh rides along with its light
+      if (rl.light.name === 'bf_light') {
+        const flame = rl.light.parent?.getObjectByName('bf_flame');
+        if (flame) flame.visible = ok;
+      }
+    }
   }
 
   // visuals
@@ -3563,6 +3757,63 @@ export class GameEngine {
     if (tickNow) this.surfaceTickAt = now;
   }
 
+  /**
+   * Out-of-combat world cycle — 1 cycle per second (explore phase only):
+   * skill cooldowns tick down (skills come back after a fight), once-per-fight
+   * markers clear so they're usable in the NEXT fight, conditions age out, and
+   * terrain summons (the shaman totem) pulse then despawn with particles.
+   * Combat owns its own cadence (beginTurn) — this pump stays frozen in combat.
+   */
+  private runWorldCycle() {
+    if (!this.combat) return;
+    for (const u of this.combat.units) {
+      if (!u.alive) continue;
+      // cooldowns: 1 round/sec out of combat; once_* markers are fight-scoped
+      for (const k of Object.keys(u.cooldowns)) {
+        if (k.startsWith('once_')) { delete u.cooldowns[k]; continue; }
+        if (u.cooldowns[k] > 0) u.cooldowns[k] -= 1;
+      }
+      // conditions age at the same cadence (cursed, inspired, burning…)
+      for (const c of u.conditions) c.roundsLeft -= 1;
+      if (u.conditions.some((c) => c.roundsLeft <= 0)) {
+        u.conditions = u.conditions.filter((c) => c.roundsLeft > 0);
+      }
+      // terrain summons: pulse each cycle, despawn when the lifetime expires
+      if (u.turnsLeft !== undefined && u.turnsLeft > 0) {
+        u.turnsLeft -= 1;
+        if (u.turnsLeft <= 0) {
+          this.despawnSummon(u);
+        } else if (u.knownSkills?.includes('totem_burst')) {
+          const wp = this.world.tileToWorld(u.pos.x, u.pos.z, new THREE.Vector3()).add(new THREE.Vector3(0, 0.6, 0));
+          FX.buff(this.particles, wp);
+          this.audio.play('heal', 0.35, 1.4);
+        }
+      }
+    }
+    this.emitSnapshot();
+  }
+
+  /** Remove a summon's rig + particles when its lifetime expires out of combat
+   *  (in combat the death event leaves a corpse — the scene's corpse rule). */
+  private despawnSummon(u: Unit) {
+    const v = this.visuals.get(u.id);
+    if (v) {
+      const pal = [u.scheme.skin, u.scheme.cloth, u.scheme.accent];
+      const wp = v.rig.group.position.clone();
+      const base = (v.rig.group.userData.baseY as number) ?? 0;
+      FX.debris(this.particles, wp.clone().add(new THREE.Vector3(0, 0.5, 0)), pal, 14);
+      FX.dust(this.particles, wp.clone().setY(base));
+      if (v.rig.group.parent) v.rig.group.parent.remove(v.rig.group);
+      if (v.proxy.parent) v.proxy.parent.remove(v.proxy);
+      this.unitProxies = this.unitProxies.filter((p) => p !== v.proxy);
+      if (v.bar?.parentElement) v.bar.remove();
+      this.visuals.delete(u.id);
+    }
+    u.alive = false;
+    this.pushLog(`${u.name} fades away.`, 'system');
+    this.audio.play('heal', 0.5, 0.7);
+  }
+
   public update(dt: number) {
     // pause — freeze all simulation while the in-game menu is open.
     // The render loop (composer.render) still runs, so the frozen frame shows.
@@ -3591,11 +3842,42 @@ export class GameEngine {
     // title mode (after returnToTitle) has no voxel world — skip the floor
     // update paths so the rebuild doesn't wedge the render loop
     if (!this.world) return;
+    // ── out-of-combat world cycle: 1 cycle per second (skills reset,
+    //    conditions age, totems pulse/despawn). Combat has its own cadence —
+    //    cycles are paused while a fight runs, exactly as before. ──
+    if (!this.combat.inCombat && this.phase === 'explore') {
+      const now = performance.now();
+      if (now - this.worldCycleAt >= 1000) {
+        this.worldCycleAt = now;
+        this.runWorldCycle();
+      }
+    }
     // ── first-person view: camera rides on the hero's head, looking along
     //    the fpYaw/fpPitch look direction (mouse, Q/E and A/D rotate it).
     //    W/S step forward/back along the view; movement is tile-stepped so
     //    pathfinding, traps and fog all behave normally. ──
     const fpHero = this.combat?.living('party')[0];
+    // combat takes over the camera: drop first-person back to the isometric
+    // view the moment a fight starts (W/S no longer walk, they're turns)
+    if (this.firstPerson && this.combat.inCombat) {
+      this.firstPerson = false;
+      this.exitFirstPerson();
+      this.emitSnapshot();
+    }
+    // a menu (inventory, dialogue, bonfire rest…) is up — release the mouse
+    // and cancel look-drag so the pointer works the UI instead of the view
+    if (this.firstPerson && this.isOverlayOpen()) {
+      this.fpDrag = false;
+      if (document.pointerLockElement === this.renderer.domElement) {
+        try { document.exitPointerLock?.(); } catch { /* noop */ }
+      }
+      // a click-to-walk walker must not keep marching under the menu
+      const leadV = fpHero ? this.visuals.get(fpHero.id) : null;
+      if (leadV?.walker) {
+        leadV.walker = null;
+        leadV.rig.anim.mode = 'idle';
+      }
+    }
     if (this.firstPerson && fpHero && fpHero.alive) {
       // hide the hero's own model so the camera isn't inside the voxels —
       // tracked by id so a mid-FP roster change can never strand a hidden rig
@@ -3615,6 +3897,11 @@ export class GameEngine {
       this.iso.cam.position.copy(eye);
       this.iso.cam.lookAt(eye.clone().addScaledVector(dir, 4));
       this.iso.cam.up.set(0, 1, 0);
+      // keep the aim ray in sync with the view: Object3D.lookAt composes
+      // matrixWorld from the PRE-lookAt quaternion, so without this the aim
+      // eval below raycasts through the stale ISO rotation every frame (the
+      // render fixes matrixWorld only after the tick).
+      this.iso.cam.updateMatrixWorld(true);
       // headlamp — FP without a lit torch must still read (dim warm glow)
       if (!this.fpLight) {
         this.fpLight = new THREE.PointLight(0xffd9a0, 5, 10, 1.6);
@@ -3626,35 +3913,68 @@ export class GameEngine {
       const turn = dt * 2.6;
       if (this.keys.has('q')) this.fpYaw += turn;
       if (this.keys.has('e')) this.fpYaw -= turn;
-      // WASD: W/S step forward/back along the view, A/D strafe. One tile
-      // per step keeps traps, fog and aggro honest; the short cooldown +
-      // smoothed rig makes holding a key feel like continuous walking.
+      // WASD: continuous free movement along the view — no tile snapping.
+      // The rig glides voxel-smooth; u.pos follows the tile underfoot so
+      // traps, fog and aggro stay honest. Collision is axis-separated
+      // against the walk grid, so walls slide instead of dead-stopping.
       const now = performance.now() / 1000;
-      if (now - this.fpStepAt > 0.19 && !this.busy && !this.combat.inCombat) {
+      if (!this.busy && !this.combat.inCombat && !this.isOverlayOpen() && fv) {
         const fwd = (this.keys.has('w') || this.keys.has('arrowup') ? 1 : 0) - (this.keys.has('s') || this.keys.has('arrowdown') ? 1 : 0);
         const side = (this.keys.has('d') || this.keys.has('arrowright') ? 1 : 0) - (this.keys.has('a') || this.keys.has('arrowleft') ? 1 : 0);
         if (fwd || side) {
+          // keys take over from a click-walk already in progress
+          if (fv.walker) { fv.walker = null; fv.rig.anim.mode = 'idle'; }
           const s = Math.sin(this.fpYaw), c = Math.cos(this.fpYaw);
           // forward = (s, c); right = (−c, s)
-          const dx = Math.round(s * fwd + (-c) * side);
-          const dz = Math.round(c * fwd + s * side);
-          let step: GridPos | null = null;
-          for (const [ox, oz] of [[dx, dz], [dx, 0], [0, dz]]) {
-            if (!ox && !oz) continue;
-            const tx = fpHero.pos.x + ox, tz = fpHero.pos.z + oz;
-            if (this.world.isWalkable(tx, tz) && !this.trapManager?.at(tx, tz)?.revealed) {
-              step = { x: tx, z: tz }; break;
-            }
+          const SPEED = this.sneaking ? 2.2 : this.running ? 5.0 : 3.4;
+          let vx = (s * fwd + -c * side) * SPEED * dt;
+          let vz = (c * fwd + s * side) * SPEED * dt;
+          const W = this.world.heights.length;
+          const canStep = (x: number, z: number): boolean => {
+            const tx = Math.floor(x + W / 2), tz = Math.floor(z + W / 2);
+            if (tx < 0 || tz < 0 || tx >= W || tz >= W) return false;
+            return this.world.isWalkable(tx, tz) && !this.trapManager?.at(tx, tz)?.revealed;
+          };
+          const pos = fv.rig.group.position;
+          let nx = pos.x + vx, nz = pos.z + vz;
+          if (!canStep(nx, nz)) {
+            if (canStep(nx, pos.z)) nz = pos.z;          // slide along the wall (x)
+            else if (canStep(pos.x, nz)) nx = pos.x;     // slide along the wall (z)
+            else { nx = pos.x; nz = pos.z; }             // cornered — stop
           }
-          if (step) {
-            const path = this.combat.pathTo(fpHero, step.x, step.z);
-            if (path && path.length) {
-              this.moveUnitAlong(fpHero, path);
+          if (nx !== pos.x || nz !== pos.z) {
+            const gx = Math.floor(nx + W / 2), gz = Math.floor(nz + W / 2);
+            const h = this.world.heightAt(gx, gz);
+            fv.rig.group.userData.baseY = h;
+            pos.set(nx, pos.y + (h - pos.y) * Math.min(1, dt * 8), nz);
+            fv.targetYaw = this.fpYaw;
+            if (gx !== fpHero.pos.x || gz !== fpHero.pos.z) {
+              fpHero.pos = { x: gx, z: gz };
+              const trap = this.trapManager.at(gx, gz);
+              if (trap && !trap.triggered && fpHero.team !== 'enemy') void this.triggerTrap(fpHero, trap);
+            }
+            // footstep cadence while walking (not a click per tile)
+            if (now - this.fpStepAt > 0.16) {
+              this.audio.play('ui_click', 0.16, 1.4 + Math.random() * 0.5);
               this.fpStepAt = now;
-              // step audio + dust for feel
-              this.audio.play('ui_click', 0.25, 1.6);
             }
           }
+        }
+      }
+      // crosshair aim: the dot always points at screen centre. Evaluate the
+      // centre pick every frame (cheap raycasts) but only republish hover
+      // state when the aim target changes (~6 Hz cap while sweeping/walking).
+      // The active interactable is part of the key — it can flip on while
+      // the aim is steady (proximity), and the prompt must follow.
+      if (!this.fpDrag && !this.isOverlayOpen()) {
+        this.pointer.set(0, 0);
+        const aimPick = pickInteractableModule(this);
+        const aimTile = pickTileModule(this);
+        const aimKey = `${this.activeInteractable?.id ?? ''}|${aimPick ? `${aimPick.kind}:${aimPick.unitId ?? aimPick.propId ?? aimPick.npcId ?? aimPick.idx ?? ''}` : 'none'}|${aimTile ? `${aimTile.x},${aimTile.z}` : ''}`;
+        if (aimKey !== this.fpAimKey && now - this.fpAimAt > 0.16) {
+          this.fpAimKey = aimKey;
+          this.fpAimAt = now;
+          updateHoverModule(this);
         }
       }
     } else if (this.fpHiddenId) {
@@ -3684,26 +4004,34 @@ export class GameEngine {
       }
     }
 
-    // ever-present ambient light around the player. A modest pool of light
-    // follows the hero everywhere; holding a lit torch widens the pool into a
-    // bright, large radius centred right on the flame.
+    // Hero's light — a single shadow-casting PointLight hovering above Greg's
+    // head. It casts a circular warm pool on the floor that decays with
+    // distance; walls cast real shadows. Holding a lit torch widens and
+    // brightens the pool.
     const player = this.combat?.living('party')[0];
     if (!this.torchLight) {
-      this.torchLight = new THREE.PointLight(0xffcf9a, 1.6, 10, 1.5);
+      this.torchLight = new THREE.PointLight(0xffcf9a, 15, 14, 2);
+      this.torchLight.castShadow = true;
+      this.torchLight.shadow.mapSize.set(1024, 1024);
+      this.torchLight.shadow.bias = -0.001;
+      this.torchLight.shadow.camera.near = 0.5;
+      this.torchLight.shadow.camera.far = 16;
       this.scene.add(this.torchLight);
     }
     if (this.torchLight) {
       const rig = player ? this.visuals.get(player.id)?.rig : null;
       const weaponG = rig ? rig.parts.weapon as THREE.Object3D : null;
       if (player && player.weapon === 'torch' && this.torchLit) {
-        // torch held: wide bright flame light + flame FX
+        // torch held: bright warm pool, wider radius
         this.torchLight.color.setHex(0xffb545);
-        this.torchLight.intensity = 12;
-        this.torchLight.distance = 18;
+        this.torchLight.intensity = 15;
+        this.torchLight.distance = 14;
+        const wp = this.unitWorld(player.pos);
+        this.torchLight.position.set(wp.x, wp.y + 3.0, wp.z);
+        // flame FX still renders at the torch in hand (visual only)
         const flamePos = new THREE.Vector3(0.02, rig?.pivots ? 5.85 * 0.055 : 0.58, 0.02);
         if (weaponG) weaponG.localToWorld(flamePos);
         else flamePos.set(flamePos.x, 2.2, flamePos.z);
-        this.torchLight.position.copy(flamePos);
         if (this.explored?.[player.pos.x]?.[player.pos.z]) {
           FX.flame(this.particles, flamePos.clone());
           if (Math.random() < 0.35) {
@@ -3712,18 +4040,20 @@ export class GameEngine {
           }
         }
       } else {
-        // no torch: soft always-on pool centred over the hero's head. Warm
-        // + bright enough to read as a visible circle against the cool cave
-        // ambient (the old cool 1.6 was invisible under ACES tone mapping).
+        // no torch: small dim pool — you can barely see around you
         this.torchLight.color.setHex(0xffd9a0);
-        this.torchLight.intensity = 4.0;
-        this.torchLight.distance = 11;
+        this.torchLight.intensity = 8;
+        this.torchLight.distance = 8;
         if (player) {
           const wp = this.unitWorld(player.pos);
-          this.torchLight.position.set(wp.x, wp.y + 2.1, wp.z);
+          this.torchLight.position.set(wp.x, wp.y + 3.0, wp.z);
         }
       }
     }
+
+    // lights the hero can't see (walls/doors between) stay hidden — panning
+    // the camera can't preview rooms the party hasn't reached
+    if (player) this.cullRoomLights(player);
 
     // fog of war: mark tiles within vision as explored, show/hide dark overlays
     this.updateFog(dt);
@@ -3749,7 +4079,7 @@ export class GameEngine {
         // crouchLerp eases toward 0 when not sneaking, so standing up plays the crouch in reverse
         const c = u.team === 'party' ? this.crouchLerp : 0;
         v.rig.anim.crouch = c;   // rig bends the knees & hunches ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ feet stay planted
-        v.rig.group.scale.y = (u.scheme.bulk ?? 1);
+        v.rig.group.scale.y = (u.scheme?.bulk ?? 1);
         v.rig.group.position.y = (v.rig.group.userData.baseY as number) + (v.walker ? Math.sin(performance.now() * 0.02) * 0.02 : 0);
       }
       // smooth facing
@@ -3813,9 +4143,9 @@ export class GameEngine {
           const entry = this.npcs.find((n) => n.npcId === npcId);
           if (entry && Combat.dist(u.pos, entry.pos) <= 1.5) this.talkToNpc(npcId);
           else {
-            // a companion in the party (e.g. the Hermit) is a unit, not a
-            // static NPC — resolve the dialogue against the unit's position
-            const comp = this.combat.units.find((x) => x.companion && x.npcId === npcId && x.alive && !x.unconscious);
+            // a companion in the party (the Hermit, Sporefriend…) is a unit,
+            // not a static NPC — resolve the dialogue against the unit's position
+            const comp = this.combat.units.find((x) => x.team === 'party' && x.npcId === npcId && x.alive && !x.unconscious);
             if (comp && Combat.dist(u.pos, comp.pos) <= 1.5) this.talkToNpc(npcId);
           }
         }
@@ -4057,9 +4387,11 @@ export class GameEngine {
       showInventory: this.showInventory,
       showSkillTree: this.showSkillTree,
       showStats: this.showStats,
+      showHelp: this.showHelp,
       sneaking: this.sneaking,
       running: this.running,
       throwing: this.throwing,
+      firstPerson: this.firstPerson,
       tacticalView: this.tacticalView,
       torchLit: this.torchLit,
       torchEquipped: this.combat?.living('party')[0]?.weapon === 'torch',
@@ -4067,13 +4399,14 @@ export class GameEngine {
       cinematic: this.cinematic,
       busy: this.busy,
       paused: this.paused,
+      tutorialStep: this.tutorialStep,
       minimapTiles: { walk: minimapWalk, heights: minimapHeights, units: minimapUnits },
       heroYaw: this.visuals.get(this.combat.living('party')[0]?.id ?? '')?.targetYaw ?? 0,
       showBonfireUI: this.showBonfireUI,
       showBonfireLoadout: this.showBonfireLoadout,
       showFullMap: this.showFullMap,
       talkTarget: this.activeTalkTarget(),
-      interactPrompt: this.activeInteractable?.label ?? null,
+      interactPrompt: this.activeInteractable && this.hoverOnActive ? this.activeInteractable.label : null,
       showQuestLog: this.showQuestLog,
       quests: this.questLog.all().map((q) => ({
         id: q.id,

@@ -283,6 +283,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
     });
     once('take_bucket', r.x0, r.z0 + 2, '[R] Take the wooden bucket', (e) => {
       grant(e, ['wooden_bucket']);
+      e.world?.hidePropAt?.(r.x0, r.z0 + 2);
       e.pushLog('A bucket. As a weapon it\'s mostly a statement. The narrator has SO many comments.', 'system');
     });
     once('read_scratches', r.x0 + 2, r.z0 + 2, '[R] Read the wall scratches', narr('f50_scratches', "You don't remember writing this. You don't remember ANYTHING. This is either amnesia or a really good night."));
@@ -307,11 +308,13 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       label: '[R] Open the small chest',
       visibleIf: (e) => !e.hasFlag('chest_r2_open'),
       run: (e) => {
-        const keyed = e.hasItemInInventory('rusty_key') || e.hasItemInInventory('lockpick');
-        if (!keyed) {
+        const hasKey = e.hasItemInInventory('rusty_key');
+        const hasPick = e.hasItemInInventory('lockpick');
+        if (!hasKey && !hasPick) {
           e.setHoverInfoOnce('Locked. The Rusty Key (or a lockpick) will open it.');
           return;
         }
+        if (!hasKey && e.takeItem('lockpick')) e.pushLog('🪛 The lockpick snaps in the lock. Worth it.', 'system');
         e.setFlag('chest_r2_open');
         const { items, gold, lootRoll } = rollLootTable('chest');
         if (lootRoll !== undefined) e.showDiceRoll?.('d20', lootRoll, 'Treasure quality');
@@ -430,11 +433,13 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       label: '[R] Open the trapdoor',
       visibleIf: (e) => !e.hasFlag('trapdoor_open'),
       run: (e) => {
-        const keyed = e.hasItemInInventory('rusty_key') || e.hasItemInInventory('lockpick');
-        if (!keyed) {
+        const hasKey = e.hasItemInInventory('rusty_key');
+        const hasPick = e.hasItemInInventory('lockpick');
+        if (!hasKey && !hasPick) {
           e.setHoverInfoOnce('Locked. The Rusty Key or a lockpick will open it.');
           return;
         }
+        if (!hasKey && e.takeItem('lockpick')) e.pushLog('🪛 The lockpick snaps in the lock. Worth it.', 'system');
         e.setFlag('trapdoor_open');
         void e.narrate('f50_trapdoor', "The trapdoor groans open. Water glints below — the flooded passage, Room 7.", 3200);
       },
@@ -543,11 +548,13 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       label: '[R] Open the footlocker',
       visibleIf: (e) => !e.hasFlag('footlocker_r10_open'),
       run: (e) => {
-        const keyed = e.hasItemInInventory('rusty_key') || e.hasItemInInventory('lockpick');
-        if (!keyed) {
+        const hasKey = e.hasItemInInventory('rusty_key');
+        const hasPick = e.hasItemInInventory('lockpick');
+        if (!hasKey && !hasPick) {
           e.setHoverInfoOnce('Locked. The Rusty Key or a lockpick will open it.');
           return;
         }
+        if (!hasKey && e.takeItem('lockpick')) e.pushLog('🪛 The lockpick snaps in the lock. Worth it.', 'system');
         e.setFlag('footlocker_r10_open');
         grant(e, ['guards_cap', 'love_letter'], 10);
         void e.narrate('f50_letter', "A love letter. It's addressed to Scrag. It's from someone named 'Bliss.' It's... it's very romantic. It's very GRAPHIC. You put it back. You put it back slowly, like it might read your expression. You will be thinking about it for the rest of the climb.", 4600);
@@ -698,12 +705,15 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       label: '[R] Search for the hidden tunnel (WIS)',
       visibleIf: (e) => !e.hasFlag('vault_tunnel'),
       run: (e) => {
-        const keyed = e.hasItemInInventory('rusty_key') || e.hasItemInInventory('lockpick');
-        if (!keyed) {
+        const hasKey = e.hasItemInInventory('rusty_key');
+        const hasPick = e.hasItemInInventory('lockpick');
+        if (!hasKey && !hasPick) {
           e.setHoverInfoOnce('Even if you find the tunnel, the vault grate needs the Rusty Key or a lockpick.');
           return;
         }
         if (e.abilityCheck('wis', 12)) {
+          // the lockpick earns its keep only if the search pans out
+          if (!hasKey && e.takeItem('lockpick')) e.pushLog('🪛 The lockpick catches the grate\'s seam and snaps. Worth it.', 'system');
           e.setFlag('vault_tunnel');
           e.pushLog('The bones shift under your fingers — a hidden tunnel to the vault! But the grate needs its key... the interactable will handle that.', 'system');
         } else {

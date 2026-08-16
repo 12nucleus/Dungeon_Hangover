@@ -8,7 +8,7 @@ import { ENCHANTS, type Item } from './items';
 import { useForSlot } from './improvised';
 
 function equippedPairs(u: Unit): { slot: string; item: Item }[] {
-  const e = u.equipment;
+  const e = u.equipment ?? {};   // first-spawn units can lack the field — never crash the UI
   const pairs: { slot: string; item: Item }[] = [];
   const add = (slot: string, item?: Item) => { if (item) pairs.push({ slot, item }); };
   add('head', e.head); add('chest', e.chest); add('legs', e.legs);

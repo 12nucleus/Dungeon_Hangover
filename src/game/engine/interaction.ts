@@ -15,14 +15,13 @@ import { unitWorld } from './visuals';
 import { clearHighlights, showAoePreview, pingAt } from './targeting';
 
 // ══ fog of war ══════════════════════════════════════════════
-// No canvas overlay: the dungeon is always visible and lit by the hero's
-// torch pool (the "illuminated circle"). `explored` is the ONLY artifact —
-// it inks the minimap / full map, so the map shows exactly the ground the
-// player has seen. Reveal is a CIRCLE around the leader and walls block
-// sight, so adjacent rooms never appear on the map until entered.
+// Darkness is now real: the scene's ambient lights are near-zero and a
+// single shadow-casting PointLight above the hero's head illuminates a
+// circular area that decays with distance. This function only tracks
+// which tiles the hero has seen (for the minimap / full map).
 export function updateFog(engine: any, _dt: number) {
   if (!engine.explored.length || engine.phase === 'menu' || engine.busy) return;
-  const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat?.living('party')[0];
+  const leader = engine.combat?.living('party')[0];
   if (!leader) return;
 
   // torch reveals a modest radius — rooms stay dark beyond the flame
@@ -50,6 +49,7 @@ export function updateFog(engine: any, _dt: number) {
       engine.explored[x][z] = true;
     }
   }
+
 }
 
 // ══ tile picking ═══════════════════════════════════════════
@@ -146,8 +146,11 @@ export function pickInteractable(engine: any): InteractPick | null {
   if (r.width < 1 || r.height < 1) return null;
   const cx = ((engine.pointer.x + 1) / 2) * r.width;
   const cy = ((1 - engine.pointer.y) / 2) * r.height;
+  // first person: the centre dot IS the pointer, so forgiveness is wider —
+  // it compensates for the view pitch, never for sloppy aim
+  const tolerance = engine.firstPerson ? PICK_TOLERANCE_PX * 1.7 : PICK_TOLERANCE_PX;
   let best: InteractPick | null = null;
-  let bestD = PICK_TOLERANCE_PX;
+  let bestD = tolerance;
   const consider = (world: THREE.Vector3, pick: Omit<InteractPick, 'dist'>) => {
     pickProj.copy(world).project(engine.iso.cam);
     if (pickProj.z > 1 || pickProj.z < -1) return; // behind the camera
@@ -246,7 +249,7 @@ export function updateHover(engine: any) {
   let info: string | null = null;
   if (pick?.kind === 'unit' && pick.unitId) {
     const u = engine.byId(pick.unitId);
-    if (u && u.alive) info = `${u.name} · ${u.title} — HP ${u.hp}/${u.maxHp} · AC ${u.ac}${u.conditions.length ? ' · ' + u.conditions.map((c: any) => c.name).join(', ') : ''}${u.companion && u.npcId ? ' — click to talk' : ''}`;
+    if (u && u.alive) info = `${u.name} · ${u.title} — HP ${u.hp}/${u.maxHp} · AC ${u.ac}${u.conditions.length ? ' · ' + u.conditions.map((c: any) => c.name).join(', ') : ''}${u.npcId ? ' — click to talk' : ''}`;
   } else if (pick?.kind === 'npc' && pick.npcId) {
     info = `💬 ${NPCS[pick.npcId]?.name ?? 'A stranger'} — click to talk`;
   } else if (pick?.kind === 'prop' && pick.propId) {
@@ -258,11 +261,33 @@ export function updateHover(engine: any) {
     info = active && engine.bonfireLit
       ? '🔥 Bonfire — click to walk over and rest'
       : '🔥 Unlit bonfire — click to walk over and kindle it';
-  } else if (pick?.kind === 'active' && engine.activeInteractable) {
-    info = engine.activeInteractable.label;
   }
+  // note: interactables (chests, puddles, valves…) are intentionally NOT in
+  // this chain — their [E] label lives in the hover-gated interact-prompt
   const needTile = explore || engine.targeting;
   const tile = needTile ? pickTile(engine) : null;
+  // the [E] prompt only shows while the pointer is actually on the
+  // interactable — proximity alone no longer reveals it. In first person
+  // the crosshair is a ray from the eye: the dot counts as "on" the
+  // interactable when that ray passes within ~1 tile of the object's anchor
+  // (low objects are easy to overfly or under-aim by a few degrees, so
+  // pixel projection alone is too brittle at close range).
+  let hoverOnActive = pick?.kind === 'active' && !!engine.activeInteractable;
+  if (!hoverOnActive && engine.firstPerson && engine.activeInteractable) {
+    const it = engine.activeInteractable;
+    engine.ray.setFromCamera(engine.pointer, engine.iso.cam);
+    const o = engine.ray.ray.origin;
+    const d = engine.ray.ray.direction;
+    const wp = engine.world.tileToWorld(it.pos.x, it.pos.z, new THREE.Vector3());
+    wp.y += 0.6;
+    const to = wp.sub(o);
+    const t = to.dot(d);
+    if (t > 0 && t < 9) {
+      const perp = to.clone().addScaledVector(d, -t).length();
+      hoverOnActive = perp < 0.9;
+    }
+  }
+  engine.hoverOnActive = hoverOnActive;
   if (!info && explore && tile) {
     const trap = engine.trapManager.at(tile.x, tile.z);
     if (trap && trap.revealed) {
@@ -298,7 +323,13 @@ export function updateHover(engine: any) {
   const cursor = engine.targeting ? 'crosshair' : pick ? 'pointer' : 'default';
   if (style.cursor !== cursor) style.cursor = cursor;
 
-  if (info !== engine.hoverInfo) { engine.hoverInfo = info; engine.emitSnapshot(); }
+  // commit the snapshot when the hover label OR the hover-on-interactable
+  // flag changed (the [E] prompt reads that flag, so it must publish too)
+  if (info !== engine.hoverInfo || engine.hoverOnActive !== engine.hoverOnActivePrev) {
+    engine.hoverOnActivePrev = engine.hoverOnActive;
+    engine.hoverInfo = info;
+    engine.emitSnapshot();
+  }
 }
 
 export function setHoverInfoOnce(engine: any, s: string) { engine.hoverInfo = s; engine.emitSnapshot(); }
@@ -535,7 +566,7 @@ export function clickExplore(engine: any, pick: InteractPick | null, tile: GridP
   // ── talk to a companion (a party member who is also a quest NPC) ──
   if (pick?.kind === 'unit' && pick.unitId) {
     const cu = engine.byId(pick.unitId);
-    if (cu?.team === 'party' && cu.companion && cu.npcId && leader) { companionClick(engine, leader, cu); return; }
+    if (cu?.team === 'party' && cu.npcId && leader) { companionClick(engine, leader, cu); return; }
   }
 
   // ── party select ──
@@ -779,7 +810,11 @@ function runActions(engine: any, actions: DialogueAction[] | undefined, npc: NPC
 /** current dialogue node id (persists across clicks so trees can branch) */
 function nodeIdFor(engine: any, npc: NPCDef): string {
   const questNode = engine.questLog.nodeFor(npc.id, hasItemInInventory(engine, 'severed_finger'));
-  const target = engine.dialogueNodeId ?? questNode ?? npc.entryNode;
+  // state-aware NPCs (companions) open a different node while a flag is set —
+  // e.g. Sporefriend talks as a travel-mate when recruited, as a sulker at the
+  // circle when dismissed
+  const stateNode = npc.stateNode && engine.flags?.has(npc.stateNode.flag) ? npc.stateNode.node : null;
+  const target = engine.dialogueNodeId ?? questNode ?? stateNode ?? npc.entryNode;
   // a quest node that doesn't exist in the tree (authoring gap — e.g. Scrag's
   // missing 'done') must never brick the NPC: fall back to the entry node
   return npc.dialogue[target] ? target : npc.entryNode;
@@ -950,7 +985,7 @@ export function executeDialogueAction(engine: any, action: DialogueAction, npc: 
       break;
     }
     case 'leaveCompanion': {
-      if (engine.dismissCompanion) engine.dismissCompanion();
+      if (engine.dismissCompanion) engine.dismissCompanion(npc.id);
       break;
     }
     case 'endConvo': {

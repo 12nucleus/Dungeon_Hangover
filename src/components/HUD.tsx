@@ -25,12 +25,68 @@ function Portrait({ u, size = 44, active = false }: { u: Unit; size?: number; ac
   const pct = u.hp / effMaxHp(u);
   return (
     <div className={`portrait ${u.alive ? '' : 'dead'} ${active ? 'active' : ''}`} style={{ width: size, height: size }}>
-      <div className="portrait-face" style={{ background: `#${u.scheme.cloth.toString(16).padStart(6, '0')}` }}>
-        <span style={{ color: `#${u.scheme.skin.toString(16).padStart(6, '0')}` }}>
+      <div className="portrait-face" style={{ background: `#${(u.scheme?.cloth ?? 0xd9a066).toString(16).padStart(6, '0')}` }}>
+        <span style={{ color: `#${(u.scheme?.skin ?? 0xd9a066).toString(16).padStart(6, '0')}` }}>
           {u.team === 'party' ? u.name[0] : '👺'}
         </span>
       </div>
       <div className="portrait-hp"><i style={{ width: `${pct * 100}%`, background: pct > 0.5 ? '#4ade80' : pct > 0.25 ? '#facc15' : '#ef4444' }} /></div>
+    </div>
+  );
+}
+
+/** new-game tutorial card — 5 short steps covering move / interact / gear /
+ *  bonfire / combat. Driven by engine.tutorialStep (set on intro complete). */
+const TUTORIAL_STEPS: { title: string; body: string; keys: [string, string][] }[] = [
+  {
+    title: 'You wake up.',
+    body: "Floor 50 — the bottom of everything. Move the camera with WASD or the arrow keys, zoom with the wheel, rotate with Q / E. Click any tile to walk there. Press P any time for a first-person view.",
+    keys: [['WASD', 'Move camera'], ['Click', 'Walk'], ['Wheel', 'Zoom'], ['P', 'First person']],
+  },
+  {
+    title: 'Look around.',
+    body: "Highlighted things can be interacted with — press R to use the prompt, or just click objects and NPCs. C crouches into a sneak. T swaps your torch. Stay in the light: the dark hides the dungeon, and the dungeon hides worse things than the dark.",
+    keys: [['R', 'Interact'], ['C', 'Sneak'], ['T', 'Torch']],
+  },
+  {
+    title: 'Your gear.',
+    body: "Open your inventory (I) — the starting bag by your feet holds a rusty dagger and a health potion. U shows your stats, K the skill tree, J the quest log. Combat skills live on the hotbar (1–9).",
+    keys: [['I', 'Inventory'], ['U', 'Stats'], ['K', 'Skill tree']],
+  },
+  {
+    title: 'The bonfire.',
+    body: "That fire behind you is your lifeline. Click it to walk over: kindling it sets your respawn and saves the game; resting there heals the party and levels you up. Light it BEFORE you go exploring — you'll be glad you did.",
+    keys: [['Click', 'Kindle / rest']],
+  },
+  {
+    title: 'Fighting.',
+    body: "Click a foe to attack. Skills fire from the hotbar (1–9), and Space / Enter ends your turn. Win fights for XP — then spend it at the bonfire. Don't die. The narrator has opinions about dying.",
+    keys: [['Click', 'Attack'], ['1-9', 'Skills'], ['Space', 'End turn']],
+  },
+];
+
+function TutorialCard({ snap, engine }: { snap: UISnapshot; engine: GameEngine | null }) {
+  const step = (snap.tutorialStep ?? 0) - 1;
+  const s = TUTORIAL_STEPS[step];
+  if (!s) return null;
+  const last = step >= TUTORIAL_STEPS.length - 1;
+  return (
+    <div className="tutorial-card">
+      <div className="tutorial-title">🧭 {s.title}</div>
+      <div className="tutorial-body">{s.body}</div>
+      {s.keys.length > 0 && (
+        <div className="tutorial-keys">
+          {s.keys.map(([k, v]) => (
+            <span key={k} className="tutorial-key"><b>{k}</b> {v}</span>
+          ))}
+        </div>
+      )}
+      <div className="tutorial-actions">
+        <button className="tutorial-btn" onClick={() => engine?.tutorialClose()} title="Close tutorial">✕</button>
+        <button className="tutorial-btn primary" onClick={() => (last ? engine?.tutorialClose() : engine?.tutorialNext())}>
+          {last ? "Got it — let's go" : 'Next ▸'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -334,6 +390,8 @@ export function HUD({ snap, engine }: Props) {
 
   return (
     <div className="hud">
+      {/* first-person crosshair — the dot IS the mouse pointer in FP mode */}
+      {snap?.firstPerson && <div className="fp-crosshair" />}
       {/* ══ MAIN MENU ══ (title idle only — hidden while the intro/cutscene
           narration runs: between caption beats `cinematic` is false but the
           cutscene is still playing, so the menu would flicker over it) */}
@@ -459,6 +517,11 @@ export function HUD({ snap, engine }: Props) {
         <div className="interact-prompt">{snap.interactPrompt}</div>
       )}
 
+      {/* ══ NEW-GAME TUTORIAL CARD (move / gear / bonfire / combat) ══ */}
+      {!!snap.tutorialStep && phase === 'explore' && !snap.showDialogue && !snap.showInventory && !snap.showBonfireUI && (
+        <TutorialCard snap={snap} engine={engine} />
+      )}
+
       {/* ══ QUEST LOG (J) ══ */}
       {snap.showQuestLog && phase !== 'menu' && (
         <div className="quest-log">
@@ -552,6 +615,10 @@ export function HUD({ snap, engine }: Props) {
 
       {/* ══ MINIMAP ══ */}
       {phase !== 'menu' && <Minimap snap={snap} />}
+      {/* help button tucked under the minimap — the tips bar is gone */}
+      {phase !== 'menu' && (
+        <button className="hud-btn help-btn minimap-help-btn" onClick={() => engine?.toggleHelp()} title="Help [H]">?<span className="key-badge">H</span></button>
+      )}
       {phase !== 'menu' && party.length > 0 && (
         <div className="party-sidebar">
           {party.map((u) => {
@@ -561,7 +628,7 @@ export function HUD({ snap, engine }: Props) {
                 <Portrait u={u} size={size} active={u.id === snap.activeId} />
                 <div className="pf-info">
                   <div className="pf-name" style={{ color: TEAM_COLOR[u.team] }}>{u.name}</div>
-                  <div className="pf-hp">{u.hp}/{effMaxHp(u)}{u.equipment.weapon?.enchantId ? ' ✦' : ''}</div>
+                  <div className="pf-hp">{u.hp}/{effMaxHp(u)}{u.equipment?.weapon?.enchantId ? ' ✦' : ''}</div>
                   <div className="pf-cond">
                     {u.conditions.map((c) => <span key={c.id} className="cond-pip" title={c.name}>{c.id === 'blessed' ? '✨' : '❄'}</span>)}
                   </div>
@@ -591,17 +658,8 @@ export function HUD({ snap, engine }: Props) {
                 : <>🐀 ENEMY PHASE — {activeUnit?.name ?? 'the enemy'} is acting…</>}
             </div>
           )}
-          {phase === 'explore' && (
-            <div className="explore-hint">🧭 Click ground to move · I Inventory · K Skills · U Stats · C Sneak · T Torch · P First-person · Q/E Rotate</div>
-          )}
 
           {/* right controls */}
-          {/* sneak toggle */}
-          {phase === 'explore' && (
-            <button className={`hud-btn sneak ${snap.sneaking ? 'on' : ''}`} onClick={() => engine?.toggleSneak()} title="Sneak [C]">
-              {snap.sneaking ? '👤' : '🕴️'}
-            </button>
-          )}
           <div className="hud-right">
             <button className="hud-btn" onClick={() => engine?.recenterCamera()} title="Re-center camera on your hero">📍</button>
             <button className={`hud-btn ${snap.tacticalView ? 'on' : ''}`} onClick={() => engine?.toggleTacticalView()} title="Tactical view — top-down on the battlefield">🗺️</button>
@@ -640,6 +698,39 @@ export function HUD({ snap, engine }: Props) {
       {/* ══ SKILL TREE PANEL ══ */}
       {snap.showSkillTree && phase !== 'menu' && engine && (
         <SkillTreePanel snap={snap} engine={engine} />
+      )}
+
+      {/* ══ HELP OVERLAY (H key / ? button) ══ */}
+      {snap.showHelp && phase !== 'menu' && (
+        <div className="help-overlay" onClick={() => engine?.closeHelp()}>
+          <div className="help-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="help-title">
+              <span>❔ How to Play</span>
+              <button onClick={() => engine?.closeHelp()}>✕</button>
+            </div>
+            <div className="help-grid">
+              <div className="help-row"><span className="help-key">WASD</span> Pan camera</div>
+              <div className="help-row"><span className="help-key">Click</span> Move hero</div>
+              <div className="help-row"><span className="help-key">Q / E</span> Rotate camera</div>
+              <div className="help-row"><span className="help-key">Wheel</span> Zoom</div>
+              <div className="help-row"><span className="help-key">Space</span> End turn</div>
+              <div className="help-row"><span className="help-key">R</span> Interact</div>
+              <div className="help-row"><span className="help-key">C</span> Sneak</div>
+              <div className="help-row"><span className="help-key">T</span> Torch on / off</div>
+              <div className="help-row"><span className="help-key">P</span> First-person view</div>
+              <div className="help-row"><span className="help-key">F</span> Focus camera on hero</div>
+              <div className="help-row"><span className="help-key">M</span> Full map</div>
+              <div className="help-row"><span className="help-key">I</span> Inventory</div>
+              <div className="help-row"><span className="help-key">K</span> Skill tree (at bonfire)</div>
+              <div className="help-row"><span className="help-key">U</span> Character stats</div>
+              <div className="help-row"><span className="help-key">J</span> Quest log</div>
+              <div className="help-row"><span className="help-key">H</span> This help</div>
+              <div className="help-row"><span className="help-key">Esc</span> Close / pause</div>
+              <div className="help-row"><span className="help-key">1-9,0,-,=</span> Skills &amp; hotbar</div>
+            </div>
+            <p className="help-foot">Stay in the light — the dark hides the dungeon, and the dungeon hides worse things than the dark.</p>
+          </div>
+        </div>
       )}
 
       {/* ══ CHEAT CONSOLE (backtick key) ══ */}

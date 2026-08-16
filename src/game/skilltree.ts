@@ -1,16 +1,8 @@
-// ─────────────────────────────────────────────────────────────
-// Skill trees — per-class unlock constellations (BG3-style sky):
-// one branch per chosen class (up to 2), three tiers each, drawn
-// from that class's real CLASS_SKILLS pool (first non-passive
-// skill per tier). Tier costs 1/1/2 skill points; a level-up grants
-// one point, so the cadence is roughly one new skill per level.
-// Nodes either UNLOCK a skill (added to knownSkills) or grant a
-// permanent PASSIVE. Pure data + validation; engine applies them.
+// Skill trees — complete per-class progression constellations. Every authored
+//// class skill becomes a node; passive nodes are first-class unlocks too.
+// The tree is deterministic so save files remain stable across reloads.
 //
-// The old hardcoded fighter/wizard/cleric trees are gone: no playable
-// class id matched them, so every hero — whatever class they picked —
-// saw the same 6 fighter stars. The constellation is now generated
-// from the hero's actual classes.
+// The engine applies node rewards; this module only defines the graph.
 // ─────────────────────────────────────────────────────────────
 import type { Unit } from './types';
 import { CLASS_SKILLS } from './classSkills';
@@ -25,7 +17,8 @@ export interface SkillNode {
   tier: 1 | 2 | 3 | 4 | 5;
   cost: number;
   requires?: string[];
-  unlockSkill?: string;   // id into SKILLS
+  unlockSkill?: string;
+  passiveSkill?: string;
   passive?: { stat: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha' | 'maxHp' | 'move' | 'ac'; amount: number };
 }
 
@@ -39,36 +32,29 @@ export function levelForTier(tier: number): number {
   return 4;
 }
 
-/**
- * Build the hero's constellation from their chosen classes. One branch per
- * class (branch = class name), tiers 1–5 chained within the branch, each node
- * unlocking the first NON-PASSIVE skill of that class+tier from CLASS_SKILLS.
- * Deterministic: same classes ⇒ same tree, so saved `unlockedNodes` stay
- * valid across reloads.
- */
 export function buildClassTree(classes: string[] | undefined): SkillNode[] {
   const nodes: SkillNode[] = [];
   for (const cid of (classes ?? []).slice(0, 2)) {
     const def = classById(cid);
     const pool = CLASS_SKILLS[cid] ?? [];
     if (!def || !pool.length) continue;
-    let prev: string | null = null;
+    let previousTier: string | undefined;
     for (const tier of [1, 2, 3, 4, 5] as const) {
-      const sk = pool.find((s) => (s.tier ?? 1) === tier && !s.passive);
-      if (!sk) continue;
-      const id = `${cid}_t${tier}_${sk.id}`;
-      nodes.push(N({
-        id,
-        name: sk.name,
-        icon: sk.icon,
-        branch: def.name,
-        tier,
-        cost: tier >= 3 ? 2 : 1,
-        requires: prev ? [prev] : undefined,
-        unlockSkill: sk.id,
-        desc: sk.desc,
-      }));
-      prev = id;
+      const tierSkills = pool.filter((s) => (s.tier ?? 1) === tier);
+      const tierNodeIds: string[] = [];
+      for (const sk of tierSkills) {
+        const id = `${cid}_t${tier}_${sk.id}`;
+        nodes.push(N({
+          id, name: sk.name, icon: sk.icon, branch: def.name, tier,
+          cost: tier >= 3 ? 2 : 1,
+          requires: previousTier ? [previousTier] : undefined,
+          unlockSkill: sk.passive ? undefined : sk.id,
+          passiveSkill: sk.passive ? sk.id : undefined,
+          desc: sk.desc,
+        }));
+        tierNodeIds.push(id);
+      }
+      if (tierNodeIds.length) previousTier = tierNodeIds[tierNodeIds.length - 1];
     }
   }
   return nodes;

@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot, Ability } from '@/game/types';
-import { effAC, effMove, effMaxHp, effAtkBonus, xpProgress, MAX_LEVEL } from '@/game/stats';
+import { effAC, effMove, effMaxHp, effAtkBonus, xpProgress, MAX_LEVEL, XP_THRESHOLDS } from '@/game/stats';
 import { ABILITY_LABELS, ABILITY_HINTS } from '@/game/abilityLabels';
 import { comboTitleFor } from '@/game/classes';
 
@@ -67,20 +67,31 @@ export function CharacterStatsPanel({ snap, engine }: Props) {
           <b>{u.name}</b> <em>{comboTitleFor(u.classes ?? [])}</em>
         </div>
         <div className="xp-bar stats-xp" title={`${xpLabel}`}><i style={{ width: `${xp.pct * 100}%` }} /></div>
-        <div className="stats-xp-label">{xpLabel} · Sobriety {u.level}</div>
+        <div className="stats-xp-label">
+          {xpLabel} · Sobriety {u.level}
+          {u.level < MAX_LEVEL && u.xp >= (XP_THRESHOLDS[u.level + 1] ?? Infinity) && (
+            <span className="stats-ready-tag">🔥 Ready to Level Up at Bonfire!</span>
+          )}
+        </div>
       </div>
 
       {/* combat summary */}
       <div className="stats-grid">
         <div className="stat-cell"><span>HP</span><b>{u.hp}/{effMaxHp(u)}</b></div>
         <div className="stat-cell"><span>AC</span><b>{effAC(u)}</b></div>
-        <div className="stat-cell"><span>Move</span><b>{effMove(u)}</b></div>
-        <div className="stat-cell"><span>Atk Bonus</span><b>{effAtkBonus(u) >= 0 ? `+${effAtkBonus(u)}` : effAtkBonus(u)}</b></div>
-        <div className="stat-cell"><span>Weapon</span><b className="stat-weapon">{weapon ? `${weapon.icon} ${weapon.name}` : 'Fists'}</b></div>
-        <div className="stat-cell"><span>Damage</span><b>{weapon?.damageDice ?? '1d4'}</b></div>
+        <div className="stat-cell"><span>Movement</span><b>{effMove(u)}</b></div>
+        <div className="stat-cell"><span>Attack Bonus</span><b>{effAtkBonus(u) >= 0 ? `+${effAtkBonus(u)}` : effAtkBonus(u)}</b></div>
+        <div className="stat-cell"><span>Equipped Weapon</span><b className="stat-weapon">{weapon ? `${weapon.icon} ${weapon.name}` : 'Unarmed'}</b></div>
+        <div className="stat-cell"><span>Damage Dice</span><b>{weapon?.damageDice ?? '1d4'}</b></div>
       </div>
 
       {/* abilities */}
+      <div className="stats-abilities-header">
+        <span>ABILITY SCORES</span>
+        {(u.abilityPoints ?? 0) > 0 && (
+          <span className="stats-ap-badge">🪙 {u.abilityPoints} Point{(u.abilityPoints ?? 0) > 1 ? 's' : ''} Available</span>
+        )}
+      </div>
       <div className="stats-abilities">
         {ABIL_ORDER.map((k) => {
           const m = abilityMod(k);
@@ -92,17 +103,12 @@ export function CharacterStatsPanel({ snap, engine }: Props) {
               <span className="sa-value">{u.abilities[k]}</span>
               <span className={`sa-mod ${m >= 0 ? 'pos' : 'neg'}`}>{m >= 0 ? `+${m}` : m}</span>
               {canSpend && (
-                <button className="sa-up" onClick={() => engine.spendAbilityPoint(u.id, k)} title={`Spend 1 ability point (${ap} left)`}>＋</button>
+                <button className="sa-up" onClick={() => engine.spendAbilityPoint(u.id, k)} title={`Spend 1 ability point on ${ABILITY_LABELS[k]} (${ap} left)`}>＋</button>
               )}
             </div>
           );
         })}
       </div>
-      <div className="stats-ap">
-        {((u.abilityPoints ?? 0) > 0) && <span>🪙 {u.abilityPoints} ability point{u.abilityPoints !== 1 ? 's' : ''} to spend — tap ＋ next to an ability</span>}
-        {((u.abilityPoints ?? 0) === 0) && <span>Sober up to earn ability points.</span>}
-      </div>
-
       {/* buffs / debuffs */}
       <div className="stats-conds">
         <div className="stats-cond-row">

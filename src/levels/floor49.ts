@@ -142,6 +142,7 @@ const structures: LevelStructures = {
   npcs: [
     { npcId: 'spore_merchant', pos: OX(sc(23), sc(21)) },   // r1 — Myke, by the entry bonfire
     { npcId: 'hermit_shroom', pos: OX(sc(14), sc(13)) },    // r4 pool edge (speaks only while hallucinating)
+    { npcId: 'sporefriend', pos: OX(sc(22), sc(10)), unlessFlag: 'sporefriend' }, // r5 circle — home when dismissed
   ],
 };
 

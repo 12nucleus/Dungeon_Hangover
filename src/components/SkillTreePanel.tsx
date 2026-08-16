@@ -76,12 +76,11 @@ export function SkillTreePanel({ snap, engine }: Props) {
   const clickNode = (n: SkillNode) => {
     const st = stateOf(u, n);
     if (sel?.id === n.id && st === 'avail') {
-      engine.unlockNode(u.id, n.id);   // second click on a haloed star commits
+      engine.unlockNode(u.id, n.id);
       return;
     }
     setSelId(n.id);
   };
-
   return (
     <div className="stc-overlay">
       <div className="stc-panel">

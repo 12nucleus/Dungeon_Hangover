@@ -13,6 +13,7 @@ import { makeItem, rollLootTable } from '../items';
 import type { GridPos, CombatEvent, SkillDef, Unit } from '../types';
 import type { Item } from '../items';
 import { unitWorld } from './visuals';
+import { presentationForSkill } from '../skillRuntime';
 import { clearHighlights, showMoveTiles } from './targeting';
 import { grantKey } from './dungeonSetup';
 import { offerLoot } from './loot';
@@ -34,10 +35,10 @@ export async function animate(engine: any, ev: CombatEvent) {
   switch (ev.type) {
     case 'log': engine.pushLog(ev.text, ev.kind); await delay(25); break;
     case 'move': await animMove(engine, ev.unitId, ev.path); break;
-    case 'melee': await animMelee(engine, ev.unitId, ev.targetId); break;
+    case 'melee': await animMelee(engine, ev.unitId, ev.targetId, ev.audioCue); break;
     case 'projectile': await animProjectile(engine, ev); break;
     case 'skillfx': {
-      await animSkillFx(engine, ev.skill, ev.at, ev.targets);
+      await animSkillFx(engine, ev.skill, ev.at, ev.targets, ev.presentation ?? presentationForSkill(ev.skill));
       // Gribnab's phase-2 arsenal announces itself once per fight
       if ((ev.skill.id === 'soap_storm' || ev.skill.id === 'duck_swarm') && !engine.flags?.has('grib_bark_phase2')) {
         engine.setFlag?.('grib_bark_phase2');
@@ -369,8 +370,7 @@ export async function animMove(engine: any, unitId: string, path: GridPos[]) {
     }
   }
 }
-
-export async function animMelee(engine: any, unitId: string, targetId: string) {
+export async function animMelee(engine: any, unitId: string, targetId: string, audioCue?: string) {
   const v = engine.visuals.get(unitId), tv = engine.visuals.get(targetId);
   if (!v || !tv) return;
   const vp = v.rig.group.position;
@@ -378,7 +378,8 @@ export async function animMelee(engine: any, unitId: string, targetId: string) {
   v.targetYaw = Math.atan2(tp.x - vp.x, tp.z - vp.z);
   const dir = tp.clone().sub(vp).setY(0).normalize();
   const home = vp.clone();
-  engine.audio.swing();
+  if (audioCue === 'impact') engine.audio.hitImpact('bludgeoning');
+  else engine.audio.swing();
   v.rig.anim.lunge = 1;
   for (let k = 0; k <= 1 && !engine.disposed; k += 0.12) {
     vp.copy(home).addScaledVector(dir, Math.sin(k * Math.PI) * 0.5);
@@ -538,7 +539,7 @@ export async function animProjectile(engine: any, ev: any) {
   const mat = new THREE.MeshBasicMaterial({ color: ev.color });
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), mat);
   engine.scene.add(mesh);
-  engine.audio.play(ev.fx === 'arrow' ? 'arrow' : ev.fx === 'fire' ? 'fireball' : 'magic_missile', 0.7);
+  playSkillCue(engine, ev.audioCue ?? (ev.fx === 'arrow' ? 'ranged' : ev.fx === 'fire' ? 'fireball_cast' : 'arcane'), 0.75);
   const dur = ev.fx === 'arrow' ? 240 : 430;
   const t0 = performance.now();
   while (performance.now() - t0 < dur && !engine.disposed) {
@@ -550,43 +551,43 @@ export async function animProjectile(engine: any, ev: any) {
   }
   engine.scene.remove(mesh);
   mat.dispose(); mesh.geometry.dispose();
-  if (ev.fx === 'fire') {
-    FX.explosion(engine.particles, to, 2);
-    engine.iso.shake = Math.max(engine.iso.shake, 0.5);
-    flashLight(engine, to, 0xff7a1f);
-  } else if (ev.fx === 'arcane') {
-    FX.arcane(engine.particles, to);
-  } else {
-    FX.blood(engine.particles, to);
-    engine.audio.play('sword_hit', 0.5, 1.3);
+  if (ev.fx === 'fire') { FX.explosion(engine.particles, to, 2); engine.audio.play('fireball_impact', 0.95); engine.iso.shake = Math.max(engine.iso.shake, 0.5); flashLight(engine, to, 0xff7a1f); }
+  else if (ev.fx === 'arcane') FX.arcane(engine.particles, to);
+  else { FX.blood(engine.particles, to); engine.audio.hitImpact('piercing'); }
+}
+
+function playSkillCue(engine: any, cue: string, volume: number) {
+  switch (cue) {
+    case 'melee': engine.audio.swing(); break;
+    case 'impact': engine.audio.hitImpact('bludgeoning'); break;
+    case 'fire':
+    case 'fireball_cast': engine.audio.play(cue === 'fire' ? 'fireball' : 'fireball_cast', volume); break;
+    case 'ice': engine.audio.play('magic_missile', volume, 0.6); break;
+    case 'holy': engine.audio.play('heal', volume, 1.4); break;
+    case 'heal': engine.audio.play('heal', volume); break;
+    case 'buff': engine.audio.play('heal', volume, 1.2); break;
+    case 'ranged': engine.audio.play('arrow', volume); break;
+    default: engine.audio.cast(); break;
   }
 }
 
-export async function animSkillFx(engine: any, s: SkillDef, at: GridPos, targets: string[]) {
+export async function animSkillFx(engine: any, s: SkillDef, at: GridPos, targets: string[], presentation = presentationForSkill(s)) {
   const p = unitWorld(engine, at).add(new THREE.Vector3(0, 0.6, 0));
+  playSkillCue(engine, presentation.castAudio, 0.85);
   switch (s.fx) {
-    case 'fire': FX.explosion(engine.particles, p, s.aoeRadius || 1); engine.audio.play('fireball', 0.85); engine.iso.shake = Math.max(engine.iso.shake, 0.5); flashLight(engine, p, 0xff7a1f); break;
-    case 'ice': FX.ice(engine.particles, p); engine.audio.play('magic_missile', 0.8, 0.6); engine.iso.shake = Math.max(engine.iso.shake, 0.25); break;
-    case 'holy': FX.holy(engine.particles, p); engine.audio.play('heal', 0.7, 1.4); flashLight(engine, p, 0xfde68a); break;
+    case 'fire': FX.explosion(engine.particles, p, s.aoeRadius || 1); engine.iso.shake = Math.max(engine.iso.shake, presentation.shake ?? 0.5); flashLight(engine, p, presentation.flash ?? 0xff7a1f); break;
+    case 'ice': FX.ice(engine.particles, p); engine.iso.shake = Math.max(engine.iso.shake, presentation.shake ?? 0.25); break;
+    case 'holy': FX.holy(engine.particles, p); flashLight(engine, p, presentation.flash ?? 0xfde68a); break;
     case 'heal': FX.heal(engine.particles, p); break;
-    case 'buff': for (const id of targets) { const u = engine.byId(id); if (u) FX.buff(engine.particles, unitWorld(engine, u.pos).add(new THREE.Vector3(0, 0.6, 0))); } engine.audio.play('heal', 0.7, 1.2); break;
-    case 'slash': FX.slash(engine.particles, p, 0xffb054); engine.audio.play('sword_hit', 0.9, 0.85); engine.iso.shake = Math.max(engine.iso.shake, 0.2); break;
-    default: FX.arcane(engine.particles, p); engine.audio.cast();
+    case 'buff': for (const id of targets) { const u = engine.byId(id); if (u) FX.buff(engine.particles, unitWorld(engine, u.pos).add(new THREE.Vector3(0, 0.6, 0))); } break;
+    case 'slash': FX.slash(engine.particles, p, s.fxColor); engine.iso.shake = Math.max(engine.iso.shake, presentation.shake ?? 0.2); break;
+    default: FX.arcane(engine.particles, p); break;
   }
-  if (s.aoeRadius > 0 && (s.fx === 'fire' || s.fx === 'ice')) {
-    for (const prop of engine.props.inBlast(at, s.aoeRadius)) destroyProp(engine, prop);
-  }
-  // surfaces react to area effects — fire ignites oil (and steams water),
-  // ice freezes wet ground, so the environment changes the battlefield.
+  if (s.aoeRadius > 0 && (s.fx === 'fire' || s.fx === 'ice')) for (const prop of engine.props.inBlast(at, s.aoeRadius)) destroyProp(engine, prop);
   if (engine.surfaces) {
     const rad = Math.max(1, s.aoeRadius || 0);
     if (s.fx === 'fire') engine.surfaces.ignite(at.x, at.z, rad);
-    else if (s.fx === 'ice') {
-      for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
-        if (Math.max(Math.abs(dx), Math.abs(dz)) > rad) continue;
-        engine.surfaces.apply(at.x + dx, at.z + dz, 'frozen');
-      }
-    }
+    else if (s.fx === 'ice') for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) if (Math.max(Math.abs(dx), Math.abs(dz)) <= rad) engine.surfaces.apply(at.x + dx, at.z + dz, 'frozen');
   }
   await delay(380);
 }

@@ -54,6 +54,9 @@ export interface NPCDef {
   dialogue: Record<string, DialogueNode>;
   /** the first node shown when you talk to the NPC */
   entryNode: string;
+  /** state-aware entry: when `flag` is set, open `node` instead of entryNode
+   *  (e.g. a companion who is a different person at home than at your side) */
+  stateNode?: { flag: string; node: string };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -116,13 +119,20 @@ export const HERMIT: NPCDef = {
     // ── return states ──
     waiting: {
       text: "No finger yet, then? The rat's a slippery beast. It's been a century since anything slipped past it, but you've got the look of a man who's slipped past worse.",
-      choices: [{ label: '[Leave]', action: { type: 'endConvo' } }],
+      choices: [
+        { label: 'Come with me. I could use the help.', next: 'join', action: { type: 'joinCompanion', npcId: 'hermit' }, visibleIf: { notFlag: 'hermit_joined' } },
+        { label: 'Go home. I can take it from here.', next: 'companion_home', action: { type: 'leaveCompanion' }, visibleIf: { flag: 'hermit_joined' } },
+        { label: '[Leave]', action: { type: 'endConvo' } },
+      ],
     },
     has_finger: {
       caption: "The Hermit cries. The Hermit LAUGHS. The ring FITS. The ring ALWAYS fit.",
       text: "You did it! You beautiful, half-naked idiot. Here — take this.",
       action: { type: 'completeQuest', questId: 'hermit_finger' },
-      choices: [{ label: '[Take the equipment]', next: 'spire_lore' }],
+      choices: [
+        { label: '[Take the equipment]', next: 'spire_lore' },
+        { label: 'Go home. I can take it from here.', next: 'companion_home', action: { type: 'leaveCompanion' }, visibleIf: { flag: 'hermit_joined' } },
+      ],
     },
     spire_lore: {
       text: "Now listen. This place — the Spire — it's alive. It grows around regret. You're at the bottom because your regrets are the freshest. The higher you go, the older the regrets. The worse they get. At the top — Floor 1 — there's something that's been trying to be good for a very long time. And failing. Every day. For ten thousand years.",
@@ -137,7 +147,15 @@ export const HERMIT: NPCDef = {
     },
     done: {
       text: "The finger's home. The ring's home. I'm home. Go on, then — the soap is in the pipes. Don't ask why.",
-      choices: [{ label: '[Leave]', action: { type: 'endConvo' } }],
+      choices: [
+        { label: 'Come with me. I could use the help.', next: 'join', action: { type: 'joinCompanion', npcId: 'hermit' }, visibleIf: { notFlag: 'hermit_joined' } },
+        { label: 'Go home. I can take it from here.', next: 'companion_home', action: { type: 'leaveCompanion' }, visibleIf: { flag: 'hermit_joined' } },
+        { label: '[Leave]', action: { type: 'endConvo' } },
+      ],
+    },
+    companion_home: {
+      text: "The Hermit nods, slow and satisfied. \"The cell needs me more than you do, and the fire needs feeding. I'll be here when you've had enough of the dark. Shout if you need patching up.\" He turns and shuffles off toward his camp.",
+      choices: [{ label: '[He goes home]', action: { type: 'endConvo' } }],
     },
     failed: {
       text: "The well. You dropped it in the well. Centuries I kept that ring safe, and you fed it to a hole. …No. No, it's fine. The moss forgives you. I am not the moss.",
@@ -432,6 +450,51 @@ export const SPORE_MOTHER_NPC: NPCDef = {
   },
 };
 
+// ── SPOREFRIEND (mushroom circle, r5) — the adopted mushroom child.
+//    A companion, not a static NPC: recruited at the offering bowl,
+//    talkable while he travels with you (dismiss → back to the circle)
+//    and again at the circle after dismissal (re-join). Speaks in
+//    bounces. The bounces are very expressive. ──
+const sporefriendScheme: CharacterScheme = {
+  skin: 0xe8e0d0, cloth: 0xff8ac0, accent: 0xe8e0d0, hair: 0x2a2a3a,
+  hood: false, monster: 'mushroom', bulk: 0.6,
+};
+
+export const SPOREFRIEND: NPCDef = {
+  id: 'sporefriend',
+  name: 'Sporefriend',
+  title: 'Mushroom Child',
+  scheme: sporefriendScheme,
+  entryNode: 'waiting',
+  stateNode: { flag: 'sporefriend', node: 'with_you' },
+  dialogue: {
+    // ── at the circle (dismissed / not yet recruited) ──
+    waiting: {
+      text: "Sporefriend sits in the circle, sulking. The other mushrooms pretend not to see it. They are bad liars. It bounces once — a small, hopeful, traitorous bounce — and looks up at you.",
+      choices: [
+        { label: 'Come with me again.', next: 'join', action: { type: 'joinCompanion', npcId: 'sporefriend' }, visibleIf: { notFlag: 'sporefriend' } },
+        { label: '[Leave it to sulk]', action: { type: 'endConvo' } },
+      ],
+    },
+    // ── travelling with you (the 'sporefriend' flag is set) ──
+    with_you: {
+      text: "Sporefriend bounces once. Twice. This is the 'I am here and I am fine' bounce. The third bounce is the 'I am ALSO angry' bounce. The fourth is 'angry AND hungry'. You decide not to find out what the fifth means.",
+      choices: [
+        { label: 'Go home, little one.', next: 'go_home', action: { type: 'leaveCompanion' }, visibleIf: { flag: 'sporefriend' } },
+        { label: '[Pat it on the cap]', action: { type: 'endConvo' } },
+      ],
+    },
+    go_home: {
+      text: "Sporefriend bounces once. Twice. Three times — the 'I am going home' bounce, which is slow and dignified and somehow still furious. It hops back toward the mushroom circle, radiating small betrayal. It will forgive you. It will make you work for it.",
+      choices: [{ label: '[It hops off]', action: { type: 'endConvo' } }],
+    },
+    join: {
+      text: "Sporefriend bounces twice — the 'fine, I will come, but I am keeping score' bounce. It hops to your side and glows with loyalty and simmering resentment. Some things never change. Some mushrooms never forgive. Both of you accept this.",
+      choices: [{ label: "[Let's go]", action: { type: 'endConvo' } }],
+    },
+  },
+};
+
 // ── monster barks — one-line combat cries, spoken in their own
 //    designed voices. Spawned via unit.npcId on combat start. ──
 const mobScheme = (monster: 'mushroom' | 'crawler' | 'fish' | 'frog', skin: number, cloth: number) =>
@@ -495,6 +558,7 @@ export const NPCS: Record<string, NPCDef> = {
   other_hermit: OTHER_HERMIT,
   scrag: SCRAG,
   gribnab: GRIBNAB,
+  sporefriend: SPOREFRIEND,
   // ── floor 49 cast (voices designed by scripts/gen_voice_design.py) ──
   hermit_shroom: HERMIT_SHROOM,
   spore_merchant: SPORE_MERCHANT,

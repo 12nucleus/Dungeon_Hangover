@@ -27,6 +27,8 @@ export interface GameEngineLike {
   hasItemInInventory(baseId: string): boolean;
   /** remove one inventory item with this base id (returns success) */
   takeItem(baseId: string): boolean;
+  /** the voxel world — lets a taken prop vanish from the ground */
+  world?: { hidePropAt?(x: number, z: number): void } | null;
   addGold(n: number): void;
   healGreg(n: number): void;
   damageGreg(n: number, source: string): void;
@@ -50,8 +52,9 @@ export interface GameEngineLike {
   winGame?(): void;
   /** climb to another registered floor (keeps party progression) */
   goToFloor?(n: number): void;
-  /** recruit a party companion (Sporefriend…) — builds the unit + visuals */
-  addCompanion?(name: string, title: string, scheme: Record<string, unknown>, maxHp: number): void;
+  /** recruit a party companion (Sporefriend…) — builds the unit + visuals;
+   *  `home` is the tile a dismiss sends him back to */
+  addCompanion?(name: string, title: string, scheme: Record<string, unknown>, maxHp: number, home?: GridPos): void;
   /** wake every dormant enemy with this groupId and start the fight (ambushes) */
   aggroGroup?(groupId: string): void;
   /** teleport the whole party to a tile (hidden tunnel shortcuts) */
@@ -95,6 +98,8 @@ export interface Interactable {
 export interface InteractableHost {
   interactables?: Interactable[];
   activeInteractable: Interactable | null;
+  /** pointer currently over the active interactable (gates the [E] prompt) */
+  hoverOnActive?: boolean;
   flags: Set<string>;
   combat?: { living(team: 'party' | 'enemy'): { pos: GridPos }[] };
   emitSnapshot(): void;
@@ -105,6 +110,7 @@ export interface InteractableHost {
 export function registerInteractables(engine: InteractableHost, defs: Interactable[]) {
   engine.interactables = [...defs];
   engine.activeInteractable = null;
+  engine.hoverOnActive = false;
 }
 
 /** per-frame: pick the nearest visible interactable within the leader's radius. */
@@ -122,6 +128,8 @@ export function updateInteractables(engine: InteractableHost) {
   }
   if (engine.activeInteractable !== best) {
     engine.activeInteractable = best;
+    // the pointer may not be over the new target — don't flash a stale prompt
+    engine.hoverOnActive = false;
     engine.emitSnapshot();
   }
 }
