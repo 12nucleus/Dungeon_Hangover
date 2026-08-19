@@ -25,6 +25,11 @@ function getHalo(): THREE.Texture {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, s, s);
   haloTex = new THREE.CanvasTexture(cvs);
+  haloTex.minFilter = THREE.LinearFilter;
+  haloTex.magFilter = THREE.LinearFilter;
+  haloTex.generateMipmaps = false;
+  // @ts-ignore - CanvasTexture colorSpace
+  haloTex.colorSpace = THREE.SRGBColorSpace;
   return haloTex;
 }
 
@@ -160,8 +165,9 @@ export function createProp(kind: string, wx: number, groundTopY: number, wz: num
     group.add(light);
     // additive halo
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: getHalo(), color: g.color, transparent: true, opacity: 0.5,
-      blending: THREE.AdditiveBlending, depthWrite: false,
+      map: getHalo(), color: g.color, transparent: true, opacity: 0.52,
+      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+      fog: false, alphaTest: 0.01,
     }));
     const hs = model.flame ? 1.1 : 0.9;
     spr.scale.setScalar(hs);

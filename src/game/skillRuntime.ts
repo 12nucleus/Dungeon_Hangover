@@ -75,7 +75,9 @@ export function ensureSkillState(u: Unit): SkillState {
 export function syncSkillState(u: Unit): void {
   const state = u.skillState;
   if (!state) return;
-  state.learned = [...new Set(state.learned.filter((id) => !!skillById(id)))];
+  const filtered = [...new Set(state.learned.filter((id) => !!skillById(id)))];
+  // never wipe learned if filtering would empty it (protects starter skills during HMR / stale builds)
+  if (filtered.length) state.learned = filtered;
   state.loadout = state.loadout.slice(0, ACTIVE_SLOT_LIMIT).map((id) => id && state.learned.includes(id) ? id : null);
   while (state.loadout.length < ACTIVE_SLOT_LIMIT) state.loadout.push(null);
   u.knownSkills = [...state.learned];

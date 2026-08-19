@@ -2630,6 +2630,15 @@ export class GameEngine {
       hero.knownSkills = [...build.skills];
       hero.equippedSkills = [...build.skills];
       hero.hotbarLoadout = [...build.hotbarLoadout];
+      // AAA: eagerly initialize skillState so lazy migration never drops the 2 starter skills
+      const loadout12 = [...build.hotbarLoadout];
+      while (loadout12.length < 12) loadout12.push(null);
+      hero.skillState = {
+        learned: [...build.skills],
+        loadout: loadout12.slice(0, 12),
+        unlockedNodes: [],
+        passiveRanks: {},
+      };
     }
     this.creationBuild = build;
     this.audio.play('dice', 0.7);

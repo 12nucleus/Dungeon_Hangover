@@ -235,7 +235,7 @@ const structures: LevelStructures = {
   ],
   doors: [
     { id: 'soap_gate', pos: O({ x: 98, z: 50 }), axis: 'z', openedByFlag: 'soap_gate_open' },
-    { id: 'trapdoor67', pos: O({ x: 47, z: 106 }), axis: 'x', openedByFlag: 'trapdoor_open' },
+    { id: 'trapdoor67', pos: O({ x: 47, z: 106 }), axis: 'z', openedByFlag: 'trapdoor_open' },
   ],
   // gate lanes seal only if the blocker covers the WHOLE single-lane span.
   // NOTE: the 1↔19 shortcut has NO gate — it's an open back route from room
@@ -246,6 +246,8 @@ const structures: LevelStructures = {
     { id: 'door17', tiles: lane(114, 12, 120, 12), kind: 'secretDoor', openedByFlag: 'vault_tunnel' },
     { id: 'debris56', tiles: lane(26, 108, 32, 108), kind: 'rubble', openedByFlag: 'debris_56' },
     { id: 'pipeclimb', tiles: lane(50, 46, 50, 56), kind: 'rubble', openedByFlag: 'pipe_climbed' },
+    // visible pile blocking the first-room south tunnel (was logical block with no mesh)
+    { id: 'debris_r1', tiles: [{ x: map.rooms.r1.x0 + 3, z: map.rooms.r1.z1 + 1 }, { x: map.rooms.r1.x0 + 3, z: map.rooms.r1.z1 + 2 }], kind: 'rubble', openedByFlag: 'debris_r1' },
   ],
   bossDoorOpenFlag: 'gribnab_door_open',
 };
