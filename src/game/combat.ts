@@ -68,8 +68,13 @@ export class Combat {
    */
   summon(template: Unit, near: GridPos, summonerId?: string): Unit {
     const clone: Unit = JSON.parse(JSON.stringify(template));
-    clone.id = `summon_${this.summonSeq++}`;
-    clone.alive = true;
+    // Saved companions are also summon-template units and can retain IDs like
+    // summon_0. After loading, the sequence restarts at zero; skip every ID
+    // already present or a baby rat can overwrite the companion's visual and
+    // combat turn entry.
+    do {
+      clone.id = `summon_${this.summonSeq++}`;
+    } while (this.units.some((u) => u.id === clone.id));
     clone.hp = clone.maxHp;
     clone.dormant = false;
     clone.bossGroup = false;

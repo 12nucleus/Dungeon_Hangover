@@ -342,9 +342,9 @@ export class FloorChaos {
 
   private spawn(kind: NonNullable<ChaosBeat['spawn']>, pos: GridPos) {
     if (this.host.combat.inCombat || this.host.busy) return;
-    const add = (unit: Unit) => {
-      this.host.combat.summon(unit, pos);
-      this.host.addUnit(unit);
+    const add = (template: Unit) => {
+      const unit = this.host.combat.summon(template, pos);
+      if (unit) this.host.addUnit(unit);
     };
     if (kind === 'rats2') {
       add(SUMMON_TEMPLATES.small_rat());

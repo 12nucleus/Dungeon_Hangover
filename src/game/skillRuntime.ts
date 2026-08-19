@@ -115,6 +115,8 @@ export function canUseSkill(u: Unit, skill: SkillDef): string | null {
   if (skill.passive) return 'Passive skills cannot be activated.';
   if (skill.id !== 'attack' && skill.id !== 'shove' && !activeSkillIds(u).includes(skill.id) && u.team === 'party') return 'Skill is not equipped.';
   if (skill.id === 'attack') return u.attackUsed ? 'Already attacked this turn' : null;
+  if (skill.oncePerFight && u.cooldowns[`once_${skill.id}`]) return 'Already used this fight';
+  if ((u.cooldowns[skill.id] ?? 0) > 0) return `${skill.name} is on cooldown`;
   if (skill.cost === 'action' && !u.hasAction) return 'No action left';
   if (skill.cost === 'bonus' && !u.hasBonus) return 'No bonus action left';
   return null;

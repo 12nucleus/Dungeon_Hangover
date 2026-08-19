@@ -381,8 +381,9 @@ export function updateDungeon(engine: any, dt: number) {
       guard.title = 'Crash-Out Goblin Guard';
       guard.groupId = 'scrag_hostile';
       guard.dormant = false;
-      engine.combat.summon(guard, scrag.pos);
-      engine.addUnit(guard);
+      const unit = engine.combat.summon(guard, scrag.pos);
+      if (unit) engine.addUnit(unit);
+
       engine.pushLog('⚔ Scrag drops the bored act. He was ALWAYS ready for this.', 'system');
       engine.enqueue(engine.combat.start());
     }
@@ -557,8 +558,8 @@ function maybeAmbush(engine: any, roomId: string, pos: GridPos) {
     void engine.narrate('f50_ambush', 'Something moves in the dark. Something with too many legs. Something with too many TEETH.', 3800);
     for (let i = 0; i < 2; i++) {
       const rat = SUMMON_TEMPLATES.small_rat();
-      engine.combat.summon(rat, pos);
-      engine.addUnit(rat);
+      const unit = engine.combat.summon(rat, pos);
+      if (unit) engine.addUnit(unit);
     }
     const big = SUMMON_TEMPLATES.small_rat();
     big.name = 'Large Rat';
@@ -566,8 +567,8 @@ function maybeAmbush(engine: any, roomId: string, pos: GridPos) {
     big.maxHp = 10; big.hp = 10; big.ac = 12; big.xpValue = 30;
     big.scheme = { ...big.scheme, bulk: 1.25 };
     big.onHit = { condition: 'bleeding', chance: 1, rounds: 2, saveAbility: 'con', saveDC: 10 };
-    engine.combat.summon(big, pos);
-    engine.addUnit(big);
+    const largeRat = engine.combat.summon(big, pos);
+    if (largeRat) engine.addUnit(largeRat);
     engine.enqueue(engine.combat.start());
     return;
   }
@@ -575,8 +576,8 @@ function maybeAmbush(engine: any, roomId: string, pos: GridPos) {
     engine.pushLog('You hear goblin footsteps. They\'re looking for YOU.', 'system');
     void engine.narrate('f50_patrol', 'You hear footsteps. You hear GOBLIN footsteps. They\'re looking for something. They\'re looking for YOU.', 3800);
     const guard = SUMMON_TEMPLATES.goblin_guard();
-    engine.combat.summon(guard, pos);
-    engine.addUnit(guard);
+    const unit = engine.combat.summon(guard, pos);
+    if (unit) engine.addUnit(unit);
     engine.enqueue(engine.combat.start());
   }
 }

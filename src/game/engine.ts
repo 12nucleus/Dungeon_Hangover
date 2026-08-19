@@ -2356,6 +2356,19 @@ export class GameEngine {
     if (this.titlePrevBg) { this.scene.background = this.titlePrevBg; this.titlePrevBg = null; }
     if (this.tavern) { this.scene.remove(this.tavern); this.tavern = null; }
     this.titleIdle = false;
+    const savedFloor = data.floor ?? START_FLOOR;
+    if (data.flags) this.flags = new Set(data.flags);
+    if (data.runSeed) this.runSeed = data.runSeed;
+    if (this.world && savedFloor !== this.floorNumber) {
+      for (const n of this.npcs) {
+        if (n.rig?.group?.parent) n.rig.group.parent.remove(n.rig.group);
+        if (n.proxy?.parent) n.proxy.parent.remove(n.proxy);
+      }
+      this.npcs = [];
+      this.disposeFloor();
+      this.floorNumber = savedFloor;
+      this.buildLevel();
+    }
 
     // -- restore state --
     this.combat.units = data.units.map((u) => this.clone(u));
@@ -2377,19 +2390,47 @@ export class GameEngine {
     if (data.flags) this.flags = new Set(data.flags);
     if (data.runSeed) this.runSeed = data.runSeed;
     if (data.runStats) this.runStats = { ...this.runStats, ...data.runStats };
-    this.floorNumber = data.floor ?? START_FLOOR;
-    // hazard state is per-fight — reset on load
+    this.floorNumber = savedFloor;
+    // Hazard and combat execution state is never resumed from a save. Saves
+    // are made at bonfires; loading always returns to a clean explore phase.
     this.hazardUsed = new Set();
     this.hazardTiles = new Set();
     this.hazardKind = new Map();
     this.explored = data.explored.map((r) => [...r]);
-    this.combat.turnOrder = [...data.combat.turnOrder];
-    this.combat.activeIdx = data.combat.activeIdx;
-    this.combat.round = data.combat.round;
-    this.combat.inCombat = data.combat.inCombat;
-    this.combat.phase = data.combat.phase;
+    this.combat.turnOrder = [];
+    this.combat.activeIdx = 0;
+    this.combat.round = 1;
+    this.combat.inCombat = false;
+    this.combat.phase = 'explore';
     this.selectedId = data.selectedId;
-    this.phase = data.phase;
+    // The saved unit roster is authoritative. Remove every current authored
+    // NPC and unit visual first, then rebuild only what the save contains.
+    const oldNpcProxies = new Set(this.npcs.map((n) => n.proxy).filter(Boolean));
+    for (const n of this.npcs) {
+      if (n.rig?.group?.parent) n.rig.group.parent.remove(n.rig.group);
+      if (n.proxy?.parent) n.proxy.parent.remove(n.proxy);
+    }
+    this.npcs = [];
+    this.unitProxies = this.unitProxies.filter((p) => !oldNpcProxies.has(p));
+    const savedIds = new Set(this.combat.units.map((u) => u.id));
+    for (const [id, v] of this.visuals) {
+      if (savedIds.has(id)) continue;
+      if (v.rig.group.parent) v.rig.group.parent.remove(v.rig.group);
+      if (v.proxy.parent) v.proxy.parent.remove(v.proxy);
+      if (v.bar.parentElement) v.bar.parentElement.removeChild(v.bar);
+      this.visuals.delete(id);
+    }
+    for (const u of this.combat.units) this.addUnit(u);
+
+    // Restore authored NPCs that are not travelling with the saved party.
+    const structures = levelForFloor(this.floorNumber).structures;
+    for (const n of structures?.npcs ?? []) {
+      if (n.unlessFlag && this.flags.has(n.unlessFlag)) continue;
+      if (this.combat.units.some((u) => u.team === 'party' && u.npcId === n.npcId)) continue;
+      spawnNpc(this, n.npcId, n.pos);
+    }
+
+    this.phase = 'explore';
 
     // -- re-hide props that were destroyed before the save (no loot, no FX) --
     for (const id of this.destroyedProps) this.props.removeById(id);
