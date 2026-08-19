@@ -274,14 +274,15 @@ export class VoxelWorld {
         }
       }
 
+      // AAA PBR: Standard with tuned roughness so torch/SSAO reads correctly
       const matFor = (name: string) => {
         const gm = L ? L.groundMats : ['grass', 'grass', 'stone', 'sand'];
         const fm = L ? L.fillMats : ['dirt', 'dirt', 'stone', 'dirt'];
-        if (name === 'cave_wall') return new THREE.MeshLambertMaterial({ map: tex.cave_stone ?? tex.stone });
-        if (name === 'sand') return new THREE.MeshLambertMaterial({ map: tex[gm[3]] ?? tex.sand });
-        if (name === 'grass') return new THREE.MeshLambertMaterial({ map: tex[gm[0]] ?? tex.grass });
-        if (name === 'dirt') return new THREE.MeshLambertMaterial({ map: tex[fm[1]] ?? tex.dirt });
-        return new THREE.MeshLambertMaterial({ map: tex[gm[2]] ?? tex.stone });
+        if (name === 'cave_wall') return new THREE.MeshStandardMaterial({ map: tex.cave_stone ?? tex.stone, roughness: 0.95, metalness: 0.0 });
+        if (name === 'sand') return new THREE.MeshStandardMaterial({ map: tex[gm[3]] ?? tex.sand, roughness: 0.9, metalness: 0.0 });
+        if (name === 'grass') return new THREE.MeshStandardMaterial({ map: tex[gm[0]] ?? tex.grass, roughness: 0.85, metalness: 0.0 });
+        if (name === 'dirt') return new THREE.MeshStandardMaterial({ map: tex[fm[1]] ?? tex.dirt, roughness: 0.9, metalness: 0.0 });
+        return new THREE.MeshStandardMaterial({ map: tex[gm[2]] ?? tex.stone, roughness: 0.92, metalness: 0.01 });
       };
       const mats: Record<string, THREE.Material> = {
         grass: matFor('grass'), dirt: matFor('dirt'), stone: matFor('stone'), sand: matFor('sand'),

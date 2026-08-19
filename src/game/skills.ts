@@ -138,11 +138,11 @@ export const SKILLS: Record<string, SkillDef> = {
   },
   arcane_shield: {
     id: 'arcane_shield', name: 'Arcane Shield', icon: '🔷', kind: 'buff',
-    desc: 'Bonus action: shimmering barrier — +2 AC for 3 rounds. (CD 3)',
+    desc: 'Bonus action: shimmering barrier — +2 AC for 3 rounds. Concentration. (CD 3)',
     range: 0, aoeRadius: 0, cost: 'bonus', cooldown: 3,
     attackAbility: 'int', damageDice: '', damageType: 'force',
     selfOnly: true, appliesCondition: 'shielded',
-    fxColor: 0x93c5fd, fx: 'buff',
+    fxColor: 0x93c5fd, fx: 'buff', concentration: true,
   },
   healing_word: {
     id: 'healing_word', name: 'Healing Word', icon: '💬', kind: 'heal',
@@ -267,10 +267,10 @@ export const SKILLS: Record<string, SkillDef> = {
   },
   tail_sweep: {
     id: 'tail_sweep', name: 'Tail Sweep', icon: '🌀', kind: 'aoe',
-    desc: 'Baron Gnaw sweeps his tail in a full circle. 1d6+2 slashing to all adjacent foes; Prone on a hit. (Below 50% HP)',
+    desc: 'Baron Gnaw sweeps his tail in a full circle. 1d6+2 slashing to all adjacent foes; Prone on a hit. (Below 50% HP, Legendary 1)',
     range: 0, aoeRadius: 1, cost: 'action', cooldown: 2,
     attackAbility: 'str', damageDice: '1d6+2', damageType: 'slashing',
-    selfCentered: true, appliesCondition: 'prone', appliesRounds: 1, hpBelowPct: 0.5,
+    selfCentered: true, appliesCondition: 'prone', appliesRounds: 1, hpBelowPct: 0.5, legendaryCost: 1,
     fxColor: 0xff8a5a, fx: 'slash',
   },
   soap_storm: {
@@ -341,10 +341,10 @@ export const SKILLS: Record<string, SkillDef> = {
   },
   bubble_shield: {
     id: 'bubble_shield', name: 'Bubble Shield', icon: '🫧', kind: 'buff',
-    desc: '+2 AC for 2 rounds. (CD 3)',
+    desc: '+2 AC for 2 rounds. Concentration. (CD 3)',
     range: 0, aoeRadius: 0, cost: 'bonus', cooldown: 3, selfOnly: true,
     attackAbility: 'con', damageDice: '', damageType: 'force',
-    appliesCondition: 'shielded', appliesRounds: 2,
+    appliesCondition: 'shielded', appliesRounds: 2, concentration: true,
     fxColor: 0xbcd8ff, fx: 'buff',
   },
   duck_distraction: {

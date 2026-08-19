@@ -276,8 +276,8 @@ export class FloorChaos {
     }
 
     this.quiet += dt;
-    if (this.quiet > 38 && this.clock - this.lastEvent > 22 && !this.host.combat.inCombat) {
-      if (this.rng() < dt * 0.04) {
+    if (this.quiet > 70 && this.clock - this.lastEvent > 45 && !this.host.combat.inCombat) {
+      if (this.rng() < dt * 0.015) {
         this.host.audio.distantScream?.(0.55);
         this.host.pushLog('A scream, far down the pipe. Not yours. Not yet.', 'system');
         this.quiet = 0;

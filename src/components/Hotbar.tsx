@@ -238,6 +238,9 @@ export function Hotbar({ snap, engine }: Props) {
             title="Defensive posture — +1 AC until your next turn (free)">
             🛡️
           </button>
+          {(active as any).legendaryActions !== undefined && (active as any).bossGroup && (
+            <span className="legendary-badge" title={`Legendary actions: ${(active as any).legendaryActions} remaining this round`}>👑 {(active as any).legendaryActions}</span>
+          )}
           <button className={`end-turn ${enemyTurn ? 'disabled' : ''}`} onClick={() => !enemyTurn && engine.endTurn()} title="End turn [Space]">
             END<br />TURN
           </button>

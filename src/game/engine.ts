@@ -904,19 +904,19 @@ export class GameEngine {
     window.addEventListener('pointerdown', this.splashAudioHandler);
     window.addEventListener('keydown', this.splashAudioHandler);
 
-    // composer (bloom makes fireballs & torchlight pop) — AAA: SSAO for contact shadows
+    // composer — AAA tuned: SSAO contact shadows + bloom pop + output. Params tuned for voxel scale.
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.iso.cam));
     try {
       const ssao = new SSAOPass(this.scene, this.iso.cam, w, h);
-      ssao.kernelRadius = 0.9;
-      ssao.minDistance = 0.001;
-      ssao.maxDistance = 0.08;
-      (ssao as any).output = 0; // default beauty
-      this.composer.addPass(ssao);
+      ssao.kernelRadius = 0.55;        // tighter — voxel cubes need crisp contact, not room AO
+      ssao.minDistance = 0.002;
+      ssao.maxDistance = 0.06;
+      (ssao as any).output = 0;
       (this as any)._ssaoPass = ssao;
-    } catch { /* SSAO unavailable on this GPU — bloom still works */ }
-    const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.62, 0.45, 0.82);
+      this.composer.addPass(ssao);
+    } catch { /* SSAO unavailable — bloom still works */ }
+    const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.58, 0.48, 0.85);
     this.composer.addPass(bloom);
     this.composer.addPass(new OutputPass());
 
@@ -3998,10 +3998,15 @@ export class GameEngine {
           let vx = (s * fwd + -c * side) * SPEED * dt;
           let vz = (c * fwd + s * side) * SPEED * dt;
           const W = this.world.heights.length;
+          const curTx = Math.floor(fv.rig.group.position.x + W / 2), curTz = Math.floor(fv.rig.group.position.z + W / 2);
+          const curH = this.world.heightAt(curTx, curTz);
           const canStep = (x: number, z: number): boolean => {
             const tx = Math.floor(x + W / 2), tz = Math.floor(z + W / 2);
             if (tx < 0 || tz < 0 || tx >= W || tz >= W) return false;
-            return this.world.isWalkable(tx, tz) && !this.trapManager?.at(tx, tz)?.revealed;
+            if (!this.world.isWalkable(tx, tz)) return false;
+            if (Math.abs(this.world.heightAt(tx, tz) - curH) > 1) return false;
+            if (this.combat.units.some((u) => u.alive && u.pos.x === tx && u.pos.z === tz && u.id !== fpHero.id)) return false;
+            return true;
           };
           const pos = fv.rig.group.position;
           let nx = pos.x + vx, nz = pos.z + vz;

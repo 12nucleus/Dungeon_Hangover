@@ -362,11 +362,12 @@ export function buildVoxelTerrain(
     }
   }
 
+  // AAA PBR: Standard material with roughness/metalness for proper light response
   const mergeAndAdd = (geos: THREE.BufferGeometry[]) => {
     if (!geos.length) return null;
     const merged = mergeGeometries(geos, false)!;
     geos.forEach((g) => g.dispose());
-    const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true }));
+    const mesh = new THREE.Mesh(merged, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.02 }));
     mesh.castShadow = true; mesh.receiveShadow = true;
     return mesh;
   };
@@ -376,11 +377,13 @@ export function buildVoxelTerrain(
     geos.forEach((g) => g.dispose());
     const mesh = new THREE.Mesh(
       merged,
-      new THREE.MeshLambertMaterial({
+      new THREE.MeshStandardMaterial({
         vertexColors: true,
         transparent: true,
         opacity: 0.74,
         depthWrite: false,
+        roughness: 0.25,
+        metalness: 0.0,
       }),
     );
     mesh.renderOrder = 2;
