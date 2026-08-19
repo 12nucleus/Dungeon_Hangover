@@ -283,7 +283,8 @@ export async function animate(engine: any, ev: CombatEvent) {
         engine.lastTurnTeam = null;
         engine.phaseBanner = null;
         engine.audio.setMusicDucked(true);
-        // the encounter theme takes over from the ambient loop
+        // the encounter theme takes over from the ambient loop — AAA adaptive crossfade
+        engine.audio.setAdaptiveState?.('combat', 1.0);
         engine.audio.playMusic('music_combat');
         for (const [id, v] of engine.visuals) {
           const u = engine.byId(id);
@@ -297,6 +298,7 @@ export async function animate(engine: any, ev: CombatEvent) {
         engine.hazardUsed?.clear();   // hazards reset per fight
         if (engine.tpkVignette) { engine.tpkVignette = false; engine.emitSnapshot?.(); }
         engine.audio.setMusicDucked(false);
+        engine.audio.setAdaptiveState?.('explore', 1.4);
         if (engine.phase === 'explore') engine.audio.playMusic('music_ambient');  // back to the cellar
         // drops that piled up during the fight surface now
         engine.flushLootQueue?.();

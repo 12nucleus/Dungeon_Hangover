@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────
 // Audio: WebAudio manager. SFX and the ambient loop are AI-generated mp3s
 // in /public/audio (see EXPANSION_GUIDE.md § Audio Pipeline for the prompts).
-// Combat deliberately uses only the encounter music; there is no drum layer.
+// AAA: adaptive music (explore ↔ combat crossfade) + improved ducking.
 // ─────────────────────────────────────────────────────────────
 
 const SFX_FILES = [
@@ -26,6 +26,12 @@ export class AudioManager {
   private started = false;
   private tavernPending = false;
   private pendingMusic: string | null = null;
+  // AAA adaptive: explore vs combat as two looping sources crossfaded
+  private exploreGain!: GainNode;
+  private combatGain!: GainNode;
+  private exploreSource: AudioBufferSourceNode | null = null;
+  private combatSource: AudioBufferSourceNode | null = null;
+  private adaptive: 'explore' | 'combat' = 'explore';
 
   // ── dungeon ambience (procedural + floor-50 droplet bed) ───
   private ambGain: GainNode | null = null;      // master ambience bus
@@ -72,6 +78,12 @@ export class AudioManager {
       this.musicGain = this.ctx.createGain();
       this.musicGain.gain.value = 0.42;
       this.musicGain.connect(this.master);
+      this.exploreGain = this.ctx.createGain();
+      this.exploreGain.gain.value = 0.42;
+      this.exploreGain.connect(this.master);
+      this.combatGain = this.ctx.createGain();
+      this.combatGain.gain.value = 0;
+      this.combatGain.connect(this.master);
       this.tavernGain = this.ctx.createGain();
       this.tavernGain.gain.value = 0;   // silent until the tavern plays
       this.tavernGain.connect(this.master);
@@ -85,8 +97,8 @@ export class AudioManager {
       return;
     }
 
-    // Critical audio — awaited so the first click feels instant.
-    const critical = ['ui_click', 'sword_hit', 'dice', 'tavern_music', 'music_ambient'];
+    // Critical audio — awaited so the first click feels instant. AAA: also warm combat music for adaptive crossfade.
+    const critical = ['ui_click', 'sword_hit', 'dice', 'tavern_music', 'music_ambient', 'music_combat'];
     await Promise.all(critical.map((n) => this._loadBuffer(n)));
     // NOTE: the dungeon ambient loop is intentionally NOT started here. Autoplay
     // policy blocks audio before a gesture, and we don't want the dungeon theme
@@ -159,6 +171,19 @@ export class AudioManager {
     this.pendingMusic = name;
     if (name === 'music_ambient' && this.ctx) this.startDungeonAmbience();
     if (!this.ctx) return;
+    // AAA adaptive: ambient/combat share the twin gains
+    if ((name === 'music_ambient' || name === 'music_combat') && this.exploreGain && this.combatGain) {
+      const buf = this.buffers.get(name);
+      if (!buf) { void this._loadBuffer(name).then(() => {
+        if (this.pendingMusic === name) { this.pendingMusic = null; this.playMusic(name); }
+      }); return; }
+      this.pendingMusic = null;
+      // ensure both layers looping, volumes decide which is audible
+      this.ensureAdaptiveSources();
+      this.setAdaptiveState(name === 'music_combat' ? 'combat' : 'explore', 1.0);
+      if (name === 'music_ambient') this.startDungeonAmbience();
+      return;
+    }
     const buf = this.buffers.get(name);
     if (!buf) { void this._loadBuffer(name).then(() => {
       if (this.pendingMusic === name) { this.pendingMusic = null; this.playMusic(name); }
@@ -257,6 +282,13 @@ export class AudioManager {
     if (!this.ctx) return;
     this.musicSource?.stop();
     this.musicSource = null;
+    try { this.exploreSource?.stop(); } catch { /* */ }
+    this.exploreSource = null;
+    try { this.combatSource?.stop(); } catch { /* */ }
+    this.combatSource = null;
+    if (this.exploreGain) this.exploreGain.gain.value = 0.42;
+    if (this.combatGain) this.combatGain.gain.value = 0;
+    this.adaptive = 'explore';
     this.stopDungeonAmbience();
   }
 
@@ -795,6 +827,58 @@ export class AudioManager {
   setMusicDucked(ducked: boolean) {
     if (!this.ctx) return;
     this.musicGain.gain.linearRampToValueAtTime(ducked ? 0.2 : 0.42, this.ctx.currentTime + 0.4);
+    // also duck the adaptive gains so combat stays quiet when VO plays
+    if (this.exploreGain) this.exploreGain.gain.linearRampToValueAtTime(ducked ? 0.2 : 0.42, this.ctx.currentTime + 0.4);
+    if (this.combatGain && this.adaptive === 'combat') this.combatGain.gain.linearRampToValueAtTime(ducked ? 0.2 : 0.42, this.ctx.currentTime + 0.4);
+  }
+
+  /** AAA adaptive: crossfade explore ↔ combat. Called from combat phase events. */
+  setAdaptiveState(state: 'explore' | 'combat', fadeSec = 1.2) {
+    if (!this.ctx || !this.exploreGain || !this.combatGain) return;
+    if (this.adaptive === state) return;
+    this.adaptive = state;
+    const now = this.ctx.currentTime;
+    const base = this.musicGain?.gain.value ?? 0.42;
+    this.exploreGain.gain.cancelScheduledValues(now);
+    this.combatGain.gain.cancelScheduledValues(now);
+    if (state === 'explore') {
+      this.exploreGain.gain.linearRampToValueAtTime(base, now + fadeSec);
+      this.combatGain.gain.linearRampToValueAtTime(0.0001, now + fadeSec);
+    } else {
+      this.exploreGain.gain.linearRampToValueAtTime(0.0001, now + fadeSec);
+      this.combatGain.gain.linearRampToValueAtTime(base, now + fadeSec);
+      // ensure combat music buffer is warmed
+      void this._loadBuffer('music_combat').then(() => {
+        if (this.adaptive !== 'combat' || !this.ctx) return;
+        if (!this.combatSource) {
+          const buf = this.buffers.get('music_combat');
+          if (!buf) return;
+          const src = this.ctx.createBufferSource();
+          src.buffer = buf; src.loop = true; src.connect(this.combatGain); src.start();
+          this.combatSource = src;
+        }
+      });
+    }
+  }
+
+  private ensureAdaptiveSources() {
+    if (!this.ctx || !this.exploreGain || !this.combatGain) return;
+    if (!this.exploreSource) {
+      const buf = this.buffers.get('music_ambient');
+      if (buf) {
+        const src = this.ctx.createBufferSource();
+        src.buffer = buf; src.loop = true; src.connect(this.exploreGain); src.start();
+        this.exploreSource = src;
+      }
+    }
+    if (!this.combatSource) {
+      const buf = this.buffers.get('music_combat');
+      if (buf) {
+        const src = this.ctx.createBufferSource();
+        src.buffer = buf; src.loop = true; src.connect(this.combatGain); src.start();
+        this.combatSource = src;
+      }
+    }
   }
 
   /** apply the global settings (volumes + mute). Safe to call before init()
@@ -809,5 +893,7 @@ export class AudioManager {
     this.master.gain.value = s.muted ? 0 : s.master;
     this.sfxGain.gain.value = s.sfx;
     this.musicGain.gain.value = s.music;
+    if (this.exploreGain) this.exploreGain.gain.value = s.muted ? 0 : (this.adaptive === 'explore' ? s.music : 0.0001);
+    if (this.combatGain) this.combatGain.gain.value = s.muted ? 0 : (this.adaptive === 'combat' ? s.music : 0.0001);
   }
 }

@@ -158,6 +158,10 @@ export interface SkillDef {
   summonCount?: number;
   /** raise-dead: resurrect this fight's fallen enemies as party skeletons */
   raiseCorpses?: 'one' | 'all';
+  /** AAA: requires concentration — broken on damage (Bless, etc.) */
+  concentration?: boolean;
+  /** AAA: legendary action cost (1-3, bosses) */
+  legendaryCost?: number;
 }
 
 /** A playable class from the design bible (15 total). */
@@ -274,6 +278,14 @@ export interface Unit {
   home?: GridPos;
   /** seconds until the next patrol leg (counted down in updateDungeon) */
   patrolT?: number;
+  /** AAA: reaction used this round — gates AoO to 1/round (BG3) */
+  hasReaction?: boolean;
+  /** AAA: concentrating on this skill id (e.g. bless) — broken by damage */
+  concentration?: string;
+  /** AAA: legendary actions remaining this round (bosses) */
+  legendaryActions?: number;
+  /** AAA: concentration save DC bonus */
+  concentrationSaveBonus?: number;
 }
 
 export type LogKind = 'info' | 'hit' | 'miss' | 'crit' | 'heal' | 'death' | 'system' | 'roll';

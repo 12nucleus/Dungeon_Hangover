@@ -181,6 +181,26 @@ export class Combat {
     return Math.max(Math.abs(a.x - b.x), Math.abs(a.z - b.z)); // Chebyshev = 5e diagonal-friendly
   }
 
+  /** AAA: half/full cover check — samples the line for blocking tiles. +2/+5 AC. */
+  private coverBonus(attacker: GridPos, target: GridPos): number {
+    const dx = target.x - attacker.x, dz = target.z - attacker.z;
+    const steps = Math.max(Math.abs(dx), Math.abs(dz));
+    if (steps <= 1) return 0; // adjacent never has cover
+    let blocks = 0;
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const x = Math.round(attacker.x + dx * t);
+      const z = Math.round(attacker.z + dz * t);
+      if (x === target.x && z === target.z) break;
+      if (x === attacker.x && z === attacker.z) continue;
+      if (!this.world.isWalkable(x, z)) blocks++;
+      else if (Math.abs(this.world.heightAt(x, z) - this.world.heightAt(target.x, target.z)) >= 1) blocks++;
+    }
+    if (blocks >= 2) return 5; // full cover
+    if (blocks === 1) return 2; // half cover
+    return 0;
+  }
+
   // ── combat lifecycle ───────────────────────────────────────
   start(): CombatEvent[] {
     if (this.inCombat) return []; // never merge a second fight into a live one
@@ -332,6 +352,7 @@ export class Combat {
     u.hasAction = true;
     u.hasBonus = true;
     u.attackUsed = false;
+    u.hasReaction = true;
     u.movementLeft = effMove(u);
     if (u.conditions.some((c) => c.id === 'slowed')) u.movementLeft = Math.ceil(u.movementLeft / 2);
     if (u.conditions.some((c) => c.id === 'rooted')) u.movementLeft = 0;
@@ -340,6 +361,8 @@ export class Combat {
     const hasFrenzy = u.equippedSkills.includes('frenzy') || u.knownSkills.includes('frenzy');
     if (hasFrenzy && u.hp / effMaxHp(u) < 0.5) u.cooldowns['frenzy_extra'] = 1;
     else delete u.cooldowns['frenzy_extra'];
+    // AAA: legendary bosses refresh 3 actions per round
+    if (u.bossGroup) u.legendaryActions = 3;
     ev.push({ type: 'turn', unitId: u.id, round: this.round });
     ev.push({ type: 'log', text: `▶ ${u.name}'s turn`, kind: 'system' });
     return ev;
@@ -474,15 +497,18 @@ export class Combat {
 
   /** BG3 Reaction / opportunity attack. When `mover` steps out of the reach of
    *  a living enemy that was adjacent to its start tile, that enemy takes a
-   *  free melee strike (once per such enemy). Returns the events. */
+   *  free melee strike (once per such enemy). Returns the events. AAA: each
+   *  foe has 1 reaction/round (hasReaction). */
   provokedAttacks(mover: Unit, from: GridPos, to: GridPos): CombatEvent[] {
     const ev: CombatEvent[] = [];
     const touched = new Set<string>();
     for (const foe of this.units) {
       if (!foe.alive || foe.team === mover.team || foe.bossGroup) continue;
       if (touched.has(foe.id)) continue;
+      if (foe.hasReaction === false) continue;
       if (Combat.dist(from, foe.pos) <= 1.5 && Combat.dist(to, foe.pos) > 1.5) {
         touched.add(foe.id);
+        foe.hasReaction = false;
         ev.push(...this.reactionAttack(foe, mover));
       }
     }
@@ -647,6 +673,14 @@ export class Combat {
     if (s.cost === 'bonus') u.hasBonus = false;
     if (s.cooldown > 0) u.cooldowns[s.id] = s.cooldown + 1; // +1 because it ticks at next turn start
     if (s.oncePerFight) u.cooldowns[`once_${s.id}`] = 999;
+    // AAA: concentration — break previous, start new
+    if (s.concentration) {
+      if (u.concentration && u.concentration !== s.id) {
+        u.conditions = u.conditions.filter((c) => c.id !== u.concentration);
+        ev.push({ type: 'log', text: `${u.name} drops concentration on ${u.concentration}.`, kind: 'system' });
+      }
+      u.concentration = s.id;
+    }
     if (this.typedSkillIds.has(s.id)) return [...ev, ...this.executeTypedEffects(u, s, center, targets)];
 
     // ── shove: a contested shove, resolved here (no attack roll) ──
@@ -996,8 +1030,9 @@ export class Combat {
       // stay off-screen — the spam guard). Saves are always shown above.
       if (u.team === 'party') ev.push({ type: 'dice', die: 'd20', total: atk.total, reason: `Attack vs ${t.name}` });
       const auto = s.id === 'magic_missile';
-      // prone targets are easier to hit (+2)
-      const tgtAC = effAC(t) - (t.conditions.some((x) => x.id === 'prone') ? 2 : 0);
+      // prone targets are easier to hit (+2); cover makes harder (+2/+5)
+      const cover = isRanged ? this.coverBonus(u.pos, t.pos) : 0;
+      const tgtAC = effAC(t) - (t.conditions.some((x) => x.id === 'prone') ? 2 : 0) + cover;
       const surpriseCrit = this.surpriseRound && u.team === 'party' && this.surpriseHits.has(u.id) && !!diceExpr;
       if (surpriseCrit) this.surpriseHits.delete(u.id);
       // sneak (shadow_step / xray): promote to a guaranteed crit hit
@@ -1009,7 +1044,7 @@ export class Combat {
         type: 'log',
         text: auto
           ? `${s.name} strikes ${t.name} unerringly`
-          : `Attack ${atk.roll}${fmtMod(atk.bonus)}${blessed ? `+${atk.extra}(bless)` : ''}${adv ? ` (${adv === 'adv' ? 'advantage' : 'disadvantage'})` : ''} = ${atk.total} vs AC ${tgtAC}: ${crit ? '✨CRITICAL' : hit ? 'HIT' : 'MISS'}`,
+          : `Attack ${atk.roll}${fmtMod(atk.bonus)}${blessed ? `+${atk.extra}(bless)` : ''}${adv ? ` (${adv === 'adv' ? 'advantage' : 'disadvantage'})` : ''}${cover ? ` [${cover === 5 ? 'full' : 'half'} cover +${cover} AC]` : ''} = ${atk.total} vs AC ${tgtAC}: ${crit ? '✨CRITICAL' : hit ? 'HIT' : 'MISS'}`,
         kind: crit ? 'crit' : hit ? 'hit' : 'miss',
       });
       if (!hit) {
@@ -1121,6 +1156,21 @@ export class Combat {
     ev.push({ type: 'damage', unitId: t.id, amount, kind, crit });
     ev.push({ type: 'float', unitId: t.id, text: `${crit ? '💥' : ''}-${amount}`, cls: crit ? 'crit' : 'dmg' });
     ev.push({ type: 'log', text: `${t.name} takes ${amount} ${kind} damage (${t.hp}/${effMaxHp(t)} HP left)`, kind: crit ? 'crit' : 'hit' });
+    // AAA: concentration break — CON save DC = max(10, dmg/2)
+    if (t.concentration && t.alive && amount > 0) {
+      const dc = Math.max(10, Math.floor(amount / 2));
+      const sv = rollD20(abilityMod(t.abilities.con) + (t.concentrationSaveBonus ?? 0));
+      const held = sv.total >= dc;
+      ev.push({ type: 'save', unitId: t.id, success: held, total: sv.total });
+      if (!held) {
+        const conc = t.concentration;
+        t.concentration = undefined;
+        // remove the concentration condition (bless/shield etc)
+        t.conditions = t.conditions.filter((c) => c.id !== conc);
+        ev.push({ type: 'log', text: `💥 ${t.name} loses concentration on ${conc} (CON ${sv.total} vs DC ${dc})!`, kind: 'system' });
+        ev.push({ type: 'float', unitId: t.id, text: 'Concentration broken!', cls: 'debuff' });
+      }
+    }
     if (t.hp <= 0 && t.alive) ev.push(...this.onDeath(t));
   }
 

@@ -92,11 +92,11 @@ export const SKILLS: Record<string, SkillDef> = {
   },
   bless: {
     id: 'bless', name: 'Bless', icon: '🙏', kind: 'buff',
-    desc: 'Bonus action: all living allies add +1d4 to attack rolls for 3 rounds.',
+    desc: 'Bonus action: all living allies add +1d4 to attack rolls for 3 rounds. Concentration.',
     range: 99, aoeRadius: 0, cost: 'bonus', cooldown: 4,
     attackAbility: 'wis', damageDice: '', damageType: 'radiant',
     targetsAllies: true, appliesCondition: 'blessed',
-    fxColor: 0x93c5fd, fx: 'buff',
+    fxColor: 0x93c5fd, fx: 'buff', concentration: true,
   },
   // ── Skill-tree unlockables ────────────────────────────────
   power_strike: {

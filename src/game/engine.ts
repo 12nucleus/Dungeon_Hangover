@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { VoxelWorld, WORLD_SIZE } from './world';
 import { FLOORS, START_FLOOR, levelForFloor } from '../levels';
 import { registerInteractables as registerInteractablesModule, updateInteractables as updateInteractablesModule, triggerActiveInteractable as triggerActiveInteractableModule, type Interactable } from './engine/interactables';
@@ -540,10 +541,27 @@ export class GameEngine {
     // lights — the dungeon is DARK. A trace of hemisphere ambient (0.03) so
     // unlit geometry isn't pure black (you can barely make out silhouettes),
     // but the hero's shadow-casting PointLight is the only real light source.
-    // No sun, no fill — the torch carries everything.
-    const hemi = new THREE.HemisphereLight(0x5a6a8a, 0x1a1410, 0.03);
+    // No sun, no fill — the torch carries everything. AAA: add a very dim
+    // directional moon wash that casts soft shadows for depth, kept ultra-low
+    // so it never competes with the torch.
+    const hemi = new THREE.HemisphereLight(0x5a6a8a, 0x1a1410, 0.04);
     this.scene.add(hemi);
     this.hemiLight = hemi;
+    // subtle moon wash — provides SSAO-anchoring and soft directional shadows
+    const moon = new THREE.DirectionalLight(0x8ea0c8, 0.35);
+    moon.position.set(18, 28, 12);
+    moon.castShadow = true;
+    moon.shadow.mapSize.set(2048, 2048);
+    moon.shadow.camera.near = 1;
+    moon.shadow.camera.far = 80;
+    moon.shadow.camera.left = -30;
+    moon.shadow.camera.right = 30;
+    moon.shadow.camera.top = 30;
+    moon.shadow.camera.bottom = -30;
+    moon.shadow.bias = -0.0005;
+    moon.shadow.radius = 3;
+    this.scene.add(moon);
+    (this as any)._moonLight = moon;
 
     // PERFORMANCE (Fix A): the heaviest single operation in init() is
     // `new VoxelWorld(...)` which builds ~150k voxel cubes synchronously
@@ -886,10 +904,19 @@ export class GameEngine {
     window.addEventListener('pointerdown', this.splashAudioHandler);
     window.addEventListener('keydown', this.splashAudioHandler);
 
-    // composer (bloom makes fireballs & torchlight pop)
+    // composer (bloom makes fireballs & torchlight pop) — AAA: SSAO for contact shadows
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.iso.cam));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.5, 0.78);
+    try {
+      const ssao = new SSAOPass(this.scene, this.iso.cam, w, h);
+      ssao.kernelRadius = 0.9;
+      ssao.minDistance = 0.001;
+      ssao.maxDistance = 0.08;
+      (ssao as any).output = 0; // default beauty
+      this.composer.addPass(ssao);
+      (this as any)._ssaoPass = ssao;
+    } catch { /* SSAO unavailable on this GPU — bloom still works */ }
+    const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.62, 0.45, 0.82);
     this.composer.addPass(bloom);
     this.composer.addPass(new OutputPass());
 
@@ -4370,6 +4397,25 @@ export class GameEngine {
     if (this.phase !== 'menu' && !this.disposed) {
       const hero = this.combat?.living('party')[0];
       if (hero && fxAmbient) fxAmbient(this.particles, this.unitWorld(hero.pos), dt);
+    }
+    // AAA: condition VFX loops — burning/poisoned/etc. emit tinted motes above the carrier
+    if (!this.disposed) {
+      const condVfx: Record<string, { color: number[]; fn: (ps: any, p: any) => void }> = {
+        burning: { color: [0xff7a1f, 0xff4400], fn: (ps, p) => FX.blood(ps, p) },
+        poisoned: { color: [0x9ad86a, 0x6f9c3f], fn: (ps, p) => FX.blood(ps, p) },
+        bleeding: { color: [0xc0504a, 0x8a2a2a], fn: (ps, p) => FX.blood(ps, p) },
+        blessed: { color: [0x93c5fd, 0xfde68a], fn: (ps, p) => FX.buff(ps, p) },
+        shielded: { color: [0x93c5fd, 0xbcd8ff], fn: (ps, p) => FX.buff(ps, p) },
+      };
+      for (const u of this.combat?.units ?? []) {
+        if (!u.alive || !u.conditions.length) continue;
+        for (const c of u.conditions) {
+          const vfx = condVfx[c.id];
+          if (!vfx || Math.random() > 0.22) continue;
+          const wp = this.unitWorld(u.pos).clone().add(new THREE.Vector3((Math.random()-0.5)*0.5, 1.1 + Math.random()*0.5, (Math.random()-0.5)*0.5));
+          vfx.fn(this.particles, wp);
+        }
+      }
     }
 
     this.particles.update(dt);

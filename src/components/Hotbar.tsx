@@ -181,6 +181,9 @@ export function Hotbar({ snap, engine }: Props) {
           const sid = loadout[i] ?? null;
           const s = sid ? (SKILLS[sid] ?? ALL_CLASS_SKILLS[sid]) : null;
           const cd = sid ? (active.cooldowns[sid] ?? 0) : 0;
+          const maxCd = s?.cooldown ?? 0;
+          const cdPct = maxCd > 0 && cd > 0 ? Math.min(1, cd / (maxCd + 1)) : 0;
+          const isConcentration = sid != null && active.concentration === sid;
           const unavailable = enemyTurn || (sid && phase === 'combat'
             ? ((s?.cost === 'action' && !active.hasAction) || (s?.cost === 'bonus' && !active.hasBonus) || cd > 0)
             : false);
@@ -188,14 +191,16 @@ export function Hotbar({ snap, engine }: Props) {
           return (
             <button
               key={i}
-              className={`skill-btn ${sid && snap.selectedSkill === sid ? 'selected' : ''} ${unavailable ? 'disabled' : ''} ${!sid ? 'empty' : ''}`}
+              className={`skill-btn ${sid && snap.selectedSkill === sid ? 'selected' : ''} ${unavailable ? 'disabled' : ''} ${!sid ? 'empty' : ''} ${isConcentration ? 'concentration' : ''}`}
               onClick={() => sid && !enemyTurn ? engine.selectSkill(sid) : undefined}
-              title={s ? `${s.name} — ${s.desc}${s.cooldown ? ` (CD ${s.cooldown})` : ''} [${keyLabel}]` : `Empty slot [${keyLabel}]`}
+              title={s ? `${s.name} — ${s.desc}${s.cooldown ? ` (CD ${s.cooldown})` : ''}${isConcentration ? ' [Concentrating]' : ''} [${keyLabel}]` : `Empty slot [${keyLabel}]`}
             >
               <span className="skill-icon">{s?.icon ?? ''}</span>
               <span className="skill-key">{keyLabel}</span>
               {s?.cost === 'bonus' && <span className="skill-cost">B</span>}
-              {cd > 0 && <span className="skill-cd">{cd}</span>}
+              {isConcentration && <span className="skill-conc">◉</span>}
+              {cd > 0 && <span className="skill-cd">{String(cd).startsWith('999') ? '∞' : cd}</span>}
+              {cdPct > 0 && <span className="skill-cd-fill" style={{ height: `${cdPct * 100}%` }} />}
             </button>
           );
         })}
