@@ -394,9 +394,18 @@ function bonfireClick(engine: any, leader: Unit | null, idx = 0) {
   const bp = engine.bonfireSpots?.[idx] ?? engine.bonfirePos;
   if (!bp || !leader) return;
   const active = engine.bonfirePos?.x === bp.x && engine.bonfirePos?.z === bp.z;
-  if (Combat.dist(leader.pos, bp) <= 1.5) {
+  const d = Combat.dist(leader.pos, bp);
+  if (d <= 1.5) {
     if (active && engine.bonfireLit) engine.restAtBonfire(idx); else engine.lightBonfire(idx);
     return;
+  }
+  // forgiving: if within 6 and line of sight, light/rest directly (covers blocked adjacency / stale path)
+  if (d <= 6 && engine.hasLineOfSight?.(leader.pos, bp)) {
+    const target = closestWalkableAdjacent(engine, bp, leader) ?? bp;
+    if (engine.world.isWalkable(target.x, target.z)) {
+      if (active && engine.bonfireLit) engine.restAtBonfire(idx); else engine.lightBonfire(idx);
+      return;
+    }
   }
   const adj = closestWalkableAdjacent(engine, bp, leader);
   if (adj) {
@@ -512,6 +521,30 @@ function walkClick(engine: any, leader: Unit, tile: GridPos) {
 }
 
 export function clickExplore(engine: any, pick: InteractPick | null, tile: GridPos | null) {
+  // attack armed outside combat — click an enemy to provoke (bow = ranged 8)
+  if (engine.targeting === 'attack' && pick?.kind === 'unit' && pick.unitId) {
+    const target = engine.byId(pick.unitId);
+    const leader = engine.byId(engine.selectedId ?? '') ?? engine.combat.living('party')[0];
+    if (target && target.team === 'enemy' && leader) {
+      const hasBow = leader.equipment?.ranged?.weaponKind === 'bow' || leader.equipment?.weapon?.weaponKind === 'bow';
+      const tier = leader.equipment?.ranged?.tier ?? leader.equipment?.weapon?.tier ?? 1;
+      const maxRange = hasBow ? (tier === 3 ? 10 : 8) : 1;
+      const dist = Combat.dist(leader.pos, target.pos);
+      if (dist <= maxRange && engine.hasLineOfSight?.(leader.pos, target.pos)) {
+        engine.targeting = null;
+        engine.clearHighlights?.();
+        // provoke the group — start combat
+        if (target.groupId) engine.aggroGroup?.(target.groupId);
+        else { target.dormant = false; engine.enqueue?.(engine.combat.start()); }
+        engine.pushLog(`⚔ ${leader.name} ${hasBow ? 'looses an arrow at' : 'charges'} ${target.name}!`, 'system');
+        if (leader.sneak) { leader.sneak = true; engine.pushLog('Sneak attack — guaranteed critical!', 'system'); }
+        return;
+      } else {
+        engine.setHoverInfoOnce(hasBow ? `Out of bow range (${maxRange}) — move closer.` : 'Out of melee range — move closer.');
+        return;
+      }
+    }
+  }
   // jump-mode: the click is a hop target (budget-2 move)
   if (engine.jumpMode && tile) {
     engine.jumpMode = false;

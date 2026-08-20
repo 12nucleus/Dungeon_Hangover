@@ -42,7 +42,7 @@ export async function animate(engine: any, ev: CombatEvent) {
       // Gribnab's phase-2 arsenal announces itself once per fight
       if ((ev.skill.id === 'soap_storm' || ev.skill.id === 'duck_swarm') && !engine.flags?.has('grib_bark_phase2')) {
         engine.setFlag?.('grib_bark_phase2');
-        void engine.narrate?.('f50_grib_phase2', GRIBNAB_BARKS.phase2, 4200);
+        void (engine.bark?.('gribnab', 'bark_phase2', GRIBNAB_BARKS.phase2, 4200) ?? engine.narrate?.('f50_grib_phase2', GRIBNAB_BARKS.phase2, 4200));
       }
       break;
     }
@@ -134,14 +134,14 @@ export async function animate(engine: any, ev: CombatEvent) {
         engine.setFlag?.('gribnab_dead');
         engine.runStats.kills += 1;
         engine.pushLog('🛁 The Goblin King is dead. The bath is silent. The rubber ducks float, abandoned.', 'system');
-        void engine.narrate?.('f50_grib_death', GRIBNAB_BARKS.death, 4800);
+        void (engine.bark?.('gribnab', 'bark_death', GRIBNAB_BARKS.death, 4800) ?? engine.narrate?.('f50_grib_death', GRIBNAB_BARKS.death, 4800));
         // The Longest Morning — Gribnab is dealt with (death path)
         engine.questLog?.progress?.('the_longest_morning');
         engine.pushLog?.(MAIN_QUEST_F50.stages.gribnabDown, 'system');
       }
       if (slain?.name === 'Baron Gnaw') {
         engine.setFlag?.('boss_rat_dead');
-        void engine.narrate?.('f50_baron_death', BARON_BARKS.death, 4200);
+        void (engine.bark?.('baron_gnaw', 'bark_death', BARON_BARKS.death, 4200) ?? engine.narrate?.('f50_baron_death', BARON_BARKS.death, 4200));
       }
       if (slain?.name === 'The Spore Mother') {
         engine.setFlag?.('spore_mother_dead');
@@ -189,7 +189,7 @@ export async function animate(engine: any, ev: CombatEvent) {
         const sum = engine.byId(ev.summonerId);
         if (sum?.name === 'Baron Gnaw' && !engine.flags?.has('baron_summon_barked')) {
           engine.setFlag?.('baron_summon_barked');
-          void engine.narrate?.('f50_baron_summon', BARON_BARKS.summon, 4200);
+          void (engine.bark?.('baron_gnaw', 'bark_summon', BARON_BARKS.summon, 4200) ?? engine.narrate?.('f50_baron_summon', BARON_BARKS.summon, 4200));
         }
       }
       const sv = engine.visuals.get(u.id);
@@ -783,13 +783,13 @@ function barkOnHpThreshold(engine: any, unitId: string) {
   const pct = u.hp / Math.max(1, u.maxHp);
   if (pct <= 0.25 && !engine.flags?.has('grib_bark_25')) {
     engine.setFlag?.('grib_bark_25');
-    void engine.narrate?.('f50_grib_25', GRIBNAB_BARKS.hp25, 4200);
+    void (engine.bark?.('gribnab', 'bark_hp25', GRIBNAB_BARKS.hp25, 4200) ?? engine.narrate?.('f50_grib_25', GRIBNAB_BARKS.hp25, 4200));
   } else if (pct <= 0.5 && !engine.flags?.has('grib_bark_50')) {
     engine.setFlag?.('grib_bark_50');
-    void engine.narrate?.('f50_grib_50', GRIBNAB_BARKS.hp50, 4200);
+    void (engine.bark?.('gribnab', 'bark_hp50', GRIBNAB_BARKS.hp50, 4200) ?? engine.narrate?.('f50_grib_50', GRIBNAB_BARKS.hp50, 4200));
   } else if (pct <= 0.75 && !engine.flags?.has('grib_bark_75')) {
     engine.setFlag?.('grib_bark_75');
-    void engine.narrate?.('f50_grib_75', GRIBNAB_BARKS.hp75, 4200);
+    void (engine.bark?.('gribnab', 'bark_hp75', GRIBNAB_BARKS.hp75, 4200) ?? engine.narrate?.('f50_grib_75', GRIBNAB_BARKS.hp75, 4200));
   }
 }
 

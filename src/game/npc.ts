@@ -252,6 +252,7 @@ export const SCRAG: NPCDef = {
       choices: [
         { label: '🧼 Hand over the goblin soap', visibleIf: { item: 'goblin_soap' }, actions: [{ type: 'takeItem', itemId: 'goblin_soap' }, { type: 'setFlag', flag: 'soap_gate_open' }, { type: 'completeQuest', questId: 'soap_conundrum' }], next: 'soap_done' },
         { label: '🧼 Hand over the premium soap', visibleIf: { item: 'premium_soap' }, actions: [{ type: 'takeItem', itemId: 'premium_soap' }, { type: 'setFlag', flag: 'soap_gate_open' }, { type: 'completeQuest', questId: 'soap_conundrum' }], next: 'soap_done' },
+        { label: '🧼 Hand over a soap chunk (it\'ll have to do)', visibleIf: { item: 'soap_chunk' }, actions: [{ type: 'takeItem', itemId: 'soap_chunk' }, { type: 'setFlag', flag: 'soap_gate_open' }, { type: 'completeQuest', questId: 'soap_conundrum' }], next: 'soap_done' },
         { label: '💥 Break it down', visibleIf: { ability: { stat: 'str', min: 14 } }, actions: [{ type: 'setFlag', flag: 'soap_gate_open' }, { type: 'setFlag', flag: 'made_noise' }], next: 'break_done' },
         { label: '😏 Charm him', visibleIf: { ability: { stat: 'cha', min: 15 } }, actions: [{ type: 'setFlag', flag: 'soap_gate_open' }], next: 'charm_done' },
         { label: '⚔ Attack', action: { type: 'setFlag', flag: 'scrag_hostile' }, next: 'attack' },
@@ -328,6 +329,13 @@ export const GRIBNAB: NPCDef = {
     final_taunt: {
       text: "You fight well for someone in underwear! I am almost proud! Almost! But the bath demands a sacrifice and the water is getting cold, and you — YOU — are it. Every king needs a cautionary tale. Every bath needs a rubber duck. And you, my naked friend, are about to become BOTH.",
     },
+    // boss barks — mid-fight lines, voiced as Gribnab (not narrator)
+    bark_hp75: { text: "How DARE you track mud across my bath mat. That is a LIMITED EDITION bath mat." },
+    bark_hp50: { text: "The bath overflows. The bath OVERFLOWS. Do you know how long it took to get the temperature just so." },
+    bark_hp25: { text: "My bubbles. You are popping my BUBBLES. Each bubble had a NAME." },
+    bark_phase2: { text: "Enough lukewarm hospitality. Now the water gets SERIOUS." },
+    bark_death: { text: "I yield. I yield. The bath is yours. Just... just keep the cap. Please. It was a gift from the Suds himself. It is all I have. It is all I have EVER had." },
+    bark_bath: { text: "Bath time, little naked one. Hold still. This is going to be HUMILIATING." },
   },
 };
 
@@ -548,6 +556,13 @@ export const MOB_MUSHROOM_MIMIC: NPCDef = {
     },
   },
 };
+export const BARON_GNAW_NPC: NPCDef = {
+  id: 'baron_gnaw', name: 'Baron Gnaw', title: 'Boss Rat', scheme: mobScheme('crawler', 0x5a2a1a, 0x3a1a0a), entryNode: 'bark',
+  dialogue: {
+    bark_summon: { text: "Baron Gnaw whistles. The whistle, in rat, means 'everyone.' You are about to meet everyone." },
+    bark_death: { text: "Baron Gnaw collapses into a pile of wet fur and bad decisions. The surviving rats look at the body, look at each other, and immediately start campaigning to be the new Baron." },
+  },
+};
 
 // (mob barks aren't spawned NPCs — they're combat units with unit.npcId —
 // but registering keeps them discoverable)
@@ -558,6 +573,7 @@ export const NPCS: Record<string, NPCDef> = {
   other_hermit: OTHER_HERMIT,
   scrag: SCRAG,
   gribnab: GRIBNAB,
+  baron_gnaw: BARON_GNAW_NPC,
   sporefriend: SPOREFRIEND,
   // ── floor 49 cast (voices designed by scripts/gen_voice_design.py) ──
   hermit_shroom: HERMIT_SHROOM,

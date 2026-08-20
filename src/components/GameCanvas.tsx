@@ -33,6 +33,7 @@ export function GameCanvas() {
       setLoadingReady(true);
     });
     engineRef.current = engine;
+    (window as any).__engine = engine;
     engine.init();
     if (isDebug) engine.enterEditorMode();
   }, [isDebug]);

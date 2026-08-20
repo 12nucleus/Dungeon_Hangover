@@ -343,40 +343,49 @@ export function buildHierarchy(rig: Rig): void {
   group.userData.hierarchyBuilt = true;
 }
 
-function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 1): THREE.Group {
+function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 1, tier: number = 1, enchantId?: string): THREE.Group {
   const g = new THREE.Group();
   const v = new Vox(C, SUB);
   const grip = 0x4a3421;
   switch (kind) {
-    case 'sword':
-      v.fill(0, 0, 0, 0, 1, 0, grip);
-      v.fill(-1, 2, 0, 1, 2, 0, METAL_DARK);
-      v.fill(0, 3, 0, 0, 8, 0, METAL);
+    case 'sword': {
+      if (tier === 1) { v.fill(0, 0, 0, 0, 1, 0, grip); v.fill(-1, 2, 0, 1, 2, 0, METAL_DARK); v.fill(0, 3, 0, 0, 5, 0, METAL); v.fill(0, 6, 0, 0, 6, 0, METAL); }
+      else if (tier === 2) { v.fill(0, 0, 0, 0, 1, 0, grip); v.fill(-1, 2, 0, 1, 2, 0, METAL_DARK); v.fill(-2, 2, 0, -2, 2, 0, METAL_DARK); v.fill(2, 2, 0, 2, 2, 0, METAL_DARK); v.fill(0, 3, 0, 0, 8, 0, METAL); v.fill(0, 8, 0, 0, 8, 0, METAL); v.add(0, -1, 0, 0xffd76b); }
+      else { v.fill(0, -1, 0, 0, -1, 0, 0xffd76b); v.fill(0, 0, 0, 0, 1, 0, grip); v.fill(-2, 2, 0, 2, 2, 0, METAL_DARK); v.fill(0, 3, 0, 0, 9, 0, METAL); v.fill(1, 3, 0, 1, 3, 0, 0xffd76b); v.fill(0, 9, 0, 0, 9, 0, METAL); v.fill(0, 10, 0, 0, 10, 0, METAL); }
       break;
-    case 'dagger':
-      v.add(0, 0, 0, grip);
-      v.fill(0, 1, 0, 0, 4, 0, METAL);
+    }
+    case 'dagger': {
+      if (tier === 3) { v.add(0, 0, 0, grip); v.fill(-1, 2, 0, 1, 2, 0, METAL_DARK); v.fill(0, 3, 0, 0, 3, 0, METAL); v.fill(1, 4, 0, 1, 4, 0, METAL); v.fill(2, 4, 0, 2, 4, 0, METAL); v.fill(1, 5, 0, 1, 5, 0, METAL); v.fill(2, 5, 0, 2, 5, 0, METAL); v.fill(1, 6, 0, 1, 6, 0, METAL); }
+      else if (tier === 2) { v.add(0, 0, 0, grip); v.fill(0, 1, 0, 0, 1, 0, grip); v.fill(-1, 2, 0, 1, 2, 0, METAL_DARK); v.fill(0, 3, 0, 0, 6, 0, METAL); }
+      else { v.add(0, 0, 0, grip); v.fill(0, 1, 0, 0, 4, 0, METAL); }
       break;
-    case 'club':
-      v.fill(0, 0, 0, 0, 3, 0, grip);
-      v.fill(-1, 4, -1, 1, 5, 1, accent);
+    }
+    case 'club': {
+      if (tier === 3) { v.fill(0, 0, 0, 0, 2, 0, grip); v.fill(-1, 3, 0, 1, 5, 0, accent); v.fill(-1, 3, 1, 1, 3, 1, accent); v.fill(0, 5, 0, 0, 5, 0, accent); }
+      else if (tier === 2) { v.fill(0, 0, 0, 0, 3, 0, grip); v.fill(-1, 4, -1, 1, 5, 1, accent); v.add(2, 4, 0, METAL); }
+      else { v.fill(0, 0, 0, 0, 3, 0, grip); v.fill(-1, 4, -1, 1, 5, 1, accent); }
       break;
-    case 'mace':
-      v.fill(0, 0, 0, 0, 3, 0, grip);
-      v.fill(-1, 4, -1, 1, 5, 1, METAL);
-      v.add(2, 4, 0, METAL); v.add(-2, 4, 0, METAL);
-      v.add(0, 4, 2, METAL); v.add(0, 4, -2, METAL);
+    }
+    case 'mace': {
+      if (tier === 1) { v.fill(0, 0, 0, 0, 3, 0, grip); v.fill(-1, 4, -1, 1, 5, 1, METAL); }
+      else if (tier === 2) { v.fill(0, 0, 0, 0, 3, 0, grip); v.fill(-1, 4, -1, 1, 5, 1, METAL); v.add(2, 4, 0, METAL); v.add(-2, 4, 0, METAL); v.add(0, 4, 2, METAL); }
+      else { v.fill(0, 0, 0, 0, 3, 0, grip); v.fill(-1, 4, -1, 1, 5, 1, METAL); v.add(2, 4, 0, METAL); v.add(-2, 4, 0, METAL); v.add(0, 4, 2, METAL); v.add(0, 4, -2, METAL); v.add(2, 5, 0, METAL); }
       break;
-    case 'staff':
-      // shaft extends from y=-34 (touches the ground) to y=27 (top crossbar)
-      v.fill(0, -34, 0, 0, 27, 0, 0x6b4a2e);
-      v.fill(-1, 27, 0, 1, 27, 0, 0x5f3e22);
+    }
+    case 'staff': {
+      if (tier === 3) { v.fill(0, -34, 0, 0, 27, 0, 0x6b4a2e); v.fill(-1, 27, 0, 1, 27, 0, 0x5f3e22); v.add(0, 28, 0, 0xffd76b); }
+      else { v.fill(0, -34, 0, 0, 27, 0, 0x6b4a2e); v.fill(-1, 27, 0, 1, 27, 0, 0x5f3e22); }
       break;
-    case 'bow':
-      v.fill(0, 0, 0, 0, 4, 0, 0x6b4a2e);
-      v.add(-1, -1, 0, 0x6b4a2e); v.add(-1, 5, 0, 0x6b4a2e);
-      v.fill(-1, 0, 0, -1, 4, 0, DARK, 0.02);
+    }
+    case 'bow': {
+      const LIMB = 0x6b4a2e;
+      if (tier === 1) { v.fill(0, 0, 0, 0, 2, 0, grip); v.add(-1, 2, 0, LIMB); v.add(-1, 3, 0, LIMB); v.add(-1, -1, 0, LIMB); for(let y=-1;y<=3;y++) v.add(-1, y, 0, LIMB); }
+      else if (tier === 2) { v.fill(0, 0, 0, 0, 2, 0, grip); v.add(-1, 2, 0, LIMB); v.add(-2, 3, 0, LIMB); v.add(-2, 4, 0, LIMB); v.add(-1, 5, 0, LIMB); v.add(-1, -1, 0, LIMB); v.add(-2, -2, 0, LIMB); for(let y=-2;y<=4;y++) v.add(-2, y, 0, LIMB); v.add(1, 0, 0, 0x6b4a2e); v.add(2, 0, 0, METAL); }
+      else { v.fill(0, 0, 0, 0, 2, 0, grip); v.add(-1, 2, 0, LIMB); v.add(-2, 3, 0, LIMB); v.add(-2, 4, 0, 0xffd76b); v.add(-2, 5, 0, LIMB); v.add(-2, 6, 0, LIMB); v.add(-1, 6, 0, LIMB); v.add(-1, -1, 0, LIMB); v.add(-2, -2, 0, LIMB); v.add(-2, -3, 0, LIMB); for(let y=-3;y<=5;y++) v.add(-2, y, 0, LIMB); v.add(1, 0, 0, 0x6b4a2e); v.add(2, 0, 0, METAL); v.add(3, 0, 0, METAL); }
+      // string
+      v.add(-2, -2, 0, 0xe8e0c8); for(let y=-2;y<=5;y++) v.add(-2, y, 0, 0xe8e0c8);
       break;
+    }
     case 'torch':
       v.fill(0, 0, 0, 0, 4, 0, 0x6b4a2e);
       v.fill(-1, 4, -1, 1, 5, 1, 0x3a2a18);
@@ -404,6 +413,20 @@ function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 
     const f2 = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 0.10), flameMat);
     f2.position.set(0, 6.3 * C, 0);
     g.add(f1, f2);
+  }
+  if (enchantId) {
+    const colMap: Record<string, number> = { flaming: 0xff7a1f, frost: 0x7dd3fc, shocking: 0xfde047 };
+    const col = colMap[enchantId] ?? 0xffd76b;
+    const tipMat = new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.9 });
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.07), tipMat);
+    tip.position.set(kind === 'bow' ? -2 * C : 0, (kind === 'bow' ? 6 : kind === 'staff' ? 27 : 8) * C, 0);
+    g.add(tip);
+    if (enchantId === 'flaming') {
+      const light = new THREE.PointLight(col, 1.0, 3, 1.8);
+      light.position.copy(tip.position);
+      g.add(light);
+      g.userData.enchant = 'flaming';
+    }
   }
   return g;
 }
@@ -1645,11 +1668,11 @@ function disposeRigPart(rig: Rig, name: string) {
 }
 
 /** Build a held weapon and parent it to the rig's left or right hand. */
-function attachWeapon(rig: Rig, kind: WeaponKind, accent: number, side: 'L' | 'R'): THREE.Group {
+function attachWeapon(rig: Rig, kind: WeaponKind, accent: number, side: 'L' | 'R', tier: number = 1, enchantId?: string): THREE.Group {
   const detailed = !!rig.pivots;
   const C = detailed ? C_DETAIL : C_CHIBI;
   const WC = detailed ? C_NORMAL : C_CHIBI;
-  const wg = buildWeapon(kind, accent, WC);
+  const wg = buildWeapon(kind, accent, WC, 1, tier, enchantId);
   if (detailed) {
     const hand = (side === 'L' ? rig.parts.handL : rig.parts.handR) as THREE.Mesh | undefined;
     const sgn = side === 'L' ? -1 : 1;
@@ -1674,17 +1697,17 @@ function attachWeapon(rig: Rig, kind: WeaponKind, accent: number, side: 'L' | 'R
 }
 
 /** Swap (or remove) the weapon held in the rig's hand. Pass null to unequip. */
-export function setWeapon(rig: Rig, kind: WeaponKind | null, accent: number) {
+export function setWeapon(rig: Rig, kind: WeaponKind | null, accent: number, tier: number = 1, enchantId?: string) {
   disposeRigPart(rig, 'weapon');
   if (!kind) return;
-  rig.parts.weapon = attachWeapon(rig, kind, accent, 'R') as unknown as THREE.Mesh;
+  rig.parts.weapon = attachWeapon(rig, kind, accent, 'R', tier, enchantId) as unknown as THREE.Mesh;
 }
 
 /** Swap (or remove) the off-hand weapon (dual-wielded blade/club). Pass null to unequip. */
-export function setOffWeapon(rig: Rig, kind: WeaponKind | null, accent: number) {
+export function setOffWeapon(rig: Rig, kind: WeaponKind | null, accent: number, tier: number = 1, enchantId?: string) {
   disposeRigPart(rig, 'offWeapon');
   if (!kind) return;
-  rig.parts.offWeapon = attachWeapon(rig, kind, accent, 'L') as unknown as THREE.Mesh;
+  rig.parts.offWeapon = attachWeapon(rig, kind, accent, 'L', tier, enchantId) as unknown as THREE.Mesh;
 }
 
 // ────── ANIMATION ──────

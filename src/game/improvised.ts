@@ -25,13 +25,13 @@ export interface SlotUse {
 export const SLOT_LABEL: Record<EquipSlot, string> = {
   head: 'Head', chest: 'Chest', legs: 'Legs', boots: 'Boots', gloves: 'Gloves',
   arms: 'Arms', cloak: 'Cloak', belt: 'Belt', trinket: 'Charm',
-  weapon: 'Weapon', offHand: 'Off-Hand', amulet: 'Amulet', ring: 'Ring',
+  weapon: 'Weapon', offHand: 'Off-Hand', amulet: 'Amulet', ring: 'Ring', ranged: 'Ranged',
 };
 
 export const SLOT_ICON: Record<string, string> = {
   head: '⛑️', chest: '🦺', legs: '👖', boots: '👢', gloves: '🧤', arms: '💪',
   cloak: '🧥', belt: '🧷', trinket: '🧿', weapon: '⚔️', offHand: '🛡️',
-  amulet: '📿', ring: '💍', ring1: '💍', ring2: '💍',
+  amulet: '📿', ring: '💍', ring1: '💍', ring2: '💍', ranged: '🏹',
 };
 
 const U = (u: SlotUse) => u;
@@ -201,17 +201,18 @@ const KEY_BASES: Record<string, true> = { iron_key: true, golden_key: true, rust
 function deriveUses(item: Item): SlotUse[] {
   const uses: SlotUse[] = [];
   if (item.kind === 'weapon') {
+    const wSlot: EquipSlot = (item.slot as EquipSlot) === 'ranged' ? 'ranged' : 'weapon';
     uses.push({
-      slot: 'weapon',
-      role: 'Weapon',
+      slot: wSlot,
+      role: wSlot === 'ranged' ? 'Ranged' : 'Weapon',
       damageDice: item.damageDice,
       damageType: item.damageType,
       onHitCondition: item.onHitCondition,
       note: item.damageDice
-        ? `${item.damageDice} ${item.damageType ?? 'bludgeoning'}${item.twoHanded ? ' · two-handed' : ''}`
+        ? `${item.damageDice} ${item.damageType ?? 'bludgeoning'}${wSlot === 'ranged' ? ` · ${item.tier === 3 ? 10 : 8} tiles` : ''}${item.twoHanded ? ' · two-handed' : ''}`
         : 'Improvised.',
     });
-    if (!item.twoHanded) {
+    if (!item.twoHanded && wSlot === 'weapon') {
       uses.push({
         slot: 'offHand',
         role: 'Off-hand',

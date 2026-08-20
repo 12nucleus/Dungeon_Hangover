@@ -294,6 +294,10 @@ export class GameEngine {
   public pendingSmash: { unitId: string; propId: string } | null = null;
   public bigMessage: string | null = null;
   public cinematic = false;
+  /** queue for sequential narration: walk-triggered lines wait for the current
+   *  subtitle to finish instead of cutting it (fixes boss-room overlap) */
+  private narrateQueue: Array<{ id: string; text: string; minMs: number; npcId?: string; nodeId?: string }> = [];
+  private narrateRunning = false;
   /** new-game tutorial pager: 0 = off; 1..N = active step (see HUD card) */
   public tutorialStep = 0;
 
@@ -353,29 +357,89 @@ export class GameEngine {
     });
   }
 
-  public async narrate(id: string, text: string, minMs = 4200) {
-    if (this.cutsceneSkip) return;
-    this.stopVo();               // a previous VO (if any) must not overlap ours
+  private async drainNarrateQueue() {
+    if (this.narrateRunning || !this.narrateQueue.length) return;
+    this.narrateRunning = true;
+    const next = this.narrateQueue.shift()!;
+    if (next.npcId && next.nodeId) await this.runBark(next.npcId, next.nodeId, next.text, next.minMs);
+    else await this.runNarrate(next.id, next.text, next.minMs);
+    this.narrateRunning = false;
+    if (this.narrateQueue.length) void this.drainNarrateQueue();
+  }
+  private async runNarrate(id: string, text: string, minMs: number) {
+    this.stopVo();
     this.showCine(text);
-    let dur = minMs;
+    // long text needs longer on-screen time even without audio (text-only fallback)
+    const textMs = Math.ceil(text.length * 42);
+    let dur = Math.max(minMs, textMs);
     try {
       const res = await fetch(`${import.meta.env.BASE_URL}audio/narration/${id}.mp3`);
       if (res.ok) {
         const probe = new Audio(`${import.meta.env.BASE_URL}audio/narration/${id}.mp3`);
-        dur = (await new Promise<number>((resolve) => {
+        dur = Math.max(dur, await new Promise<number>((resolve) => {
           probe.onloadedmetadata = () => resolve((probe.duration || minMs / 1000) * 1000);
-          probe.onerror = () => resolve(minMs);
-          setTimeout(() => resolve(minMs), 400);
+          probe.onerror = () => resolve(dur);
+          setTimeout(() => resolve(dur), 400);
         }));
-        // re-check: a skip may have happened while probing — don't start audio
-        // after the scene was told to stop; the caption wait below still resolves
         if (!this.cutsceneSkip) this.playVo(`${import.meta.env.BASE_URL}audio/narration/${id}.mp3`);
       }
     } catch { /* asset missing → text only */ }
-    await this.cineDelay(Math.max(minMs, dur));
-    // narrate owns its own caption lifecycle — clear the line after it plays
-    // (cutscene beats that clearCine() early are harmless double-clears)
+    await this.cineDelay(dur);
     this.clearCine();
+  }
+  private async runBark(npcId: string, nodeId: string, text: string, minMs: number) {
+    this.stopVo();
+    this.showCine(text);
+    const textMs = Math.ceil(text.length * 42);
+    let dur = Math.max(minMs, textMs);
+    const npcUrl = `${import.meta.env.BASE_URL}audio/npc/${npcId}_${nodeId}.mp3`;
+    const narrUrl = `${import.meta.env.BASE_URL}audio/narration/f50_${nodeId}.mp3`;
+    const altNpcUrl = `${import.meta.env.BASE_URL}audio/npc/${npcId}_${nodeId.replace('f50_', '')}.mp3`;
+    let chosen: string | null = null;
+    for (const url of [npcUrl, altNpcUrl, narrUrl]) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) { chosen = url; break; }
+      } catch { /* try next */ }
+    }
+    if (chosen) {
+      try {
+        const probe = new Audio(chosen);
+        dur = Math.max(dur, await new Promise<number>((resolve) => {
+          probe.onloadedmetadata = () => resolve((probe.duration || minMs / 1000) * 1000);
+          probe.onerror = () => resolve(dur);
+          setTimeout(() => resolve(dur), 400);
+        }));
+        if (!this.cutsceneSkip) this.playVo(chosen);
+      } catch { /* text only */ }
+    }
+    await this.cineDelay(dur);
+    this.clearCine();
+  }
+  public async narrate(id: string, text: string, minMs = 4200) {
+    if (this.cutsceneSkip) return;
+    // queue if a subtitle is already showing — prevents boss-room overlap where
+    // room entry + cutscene both call void narrate in the same frame
+    if (this.narrateRunning || this.cinematic) {
+      this.narrateQueue.push({ id, text, minMs });
+      void this.drainNarrateQueue();
+      return;
+    }
+    this.narrateQueue.push({ id, text, minMs });
+    void this.drainNarrateQueue();
+  }
+  /** boss / NPC bark: same subtitle lifecycle as narrate, but tries the NPC's
+   *  designed voice first (audio/npc/<npc>_<node>.mp3), falling back to the
+   *  narrator file. Fixes Gribnab barks that were previously narrator-voiced. */
+  public async bark(npcId: string, nodeId: string, text: string, minMs = 4200) {
+    if (this.cutsceneSkip) return;
+    if (this.narrateRunning || this.cinematic) {
+      this.narrateQueue.push({ id: nodeId, text, minMs, npcId, nodeId });
+      void this.drainNarrateQueue();
+      return;
+    }
+    this.narrateQueue.push({ id: nodeId, text, minMs, npcId, nodeId });
+    void this.drainNarrateQueue();
   }
 
   /** a full-screen black fade (0..1) for scene transitions */
@@ -2818,13 +2882,16 @@ export class GameEngine {
     if (this.fpLight) this.fpLight.visible = false;
   }
 
-  /** pick the FP entry facing: the direction with the most open floor, so
-   *  the player never toggles into FP staring into a wall (ties → the
-   *  direction closest to the current iso camera yaw). */
+  /** pick the FP entry facing: front of the player, never the back.
+   *  Scores open floor within the forward 180° (so a wall ahead can nudge
+   *  a few degrees but never flips 180°). Ties → closest to hero's facing,
+   *  with the iso look direction only as a last fallback. */
   private pickFpEntryYaw(): number {
     const hero = this.combat?.living('party')[0];
-    if (!hero) return this.iso.yaw;
-    let bestYaw = this.iso.yaw;
+    if (!hero) return this.iso.yaw + Math.PI;
+    const hv = this.visuals.get(hero.id);
+    const heroYaw = hv ? hv.targetYaw : this.iso.yaw + Math.PI;
+    let bestYaw = heroYaw;
     let bestScore = -1;
     for (let i = 0; i < 16; i++) {
       const yaw = (i / 16) * Math.PI * 2;
@@ -2836,8 +2903,11 @@ export class GameEngine {
         if (!this.world.isWalkable(tx, tz)) break;
         open++;
       }
-      const alignment = 1 - Math.abs(((yaw - this.iso.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) / Math.PI;
-      const score = open * 2 + alignment;
+      const angToFront = Math.abs(((yaw - heroYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      // back half is never "front" — heavily penalise so we only flip if forward is a dead wall
+      const frontPenalty = angToFront > Math.PI * 0.5 ? -10 : 0;
+      const alignment = 1 - angToFront / Math.PI;
+      const score = open * 2 + alignment + frontPenalty;
       if (score > bestScore) { bestScore = score; bestYaw = yaw; }
     }
     return bestYaw;
@@ -2867,7 +2937,7 @@ export class GameEngine {
   }
 
   /** BG3-style default hotbar actions: walk/run/jump/throw/attack + bonus attack. */
-  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack' | 'shove' | 'defend') {
+  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack' | 'shove' | 'defend' | 'sit') {
     this.audio.play('ui_click', 0.5);
     switch (action) {
       case 'walk':
@@ -2880,6 +2950,15 @@ export class GameEngine {
         this.sneaking = false;
         this.pushLog(this.running ? 'Running!' : 'Walking.', 'system');
         break;
+      case 'sit': {
+        // flavor sit — works anywhere, just for roleplay and sneak-attack setup
+        this.pushLog('You sit. The stone is cold. The dungeon is unimpressed, but your back thanks you.', 'system');
+        const h = this.combat.living('party')[0];
+        const v = h ? this.visuals.get(h.id) : null;
+        if (v) v.rig.anim.mode = (v.rig.anim.mode === 'myPose' ? 'idle' : 'myPose');
+        this.emitSnapshot();
+        break;
+      }
       case 'jump': {
         // jump-mode: the next tile click is a hop (2 tiles max, costs movement
         // in combat). Free-flow: jumps only need movement left — the phase
@@ -2894,21 +2973,27 @@ export class GameEngine {
         break;
       }
       case 'throw':
-        if (this.phase !== 'explore') { this.setHoverInfoOnce('Throwing is an exploration action.'); return; }
+        // usable both in and out of combat — in combat it costs an action, in explore it's free
         this.throwing = !this.throwing;
         this.pushLog(this.throwing ? 'Select a tile to throw something at it.' : 'Throwing cancelled.', 'system');
+        this.emitSnapshot();
         break;
       case 'attack': {
-        const a = this.combat.active;
-        if (a && a.team === 'party' && this.phase === 'combat') {
-          // free-flow: the ring no longer gates the basic attack — arming it
-          // enters targeting and clicking an enemy swings (once per turn).
-          // backstab / surprise attack: attacking while sneaking (C mode)
-          // is a guaranteed critical — see the sneakCrit path in combat.ts
-          if (this.sneaking) {
-            a.sneak = true;
-            this.setHoverInfoOnce('Backstab! Striking from the shadows — guaranteed critical!');
-          }
+        // usable in and out of combat — outside it arms the attack to provoke/sneak-attack, inside it's the normal basic attack
+        const a = this.combat.active ?? this.combat.living('party')[0];
+        if (!a || a.team !== 'party') { this.setHoverInfoOnce('No attacker available.'); return; }
+        if (this.sneaking) {
+          a.sneak = true;
+          this.setHoverInfoOnce('Backstab! Striking from the shadows — guaranteed critical!');
+        }
+        // outside combat, arm attack for provocation (bow will be ranged 8)
+        if (this.phase === 'explore') {
+          this.targeting = 'attack';
+          this.pushLog('Attack armed — click an enemy to strike (bow = ranged 8).', 'system');
+          this.emitSnapshot();
+          return;
+        }
+        if (this.phase === 'combat' && a.team === 'party') {
           this.selectSkill('attack');
           return;
         }
@@ -3133,8 +3218,16 @@ export class GameEngine {
     let slot: string = nativeSlot;
     if (slotHint && slotHint !== nativeSlot && canEquipIn(item, slotHint)) slot = slotHint;
     // two-handed main weapon + off-hand item → refuse (both hands busy)
-    if (slot === 'offHand' && u.equipment.weapon?.twoHanded) {
+    if (slot === 'offHand' && (u.equipment.weapon?.twoHanded || u.equipment.ranged?.twoHanded)) {
+      this.setHoverInfoOnce(`${(u.equipment.weapon ?? u.equipment.ranged)!.name} needs both hands — put it away first.`);
+      return;
+    }
+    if (slot === 'ranged' && u.equipment.weapon?.twoHanded) {
       this.setHoverInfoOnce(`${u.equipment.weapon.name} needs both hands — put it away first.`);
+      return;
+    }
+    if (slot === 'weapon' && u.equipment.ranged?.twoHanded) {
+      this.setHoverInfoOnce(`${u.equipment.ranged.name} needs both hands — put it away first.`);
       return;
     }
     let actualSlot: string = slot;
@@ -3144,13 +3237,14 @@ export class GameEngine {
       else { this.setHoverInfoOnce('Both ring slots are full. Unequip a ring first.'); return; }
     }
     this.inventory.splice(idx, 1);
-    // equipping a two-handed main weapon frees the off hand
-    if (slot === 'weapon' && item.twoHanded && u.equipment.offHand) {
-      this.inventory.push(u.equipment.offHand);
-      const rig = this.visuals.get(u.id)?.rig;
-      if (rig) unequip(rig, 'offHand');
-      u.equipment.offHand = undefined;
-      this.pushLog(`${u.name} stows their off-hand item to wield ${item.name} with both hands.`, 'system');
+    // equipping a two-handed main weapon frees the off hand and ranged
+    if (slot === 'weapon' && item.twoHanded) {
+      if (u.equipment.offHand) { this.inventory.push(u.equipment.offHand); const rig = this.visuals.get(u.id)?.rig; if (rig) unequip(rig, 'offHand'); u.equipment.offHand = undefined; this.pushLog(`${u.name} stows their off-hand item to wield ${item.name} with both hands.`, 'system'); }
+      if (u.equipment.ranged) { this.inventory.push(u.equipment.ranged); u.equipment.ranged = undefined; this.pushLog(`${u.name} stows their ranged weapon to wield ${item.name} with both hands.`, 'system'); }
+    }
+    if (slot === 'ranged' && item.twoHanded) {
+      if (u.equipment.weapon) { this.inventory.push(u.equipment.weapon); const rig=this.visuals.get(u.id)?.rig; if(rig) setWeapon(rig,null,u.scheme.accent); u.equipment.weapon=undefined; u.weapon=undefined; this.pushLog(`${u.name} stows their main weapon to wield ${item.name} with both hands.`, 'system'); }
+      if (u.equipment.offHand) { this.inventory.push(u.equipment.offHand); const rig=this.visuals.get(u.id)?.rig; if(rig) unequip(rig,'offHand'); u.equipment.offHand=undefined; this.pushLog(`${u.name} stows their off-hand item to wield ${item.name} with both hands.`, 'system'); }
     }
     const old = (u.equipment as Record<string, Item | undefined>)[actualSlot];
     if (old) this.inventory.push(old);
@@ -3158,7 +3252,12 @@ export class GameEngine {
     if (actualSlot === 'weapon' && item.weaponKind) {
       u.weapon = item.weaponKind;
       const rig = this.visuals.get(u.id)?.rig;
-      if (rig) setWeapon(rig, item.weaponKind, u.scheme.accent);
+      if (rig) setWeapon(rig, item.weaponKind, u.scheme.accent, item.tier, item.enchantId);
+    } else if (actualSlot === 'ranged' && item.weaponKind === 'bow') {
+      // bow in dedicated slot — show in hand if main hand empty, else slung on back
+      const rig = this.visuals.get(u.id)?.rig;
+      if (!u.equipment.weapon) { u.weapon = 'bow'; if (rig) setWeapon(rig, 'bow', u.scheme.accent, item.tier, item.enchantId); }
+      else if (rig) { const vis = itemToEquipVisual(item, 'ranged'); if (vis) equip(rig, vis); else setWeapon(rig, 'bow', u.scheme.accent, item.tier, item.enchantId); }
     } else if (actualSlot !== 'weapon') {
       // layer the worn piece onto the voxel rig (clothes/armor/hats/…)
       const rig = this.visuals.get(u.id)?.rig;

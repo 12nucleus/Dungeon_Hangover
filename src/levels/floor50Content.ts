@@ -975,8 +975,13 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       grant(e, ['goblin_banner']);
       e.pushLog('You tear down the throne-room banner. +1 AC. It smells like a parade.', 'system');
     });
+    // door tile is at the south of R24 (west edge); put the prompt right in front of it
+    // (r.x0, r.z1+2 is one tile north of the iron door, walkable corridor). The old
+    // r.x1,r.z0+1 was in the northeast corner ~14 tiles from the door, so the
+    // [R] prompt never appeared when standing at the door.
+    const doorApproach: GridPos = { x: r.x0, z: r.z1 + 2 };
     out.push({
-      id: 'knock_door', pos: { x: r.x1, z: r.z0 + 1 }, radius: 2,
+      id: 'knock_door', pos: doorApproach, radius: 4,
       label: '[R] Knock on Gribnab\'s door (soap)',
       visibleIf: (e) => !e.hasFlag('gribnab_door_open') && hasAnySoap(e),
       run: (e) => {
@@ -988,18 +993,27 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       },
     });
     out.push({
-      id: 'force_door', pos: { x: r.x1, z: r.z0 + 1 }, radius: 2,
+      id: 'force_door', pos: doorApproach, radius: 4,
       label: '[R] Force the door',
-      visibleIf: (e) => !e.hasFlag('gribnab_door_open') && !hasAnySoap(e),
+      visibleIf: (e) => !e.hasFlag('gribnab_door_open'),
       run: (e) => {
-        if (isPlumber(e) || e.abilityCheck('str', 14)) {
+        if (hasAnySoap(e)) {
+          // you have soap but somehow hit Force — treat as a knock (don't softlock)
+          consumeAnySoap(e);
+          e.setFlag('gribnab_door_open');
+          e.setFlag('knocked');
+          e.pushLog('You knock. The humming stops. A voice like damp velvet: "ENTER! You have SOAP! Wonderful!"', 'system');
+          mqDoorBeat(e);
+          return;
+        }
+        if (isPlumber(e) || e.abilityCheck('str', 12)) {
           e.setFlag('gribnab_door_open');
           e.setFlag('door_forced');
           e.setFlag('made_noise');
           void e.narrate('f50_forced', 'The iron door shrieks and gives. Somewhere inside, a goblin king is going to be VERY upset about this.', 3400);
           mqDoorBeat(e);
         } else {
-          e.pushLog('You bounce off the iron door. The door does not bounce.', 'system');
+          e.pushLog('You bounce off the iron door. The door does not bounce. (STR 12 or Plumber, or bring soap.)', 'system');
         }
       },
     });
@@ -1038,7 +1052,7 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
       e.pushLog('A bottle of bubble bath. Pour it at your feet for Slippery — the floor gleams with menace.', 'system');
     });
     out.push({
-      id: 'exit_stairs', pos: { x: r.x0 + 4, z: r.z1 }, radius: 2,
+      id: 'exit_stairs', pos: { x: (r.x0 + r.x1) >> 1, z: r.z1 - 1 }, radius: 4,
       label: '[R] Climb the stairs to Floor 49',
       visibleIf: (e) => e.hasFlag('gribnab_dead') || e.hasFlag('gribnab_befriended'),
       run: (e) => {
@@ -1047,6 +1061,19 @@ export function floor50Interactables(seed: number, rooms: Record<string, Rect>):
         e.pushLog(MAIN_QUEST_F50.stages.departure, 'system');
         void e.narrate('f50_departure', 'The staircase is cold. The staircase is stone. The staircase goes UP. You climb away from the bath. You climb away from the soap. You climb toward Floor 49. You climb toward the LIGHT.', 5600);
         // real floor transition — the run continues one floor up
+        e.goToFloor?.(49);
+      },
+    });
+    // fallback at the authored exitStairs world tile (144,158) — covers the case where
+    // the visual stairs mesh is offset from the room rect. Same flag, same action.
+    out.push({
+      id: 'exit_stairs_fallback', pos: { x: 144, z: 158 }, radius: 4,
+      label: '[R] Climb the stairs to Floor 49',
+      visibleIf: (e) => e.hasFlag('gribnab_dead') || e.hasFlag('gribnab_befriended'),
+      run: (e) => {
+        e.completeQuest('the_longest_morning');
+        e.pushLog(MAIN_QUEST_F50.stages.departure, 'system');
+        void e.narrate('f50_departure', 'The staircase is cold. The staircase is stone. The staircase goes UP. You climb away from the bath. You climb away from the soap. You climb toward Floor 49. You climb toward the LIGHT.', 5600);
         e.goToFloor?.(49);
       },
     });

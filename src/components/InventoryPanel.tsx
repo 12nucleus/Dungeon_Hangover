@@ -16,16 +16,16 @@ const RARITY_COLOR: Record<Rarity, string> = {
 
 const SLOT_ICON: Record<string, string> = {
   head: '⛑️', chest: '🦺', legs: '👖', boots: '👢', gloves: '🧤', arms: '💪', cloak: '🧥', belt: '🧷', trinket: '🧿',
-  weapon: '⚔️', offHand: '🛡️', amulet: '📿', ring1: '💍', ring2: '💍',
+  weapon: '⚔️', offHand: '🛡️', amulet: '📿', ring1: '💍', ring2: '💍', ranged: '🏹',
 };
 
 const SLOT_LABEL: Record<string, string> = {
   head: 'Head', chest: 'Chest', legs: 'Legs', boots: 'Boots', gloves: 'Gloves', arms: 'Arms', cloak: 'Cloak', belt: 'Belt', trinket: 'Trinket',
-  weapon: 'Main Hand', offHand: 'Off Hand', amulet: 'Amulet', ring1: 'Ring I', ring2: 'Ring II',
+  weapon: 'Main Hand', offHand: 'Off Hand', amulet: 'Amulet', ring1: 'Ring I', ring2: 'Ring II', ranged: 'Ranged',
 };
 
 const LEFT_SLOTS = ['head', 'chest', 'legs', 'boots', 'cloak', 'belt', 'arms'] as const;
-const RIGHT_SLOTS = ['weapon', 'offHand', 'gloves', 'amulet', 'ring1', 'ring2', 'trinket'] as const;
+const RIGHT_SLOTS = ['weapon', 'offHand', 'ranged', 'gloves', 'amulet', 'ring1', 'ring2', 'trinket'] as const;
 
 function ItemIcon({ item, size = 42, selected = false, onClick, onContextMenu, title }: {
   item: Item; size?: number; selected?: boolean; onClick?: () => void; onContextMenu?: (e: React.MouseEvent) => void; title?: string;

@@ -107,10 +107,10 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   dagger1: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Dagger', icon: '🔪', tier: 1, weaponKind: 'dagger', damageDice: '1d4+1', damageType: 'piercing', value: 8, desc: 'Better than fists.' }),
   dagger2: B({ kind: 'weapon', slot: 'weapon', name: 'Fine Dagger', icon: '🔪', tier: 2, weaponKind: 'dagger', damageDice: '1d4+2', damageType: 'piercing', value: 30, desc: 'Slim and silent.' }),
   dagger3: B({ kind: 'weapon', slot: 'weapon', name: 'Masterwork Dagger', icon: '🔪', tier: 3, weaponKind: 'dagger', damageDice: '2d4+2', damageType: 'piercing', value: 95, desc: 'A duellist\'s dream.' }),
-  // bows (piercing)
-  bow1: B({ kind: 'weapon', slot: 'weapon', name: 'Bent Shortbow', icon: '🏹', tier: 1, weaponKind: 'bow', damageDice: '1d6+1', damageType: 'piercing', value: 14, twoHanded: true, desc: 'Creaks, but shoots true-ish.' }),
-  bow2: B({ kind: 'weapon', slot: 'weapon', name: 'Fine Shortbow', icon: '🏹', tier: 2, weaponKind: 'bow', damageDice: '1d6+2', damageType: 'piercing', value: 42, twoHanded: true, desc: 'Yew laminate, smooth draw.' }),
-  bow3: B({ kind: 'weapon', slot: 'weapon', name: 'Masterwork Shortbow', icon: '🏹', tier: 3, weaponKind: 'bow', damageDice: '2d6+2', damageType: 'piercing', value: 130, twoHanded: true, desc: 'Elven craftsmanship.' }),
+  // bows (piercing) — dedicated ranged slot, usable in and out of combat
+  bow1: B({ kind: 'weapon', slot: 'ranged', name: 'Bent Shortbow', icon: '🏹', tier: 1, weaponKind: 'bow', damageDice: '1d6+1', damageType: 'piercing', value: 14, twoHanded: true, desc: 'Creaks, but shoots true-ish. Equip in Ranged slot (8 tiles).' }),
+  bow2: B({ kind: 'weapon', slot: 'ranged', name: 'Fine Shortbow', icon: '🏹', tier: 2, weaponKind: 'bow', damageDice: '1d6+2', damageType: 'piercing', value: 42, twoHanded: true, desc: 'Yew laminate, smooth draw. Ranged 8.' }),
+  bow3: B({ kind: 'weapon', slot: 'ranged', name: 'Masterwork Shortbow', icon: '🏹', tier: 3, weaponKind: 'bow', damageDice: '2d6+2', damageType: 'piercing', value: 130, twoHanded: true, desc: 'Elven craftsmanship. Ranged 10.' }),
   // maces (bludgeoning)
   mace1: B({ kind: 'weapon', name: 'Cracked Mace', icon: '🔨', tier: 1, weaponKind: 'mace', damageDice: '1d6+1', damageType: 'bludgeoning', value: 12, desc: 'Dents armor. And skulls.' }),
   mace2: B({ kind: 'weapon', name: 'Fine Mace', icon: '🔨', tier: 2, weaponKind: 'mace', damageDice: '1d6+2', damageType: 'bludgeoning', value: 38, desc: 'Blessed by the forge-temple.' }),
@@ -294,7 +294,7 @@ export function generateLoot(opts?: { minTier?: Tier; maxTier?: Tier; rarityBoos
 }
 
 // ── per-source loot tables ───────────────────────────────────
-export type LootSource = 'crate' | 'barrel' | 'vase' | 'chest' | 'boss' | 'goblin' | 'goldenkey' | 'secret' | 'beast' | 'undead' | 'starting';
+export type LootSource = 'crate' | 'barrel' | 'vase' | 'chest' | 'boss' | 'goblin' | 'goldenkey' | 'secret' | 'beast' | 'undead' | 'starting' | 'floor49_supply';
 
 export function rollLootTable(source: LootSource): { items: Item[]; gold: number; lootRoll?: number } {
   const items: Item[] = [];
@@ -362,6 +362,13 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
       // Greg's starter satchel: fixed drop, always the same kit.
       items.push(makeItem('dagger1'));
       items.push(makeItem('torch1'));
+      items.push(makeItem('potion'));
+      gold = 0;
+      break;
+    case 'floor49_supply':
+      // Floor 49 entry supply bag: exactly 3 healing potions (user request)
+      items.push(makeItem('potion'));
+      items.push(makeItem('potion'));
       items.push(makeItem('potion'));
       gold = 0;
       break;

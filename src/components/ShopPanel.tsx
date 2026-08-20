@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import type { GameEngine } from '../game/engine';
 import type { UISnapshot } from '../game/types';
+import { makeItem } from '@/game/items';
+import { ItemInspect } from './ItemInspect';
 
 /** Myke's Pre-Owned Adventuring Supplies — the Floor 49 shop panel. */
 export function ShopPanel({ snap, engine }: { snap: UISnapshot; engine: GameEngine }) {
   const [sel, setSel] = useState<string | null>(null);
+  const [inspectId, setInspectId] = useState<string | null>(null);
   const stock = snap.shopStock ?? [];
   const selItem = stock.find((s) => s.baseId === sel) ?? null;
+  const inspectStock = inspectId ? stock.find((s) => s.baseId === inspectId) ?? null : null;
+  const inspectItem = inspectStock ? (() => { try { return makeItem(inspectStock.baseId); } catch { return null; } })() : null;
 
   return (
     <div className="shop-overlay">
@@ -47,9 +52,19 @@ export function ShopPanel({ snap, engine }: { snap: UISnapshot; engine: GameEngi
               >
                 Buy for {selItem.price} 🪙
               </button>
+              <button
+                className="btn-ghost btn-sm"
+                style={{ marginLeft: 8 }}
+                onClick={() => setInspectId(selItem.baseId)}
+              >
+                Examine
+              </button>
               <span className="shop-your-gold">Your gold: {snap.gold ?? 0} 🪙</span>
             </div>
           </div>
+        )}
+        {inspectItem && (
+          <ItemInspect item={inspectItem} onClose={() => setInspectId(null)} />
         )}
 
         <div className="shop-footer">

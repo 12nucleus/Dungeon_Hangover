@@ -135,7 +135,7 @@ const bonfireGrotto = OX(sc(33), sc(15));     // r6 — south-east corner of the
 const structures: LevelStructures = {
   partySpawn,
   checkpoint,
-  bonfires: [checkpoint, bonfireHermit, bonfireGrotto],   // 3 savepoints — the grotto is kinder than it looks
+  bonfires: [bonfireHermit, bonfireGrotto],   // no bonfire in entry hall (user request) — first save is at hermit pool / grotto
   exitStairs,
   arenaRect: map.rooms.r7,                    // the Spore Throne — the mother's arena
   rooms: roomList,
@@ -194,8 +194,8 @@ const R10 = map.rooms.r10, R11 = map.rooms.r11, R12 = map.rooms.r12, R13 = map.r
 const R14 = map.rooms.r14, R15 = map.rooms.r15, R16 = map.rooms.r16, R17 = map.rooms.r17, R18 = map.rooms.r18;
 const mid = (r: { x0: number; x1: number }) => (r.x0 + r.x1) >> 1;
 
-// ── R1 — Entry Hall: the lit bonfire, an adventurer's skeleton, glowing mushrooms ──
-putW('bonfire', checkpoint.x, checkpoint.z, 0.5);
+// ── R1 — Entry Hall: no bonfire here (per user request) — just skeleton + glow mushrooms
+// bonfire removed so entry hall has no save; first saves are at hermit pool / grotto
 putW('skeleton', R1.x0, R1.z0, 0.5);
 putW('glow_mushroom_blue', R1.x0 + 3, R1.z0, 0.3);
 putW('glow_mushroom_green', R1.x1, R1.z0 + 1, 0.7);

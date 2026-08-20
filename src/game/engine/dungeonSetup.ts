@@ -49,9 +49,11 @@ export function setupDungeon(engine: any, L: LevelDef) {
   const st = L.structures;
   if (!st) return;
   engine.structures = st;
+  engine.stairsRevealed = false;
+  engine.stairsMesh = null;
 
   // Greg's starter satchel — placed on a free tile right next to where he wakes.
-  // Smashing it (click) grants the starting kit: rusty dagger, torch, potion.
+  // Floor 49 entry gets exactly 3 healing potions, not the floor-50 dagger/torch kit (user request)
   {
     const near = [
       { x: st.partySpawn.x + 1, z: st.partySpawn.z },
@@ -60,7 +62,10 @@ export function setupDungeon(engine: any, L: LevelDef) {
       { x: st.partySpawn.x, z: st.partySpawn.z - 1 },
     ];
     const bagSpot = near.find((t) => engine.world.inBounds(t.x, t.z) && !engine.world.blocked[t.x][t.z] && engine.world.isWalkable(t.x, t.z));
-    if (bagSpot) engine.props.placeAt('starting_bag', bagSpot.x, bagSpot.z);
+    if (bagSpot) {
+      const bagId = engine.floorNumber === 49 ? 'floor49_supply' : 'starting_bag';
+      engine.props.placeAt(bagId, bagSpot.x, bagSpot.z);
+    }
   }
 
   // R1 spawn dressing — the puddle, bucket and wall-scratches the narrator
@@ -292,6 +297,51 @@ export function updateDungeon(engine: any, dt: number) {
     }
   }
 
+  // boss door (iron door) — also hoisted: flag set from dialogue/interactable
+  // must open immediately even if combat/busy is active, otherwise the door
+  // silently stays blocked after a mid-fight flag set (the old code waited for
+  // explore phase, making the prompt look broken).
+  if (engine.ironDoor && !engine.ironDoorOpen) {
+    const openCond = st.bossDoorOpenFlag ? engine.flags.has(st.bossDoorOpenFlag) : engine.hasIronKey;
+    if (openCond) openIronDoor(engine);
+  }
+  // stairwell reveal: when Gribnab is dead/befriended the southern wall of the
+  // bath hall slides open and a glowing stairwell appears (hard to miss)
+  if ((engine.flags.has('gribnab_dead') || engine.flags.has('gribnab_befriended')) && !engine.stairsRevealed && st.exitStairs) {
+    engine.stairsRevealed = true;
+    const sx = st.exitStairs.x, sz = st.exitStairs.z;
+    for (let dx = -1; dx <= 1; dx++) for (let dz = 0; dz <= 2; dz++) {
+      const x = sx + dx, z = sz + dz;
+      if (engine.world.inBounds(x, z)) engine.world.blocked[x][z] = false;
+    }
+    // glowing beacon at the stairwell so the player sees it from across the bath
+    try {
+      const g = new THREE.Group();
+      const geo = new THREE.BoxGeometry(0.9, 0.18, 0.9);
+      const mat = new THREE.MeshStandardMaterial({ color: 0xffe14d, emissive: 0xffd23a, emissiveIntensity: 0.85 });
+      const base = new THREE.Mesh(geo, mat);
+      base.position.y = 0.1;
+      g.add(base);
+      const beacon = new THREE.PointLight(0xffe14d, 10, 14, 1.6);
+      beacon.position.y = 1.4;
+      g.add(beacon);
+      const wp = engine.world.tileToWorld(sx, sz);
+      g.position.copy(wp);
+      g.position.y += 0.12;
+      if (!engine.dressingGroup) { engine.dressingGroup = new THREE.Group(); engine.scene.add(engine.dressingGroup); }
+      engine.dressingGroup.add(g);
+      engine.stairsMesh = g;
+      // also drop a second beacon at the fallback prompt tile for visibility
+      const wp2 = engine.world.tileToWorld((st.bossRoom as any).x1 ? ((st.bossRoom.x0 + st.bossRoom.x1) >> 1) : sx, (st.bossRoom as any).z1 ? (st.bossRoom.z1 - 1) : sz);
+      FX.levelup(engine.particles, wp.clone().add(new THREE.Vector3(0, 0.6, 0)));
+      FX.levelup(engine.particles, wp2.clone().add(new THREE.Vector3(0, 0.6, 0)));
+    } catch { /* dressing only */ }
+    engine.pushLog('⛩️ The southern wall GROANS and slides open — a stairwell is revealed! (south side of the bath)', 'system');
+    engine.bigMessage = 'Stairwell Revealed — Floor 49 Awaits!';
+    engine.emitSnapshot();
+    setTimeout(() => { if (engine.bigMessage === 'Stairwell Revealed — Floor 49 Awaits!') { engine.bigMessage = null; engine.emitSnapshot(); } }, 3200);
+  }
+
   // a party wiped by OUT-OF-COMBAT hazards (traps, wine press, bath) must
   // still route to the defeat flow — Combat.checkEnd only runs during fights.
   // (In-combat wipes are already handled there.)
@@ -430,7 +480,10 @@ export function updateDungeon(engine: any, dt: number) {
         // audio namespace (f50_room_*, f49_room_*) so a narration never
         // plays another floor's voice-over.
         const prefix = engine.floorNumber === 49 ? 'f49' : `f${engine.floorNumber}`;
-        if (text) void engine.narrate(`${prefix}_room_${roomId}`, text, 5200);
+        // boss rooms narrate via their cutscene — don't also fire the generic room line in the same frame (overlap)
+        const isGribRoom = roomId === 'r25' && engine.combat.units.some((u: any) => u.name === 'Gribnab' && u.alive) && engine.flags.has('gribnab_door_open') && !engine.gribnabCutscenePlayed;
+        const isBaronRoom = roomId === 'r5' && engine.combat.units.some((u: any) => u.name === 'Baron Gnaw' && u.alive) && !engine.bossRatCutscenePlayed;
+        if (text && !isGribRoom && !isBaronRoom) void engine.narrate(`${prefix}_room_${roomId}`, text, 5200);
         maybeAmbush(engine, roomId, leader.pos);
         engine.chaos?.onRoomEnter(roomId, leader.pos);
         perceptionRoll(engine, roomId, leader);
