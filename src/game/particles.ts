@@ -10,6 +10,7 @@
 // Emitters are data — add new presets in FX below.
 // ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
+import { getHalo } from './props';
 
 const MAX_GLOW = 6000;
 const MAX_SOLID = 3000;
@@ -75,6 +76,7 @@ export class ParticleSystem {
     const geo = new THREE.BoxGeometry(1, 1, 1);
 
     const glowMat = new THREE.MeshBasicMaterial({
+      map: getHalo(),   // radial alpha — glow motes read ROUND, not as square box silhouettes
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -285,6 +287,16 @@ export const FX = {
    */
   motes(ps: ParticleSystem, p: THREE.Vector3, color: number) {
     ps.burst({ pos: p, count: 3, color: [color, mixToWhite(color)], speed: [0.05, 0.35], life: [1.6, 3.2], size: [0.25, 0.6], gravity: -0.12, drag: 0.9, endScale: 0.6 });
+  },
+  /**
+   * CHARGE — action-announce beat: motes gather and rise off the caster in
+   * the skill's own colour while the banner reads "X is casting Y".
+   * Two cheap bursts: a rising column + a ground-hugging ring pull-in.
+   */
+  charge(ps: ParticleSystem, p: THREE.Vector3, color: number) {
+    const tint = [color, mixToWhite(color), 0xffffff];
+    ps.burst({ pos: p, count: 14, color: tint, speed: [0.2, 0.9], life: [0.5, 0.9], size: [0.35, 0.8], gravity: -2.6, drag: 1.2, endScale: 0.25 });
+    ps.burst({ pos: p.clone().add(new THREE.Vector3(0, -0.35, 0)), count: 8, color: tint, dir: new THREE.Vector3(0, 1, 0), spread: 0.9, speed: [1.2, 2.6], life: [0.3, 0.55], size: [0.4, 0.9], gravity: -1.4, drag: 2.2, endScale: 0.15 });
   },
   /**
    * AMBIENT — called ONCE PER FRAME by the engine with the hero's position.

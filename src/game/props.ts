@@ -12,7 +12,7 @@ const tmpCol = new THREE.Color();
 
 // ── shared radial glow sprite texture ──
 let haloTex: THREE.Texture | null = null;
-function getHalo(): THREE.Texture {
+export function getHalo(): THREE.Texture {
   if (haloTex) return haloTex;
   const s = 64;
   const cvs = document.createElement('canvas');

@@ -22,13 +22,13 @@ import type { LevelDef, LevelStructures } from '../levels/levelTypes';
 import { effMaxHp } from './stats';
 import { rollD20, abilityMod, fmtMod } from './dice';
 import { SaveManager, SettingsManager, type GameSettings, type SaveData, type SaveSlotMeta, SAVE_VERSION_NUMBER } from './save';
-import { canUnlock, treeFor } from './skilltree';
+import { treeFor } from './skilltree';
 import { TrapManager } from './traps';
 import { ensureSkillState, syncSkillState } from './skillRuntime';
 import { SurfaceSystem } from './surfaces';
 import { PhysicsWorld } from './physics';
 import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot, Ability } from './types';
-import { type NPCDef, type DialogueAction } from './npc';
+import { NPCS, type NPCDef, type DialogueAction } from './npc';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { QuestLog, QUESTS } from './quest';
@@ -46,7 +46,7 @@ import { setupDungeon, spawnNpc, attachHeroTorch, updateDungeon, aggroGroup, inE
 import { smashProp, checkCombatTrigger, enqueue, setAnimScale, spawnFloater, refreshBar, triggerTrap as triggerTrapModule, disarmTrap as disarmTrapModule } from './engine/combatAnimation';
 import { updateFog, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, pickInteractable as pickInteractableModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule, hidePathPreview, type InteractPick } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
-import { respawn as respawnModule, levelUpAtBonfire as levelUpAtBonfireModule } from './engine/camping';
+import { respawn as respawnModule, levelUpAtBonfire as levelUpAtBonfireModule, resetSkillBuild as resetSkillBuildModule, unlockNode as unlockNodeModule } from './engine/camping';
 import { executeCheatCommand as executeCheatCommandModule } from './engine/cheats';
 import { offerLoot, flushLootQueue, takeAllLoot, takeLootItem, leaveLootItem, dismissLoot, clearLoot } from './engine/loot';
 import { showTargeting as showTargetingModule, showMoveTiles as showMoveTilesModule } from './engine/targeting';
@@ -207,9 +207,20 @@ export class GameEngine {
   /** which NPC runs the shop (for the panel header) */
   public shopNpcName = '';
 
-  // ── dice-roll visual (BG3-style) ──────────────────────  /** last visual dice roll (HUD animates a 3D die for ~2s) */
+  // ── dice-roll visual (BG3-style) ──────────────────────
+  /** last visual dice roll (HUD animates a 3D die for ~2s) */
   public diceShow: { die: string; total: number; reason: string; at: number } | null = null;
   private diceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** combat action banner — announce ("X is casting Y") or result ("X misses Y · 8 vs AC 14") */
+  public actionBanner: { kind: 'announce' | 'result'; text: string; sub?: string; cls: string; id: number; at: number } | null = null;
+  private actionBannerId = 0;
+
+  /** raise the combat action banner; expires via tick so it survives even
+   *  when the animation loop is mid-delay (never wedges on screen) */
+  public showActionBanner(kind: 'announce' | 'result', text: string, sub: string | undefined, cls: string) {
+    this.actionBanner = { kind, text, sub, cls, id: ++this.actionBannerId, at: performance.now() };
+    this.emitSnapshot();
+  }
   /** epoch id of the last critical-hit fullscreen flash (React re-triggers) */
   public critFlash = 0;
   /** defeat (TPK) vignette overlay on */
@@ -242,6 +253,9 @@ export class GameEngine {
   public fpPitch = -0.12;
   /** footstep-cadence timer (seconds) — continuous FP walking paces the audio */
   private fpStepAt = 0;
+  /** FP party-follow repath cooldowns (unit id → ready-at ms) — a stranded
+   *  or unreachable companion retries at most ~1×/s instead of every frame */
+  private fpFollowCool = new Map<string, number>();
   /** drag-look active (pointer-lock fallback) */
   public fpDrag = false;
   /** any modal/menu overlay is up — FP look-drag, crosshair aim and WASD
@@ -294,9 +308,11 @@ export class GameEngine {
   public pendingSmash: { unitId: string; propId: string } | null = null;
   public bigMessage: string | null = null;
   public cinematic = false;
-  /** queue for sequential narration: walk-triggered lines wait for the current
-   *  subtitle to finish instead of cutting it (fixes boss-room overlap) */
-  private narrateQueue: Array<{ id: string; text: string; minMs: number; npcId?: string; nodeId?: string }> = [];
+  /** queue for sequential narration: every line — cutscene beat, room bark,
+   *  combat VO — plays in order, and narrate()/bark() return a promise that
+   *  resolves when THEIR line finishes (audio length, not the minMs guess).
+   *  That await is what keeps cutscene beats locked to the voice track. */
+  private narrateQueue: Array<{ id: string; text: string; minMs: number; npcId?: string; nodeId?: string; resolve: () => void }> = [];
   private narrateRunning = false;
   /** new-game tutorial pager: 0 = off; 1..N = active step (see HUD card) */
   public tutorialStep = 0;
@@ -342,8 +358,24 @@ export class GameEngine {
     const clear = () => { if (this.voEl === a) this.voEl = null; };
     a.addEventListener('ended', clear);
     a.addEventListener('error', clear);
-    try { void a.play().catch(clear); } catch { clear(); }
+    // a rejected play() (autoplay policy) must release any waiter too
+    try { void a.play().catch(() => { clear(); a.dispatchEvent(new Event('error')); }); } catch { clear(); a.dispatchEvent(new Event('error')); }
     return a;
+  }
+
+  /** Hold until the VO element ACTUALLY finishes: the audio is the clock, not a
+   *  duration guess (metadata probes under load resolve late and got lines cut
+   *  mid-word). Resolves early on skip or when a newer VO supersedes us. */
+  private waitVoEnd(el: HTMLAudioElement, token: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const done = () => { if (settled) return; settled = true; clearInterval(iv); resolve(); };
+      const iv = setInterval(() => { if (this.cutsceneSkip || token !== this.voSeq) done(); }, 40);
+      el.addEventListener('ended', done, { once: true });
+      el.addEventListener('pause', done, { once: true });   // cut by stopVo / a newer line
+      el.addEventListener('error', done, { once: true });
+      setTimeout(done, 120000);                              // absolute cap — never wedge the queue
+    });
   }
 
   /** skip-aware wait: resolves immediately once cutsceneSkip is set */
@@ -360,38 +392,54 @@ export class GameEngine {
   private async drainNarrateQueue() {
     if (this.narrateRunning || !this.narrateQueue.length) return;
     this.narrateRunning = true;
-    const next = this.narrateQueue.shift()!;
-    if (next.npcId && next.nodeId) await this.runBark(next.npcId, next.nodeId, next.text, next.minMs);
-    else await this.runNarrate(next.id, next.text, next.minMs);
-    this.narrateRunning = false;
-    if (this.narrateQueue.length) void this.drainNarrateQueue();
+    try {
+      while (this.narrateQueue.length) {
+        const next = this.narrateQueue.shift()!;
+        try {
+          if (next.npcId && next.nodeId) await this.runBark(next.npcId, next.nodeId, next.text, next.minMs);
+          else await this.runNarrate(next.id, next.text, next.minMs);
+        } finally {
+          next.resolve();   // release the awaiting beat exactly when its line ends
+        }
+      }
+    } finally {
+      this.narrateRunning = false;
+    }
+  }
+  /** drop queued-but-unplayed narration (skip / new cutscene): stale lines from
+   *  a bailed scene must never leak into the next one (e.g. tavern lines playing
+   *  over the dungeon wake after ESC — resetSkipState clears cutsceneSkip before
+   *  the queue has finished flushing, so the guard in runNarrate is not enough). */
+  private flushNarrateQueue() {
+    const q = this.narrateQueue;
+    this.narrateQueue = [];
+    for (const e of q) e.resolve();
   }
   private async runNarrate(id: string, text: string, minMs: number) {
+    if (this.cutsceneSkip) return;   // queued before a skip — flush silently
     this.stopVo();
     this.showCine(text);
-    // long text needs longer on-screen time even without audio (text-only fallback)
-    const textMs = Math.ceil(text.length * 42);
-    let dur = Math.max(minMs, textMs);
+    const url = `${import.meta.env.BASE_URL}audio/narration/${id}.mp3`;
+    let el: HTMLAudioElement | null = null;
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}audio/narration/${id}.mp3`);
-      if (res.ok) {
-        const probe = new Audio(`${import.meta.env.BASE_URL}audio/narration/${id}.mp3`);
-        dur = Math.max(dur, await new Promise<number>((resolve) => {
-          probe.onloadedmetadata = () => resolve((probe.duration || minMs / 1000) * 1000);
-          probe.onerror = () => resolve(dur);
-          setTimeout(() => resolve(dur), 400);
-        }));
-        if (!this.cutsceneSkip) this.playVo(`${import.meta.env.BASE_URL}audio/narration/${id}.mp3`);
-      }
+      const res = await fetch(url);
+      // content-type guard: a dev-server SPA fallback answers 200 (text/html)
+      // for missing mp3s — only real audio may claim the air
+      if (res.ok && (res.headers.get('content-type') ?? '').startsWith('audio') && !this.cutsceneSkip) el = this.playVo(url);
     } catch { /* asset missing → text only */ }
-    await this.cineDelay(dur);
+    if (el) {
+      await this.waitVoEnd(el, this.voSeq);
+      await this.cineDelay(150);   // small breath so lines don't butt together
+    } else {
+      // text-only fallback: estimate on-screen time from length
+      await this.cineDelay(Math.max(minMs, Math.ceil(text.length * 42)));
+    }
     this.clearCine();
   }
   private async runBark(npcId: string, nodeId: string, text: string, minMs: number) {
+    if (this.cutsceneSkip) return;   // queued before a skip — flush silently
     this.stopVo();
     this.showCine(text);
-    const textMs = Math.ceil(text.length * 42);
-    let dur = Math.max(minMs, textMs);
     const npcUrl = `${import.meta.env.BASE_URL}audio/npc/${npcId}_${nodeId}.mp3`;
     const narrUrl = `${import.meta.env.BASE_URL}audio/narration/f50_${nodeId}.mp3`;
     const altNpcUrl = `${import.meta.env.BASE_URL}audio/npc/${npcId}_${nodeId.replace('f50_', '')}.mp3`;
@@ -399,47 +447,38 @@ export class GameEngine {
     for (const url of [npcUrl, altNpcUrl, narrUrl]) {
       try {
         const res = await fetch(url);
-        if (res.ok) { chosen = url; break; }
+        if (res.ok && (res.headers.get('content-type') ?? '').startsWith('audio')) { chosen = url; break; }
       } catch { /* try next */ }
     }
-    if (chosen) {
-      try {
-        const probe = new Audio(chosen);
-        dur = Math.max(dur, await new Promise<number>((resolve) => {
-          probe.onloadedmetadata = () => resolve((probe.duration || minMs / 1000) * 1000);
-          probe.onerror = () => resolve(dur);
-          setTimeout(() => resolve(dur), 400);
-        }));
-        if (!this.cutsceneSkip) this.playVo(chosen);
-      } catch { /* text only */ }
+    let el: HTMLAudioElement | null = null;
+    if (chosen && !this.cutsceneSkip) el = this.playVo(chosen);
+    if (el) {
+      await this.waitVoEnd(el, this.voSeq);
+      await this.cineDelay(150);
+    } else {
+      await this.cineDelay(Math.max(minMs, Math.ceil(text.length * 42)));
     }
-    await this.cineDelay(dur);
     this.clearCine();
   }
-  public async narrate(id: string, text: string, minMs = 4200) {
-    if (this.cutsceneSkip) return;
-    // queue if a subtitle is already showing — prevents boss-room overlap where
-    // room entry + cutscene both call void narrate in the same frame
-    if (this.narrateRunning || this.cinematic) {
-      this.narrateQueue.push({ id, text, minMs });
+  public narrate(id: string, text: string, minMs = 4200): Promise<void> {
+    if (this.cutsceneSkip) return Promise.resolve();
+    // The returned promise resolves when THIS line has finished playing — that
+    // await is what keeps cutscene beats (camera, animation) locked to the
+    // voice. Fire-and-forget callers (`void this.narrate(...)`) are unaffected.
+    return new Promise<void>((resolve) => {
+      this.narrateQueue.push({ id, text, minMs, resolve });
       void this.drainNarrateQueue();
-      return;
-    }
-    this.narrateQueue.push({ id, text, minMs });
-    void this.drainNarrateQueue();
+    });
   }
-  /** boss / NPC bark: same subtitle lifecycle as narrate, but tries the NPC's
-   *  designed voice first (audio/npc/<npc>_<node>.mp3), falling back to the
-   *  narrator file. Fixes Gribnab barks that were previously narrator-voiced. */
-  public async bark(npcId: string, nodeId: string, text: string, minMs = 4200) {
-    if (this.cutsceneSkip) return;
-    if (this.narrateRunning || this.cinematic) {
-      this.narrateQueue.push({ id: nodeId, text, minMs, npcId, nodeId });
+  /** boss / NPC bark: same queue + subtitle lifecycle as narrate, but tries the
+   *  NPC's designed voice first (audio/npc/<npc>_<node>.mp3), falling back to
+   *  the narrator file. Fixes Gribnab barks that were previously narrator-voiced. */
+  public bark(npcId: string, nodeId: string, text: string, minMs = 4200): Promise<void> {
+    if (this.cutsceneSkip) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      this.narrateQueue.push({ id: nodeId, text, minMs, npcId, nodeId, resolve });
       void this.drainNarrateQueue();
-      return;
-    }
-    this.narrateQueue.push({ id: nodeId, text, minMs, npcId, nodeId });
-    void this.drainNarrateQueue();
+    });
   }
 
   /** a full-screen black fade (0..1) for scene transitions */
@@ -611,9 +650,9 @@ export class GameEngine {
     const hemi = new THREE.HemisphereLight(0x5a6a8a, 0x1a1410, 0.04);
     this.scene.add(hemi);
     this.hemiLight = hemi;
-    // subtle moon wash — provides SSAO-anchoring and soft directional shadows
-    const moon = new THREE.DirectionalLight(0x8ea0c8, 0.35);
-    moon.position.set(18, 28, 12);
+    // subtle moon wash — directional shadows for depth. Follows the hero
+    // (see update) so its ±30 shadow frustum always covers the played area.
+    const moon = new THREE.DirectionalLight(0x8ea0c8, 0.8);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
     moon.shadow.camera.near = 1;
@@ -622,8 +661,7 @@ export class GameEngine {
     moon.shadow.camera.right = 30;
     moon.shadow.camera.top = 30;
     moon.shadow.camera.bottom = -30;
-    moon.shadow.bias = -0.0005;
-    moon.shadow.radius = 3;
+    moon.shadow.normalBias = 0.02;   // PCFSoft ignores radius; normalBias kills voxel acne
     this.scene.add(moon);
     (this as any)._moonLight = moon;
 
@@ -710,7 +748,12 @@ export class GameEngine {
         const bid = u.npcId ?? u.name.replace(/\s+/g, '_').toLowerCase();
         if (!bid || this.mobsBarked.has(bid)) continue;
         this.mobsBarked.add(bid);
-        this.speakDialogue?.(bid, 'bark');
+        // queue behind any narration in progress (a combat-start bark used to
+        // cut the room/ambush VO mid-word); fall back to raw VO when the mob
+        // has no designed bark line to subtitle
+        const barkText = NPCS[bid]?.dialogue?.bark?.text;
+        if (barkText) void this.bark(bid, 'bark', barkText, 4200);
+        else this.speakDialogue?.(bid, 'bark');
       }
       return origStart();
     };
@@ -839,7 +882,7 @@ export class GameEngine {
     this.buildLevel(party);
     // arrival narration for the new floor
     if (n === 49) {
-      void this.narrate('f49_arrival', 'You climb. You climb away from the bath, the soap, the ducks, all of it. You climb toward something GREEN. Something glowing. Something ALIVE. The air changes. The air becomes warm. The air becomes wet. The air smells like earth and judgment. Welcome to Floor 49. The mushrooms have been expecting you. They are not sure they approve.', 5800);
+      void this.narrate('f49_arrival', 'You climb. You climb away from the bath, the soap, the rubber ducks, the whole wet cabinet of nonsense. You climb toward something green. Something glowing. Something alive. The air changes. It becomes warm. It becomes wet. It becomes JUDGMENTAL. It smells like earth and earth\'s opinions, which are numerous. Welcome to Floor 49. The mushrooms have been expecting you. They drew up a seating chart. You are not on it. You are on the menu.', 5800);
       this.questLog?.start?.('through_grotto');
     }
     this.emitSnapshot();
@@ -1127,7 +1170,11 @@ export class GameEngine {
       speakDialogue: (npcId, nodeId) => self.speakDialogue(npcId, nodeId),
       showCine: (text) => self.showCine(text),
       clearCine: () => self.clearCine(),
-      markSkipped: () => { self.cutsceneSkip = true; self.introSkipped = true; self.stopVo(); },
+      markSkipped: () => { self.cutsceneSkip = true; self.introSkipped = true; self.stopVo(); self.flushNarrateQueue(); },
+      // NO flush here: a scene may legitimately start right after lines were
+      // queued for it (the boss-room trigger fires the room narration in the
+      // same tick as director.play) — dropping those would silence the reveal.
+      // Stale-line cleanup on ESC belongs to markSkipped above.
       resetSkipState: () => { self.cutsceneSkip = false; self.introSkipped = false; self.stopVo(); },
       fadeTo: (v) => self.fadeTo(v),
 
@@ -2697,10 +2744,13 @@ export class GameEngine {
       // AAA: eagerly initialize skillState so lazy migration never drops the 2 starter skills
       const loadout12 = [...build.hotbarLoadout];
       while (loadout12.length < 12) loadout12.push(null);
+      const starterNodes = treeFor(hero).filter((node) => build.skills.includes(node.unlockSkill ?? '')).map((node) => node.id);
+      hero.unlockedNodes = [...starterNodes];
       hero.skillState = {
         learned: [...build.skills],
+        starterSkills: [...build.skills],
         loadout: loadout12.slice(0, 12),
-        unlockedNodes: [],
+        unlockedNodes: starterNodes,
         passiveRanks: {},
       };
     }
@@ -3056,28 +3106,25 @@ export class GameEngine {
    *  an optional `<nodeId>_cap.mp3` intro-flavor line first (missing assets
    *  degrade to text-only dialogue). A newer call supersedes an older one:
    *  the current line is cut the instant the next one starts, so clicking
-   *  through a conversation never stacks or overlaps voices. */
-  public speakDialogue(npcId: string, nodeId: string) {
+   *  through a conversation never stacks or overlaps voices. Resolves when
+   *  the chain finishes — or instantly on supersede/skip — so cutscenes can
+   *  await it and keep the scene locked to the voice. */
+  public async speakDialogue(npcId: string, nodeId: string): Promise<void> {
     if (this.audio.muted) return;        // mute silences NPC voice-over too
-    this.stopVo();                     // cut any VO currently playing (incl. the previous node)
-    const token = this.voSeq;          // our generation — we own the air until superseded
+    this.stopVo();                       // cut any VO currently playing (incl. the previous node)
+    const token = this.voSeq;            // our generation — we own the air until superseded
     const base = `${import.meta.env.BASE_URL}audio/npc/${npcId}_${nodeId}`;
-    void (async () => {
-      for (const url of [`${base}_cap.mp3`, `${base}.mp3`]) {
-        if (token !== this.voSeq) return;
-        let a: HTMLAudioElement;
-        try { a = new Audio(url); } catch { return; }
-        const dur = await new Promise<number>((resolve) => {
-          a.onloadedmetadata = () => resolve((a.duration ?? 0) * 1000);
-          a.onerror = () => resolve(0);
-          setTimeout(() => resolve((a.duration ?? 0) * 1000), 1500);
-        });
-        if (dur <= 0) continue;
-        if (token !== this.voSeq) return;    // superseded while probing — don't start
-        this.playVo(url);
-        await new Promise<void>((r) => setTimeout(r, Math.min(dur + 150, 30000)));
-      }
-    })();
+    for (const url of [`${base}_cap.mp3`, `${base}.mp3`]) {
+      if (token !== this.voSeq) return;  // superseded — stop waiting
+      let ok = false;
+      try { const res = await fetch(url); ok = res.ok && (res.headers.get('content-type') ?? '').startsWith('audio'); } catch { ok = false; }
+      if (!ok) continue;                 // asset missing → try the next candidate
+      const el = this.playVo(url);
+      if (!el) return;
+      // the audio is the clock (no duration guess); a newer line / skip
+      // supersedes us via stopVo → 'pause' → resolve
+      await this.waitVoEnd(el, token);
+    }
   }
 
   /** Cancel any in-flight dialogue voice-over (conversation closed/skipped). */
@@ -3098,17 +3145,16 @@ export class GameEngine {
     const hero = this.combat.units.find((u) => u.team === 'party');
     if (!hero) return;
     // Defense in depth: only skills the hero actually knows may be slotted.
-    // knownSkills is the level gate — creation picks enter at Lv1, the class
-    // pool hydrates on level-up (tier-1 → Lv2, tier-2 → Lv3, tier-3+ → Lv4),
-    // and the skill tree adds more. A skill can never be equipped before it
-    // is known (item 2).
+    // knownSkills is the ownership gate. Passive skills are deliberately
+    // excluded: they are always active and never consume a hotbar slot.
     const cleaned = loadout.slice(0, 12).map((id) => {
       if (!id) return null;
-      if (!hero.knownSkills.includes(id)) return null;
+      if (!hero.knownSkills.includes(id) || ALL_CLASS_SKILLS[id]?.passive || SKILLS[id]?.passive) return null;
       return id;
     });
-    hero.hotbarLoadout = cleaned;
-    hero.equippedSkills = cleaned.filter((x): x is string => !!x);
+    const state = ensureSkillState(hero);
+    state.loadout = cleaned;
+    syncSkillState(hero);
     this.audio.play('ui_click', 0.5);
     this.emitSnapshot();
   }
@@ -3350,38 +3396,11 @@ export class GameEngine {
   }
 
   unlockNode(unitId: string, nodeId: string) {
-    const u = this.byId(unitId);
-    if (!u || u.team !== 'party') return;
-    const tree = treeFor(u);
-    const node = tree.find((n) => n.id === nodeId);
-    if (!node) return;
-    const reason = canUnlock(u, node);
-    if (reason) { this.setHoverInfoOnce(reason); return; }
-    const state = ensureSkillState(u);
-    u.skillPoints -= node.cost;
-    state.unlockedNodes.push(node.id);
-    if (node.unlockSkill && !state.learned.includes(node.unlockSkill)) {
-      state.learned.push(node.unlockSkill);
-      if (state.loadout.filter(Boolean).length < 12) {
-        const slot = state.loadout.findIndex((id) => id === null);
-        if (slot >= 0) state.loadout[slot] = node.unlockSkill;
-      }
-    }
-    if (node.passive) {
-      const p = node.passive;
-      if (p.stat === 'str' || p.stat === 'dex' || p.stat === 'con' || p.stat === 'int' || p.stat === 'wis' || p.stat === 'cha') {
-        u.abilities[p.stat] += p.amount;
-      } else if (p.stat === 'maxHp') {
-        u.maxHp += p.amount;
-        u.hp = Math.min(u.hp + p.amount, u.maxHp);
-      } else if (p.stat === 'ac') u.bonusAC += p.amount;
-      else if (p.stat === 'move') u.bonusMove += p.amount;
-    }
-    if (node.passiveSkill) state.passiveRanks[node.passiveSkill] = (state.passiveRanks[node.passiveSkill] ?? 0) + 1;
-    syncSkillState(u);
-    this.pushLog(`${u.name} learns ${node.name} from the ${node.branch} branch!`, 'system');
-    this.audio.play('heal', 0.9, 1.3);
-    this.emitSnapshot();
+    unlockNodeModule(this, unitId, nodeId);
+  }
+
+  resetSkillBuild(unitId: string) {
+    resetSkillBuildModule(this, unitId);
   }
 
   /** spend one ability point (from a sobriety level-up) to raise an ability.
@@ -3403,7 +3422,7 @@ export class GameEngine {
     const u = this.byId(unitId);
     if (!u) return;
     const state = ensureSkillState(u);
-    if (!state.learned.includes(skillId) || state.loadout.includes(skillId) || state.loadout.filter(Boolean).length >= 12) return;
+    if (!state.learned.includes(skillId) || SKILLS[skillId]?.passive || ALL_CLASS_SKILLS[skillId]?.passive || state.loadout.includes(skillId) || state.loadout.filter(Boolean).length >= 12) return;
     const slot = state.loadout.findIndex((id) => id === null);
     if (slot < 0) return;
     state.loadout[slot] = skillId;
@@ -4142,6 +4161,37 @@ export class GameEngine {
           }
         }
       }
+      // ── FP party follow: companions hold within 5 tiles of the leader.
+      // WASD never issues click orders, so without this the party strands
+      // at the last click destination while the leader free-walks. Beyond
+      // FOLLOW_AT a companion paths to a free spot within CATCH_UP of the
+      // leader's tile; inside it they stay put (hysteresis — no shuffling).
+      if (!this.busy && !this.combat.inCombat && !this.isOverlayOpen()) {
+        const nowMs = performance.now();
+        for (const f of this.combat.living('party')) {
+          if (f.id === fpHero.id || (f.moveRange ?? 6) === 0) continue;
+          const fvv = this.visuals.get(f.id);
+          if (!fvv || fvv.walker) continue;          // mid-walk or no rig
+          if (nowMs < (this.fpFollowCool.get(f.id) ?? 0)) continue;
+          this.fpFollowCool.set(f.id, nowMs + 800);  // throttle even on failure
+          if (Combat.dist(f.pos, fpHero.pos) <= 5) continue;
+          // spiral out from the leader for a free, reachable spot within 2
+          let dest: GridPos | null = null;
+          let path: GridPos[] | null = null;
+          outer:
+          for (let r = 1; r <= 2; r++) {
+            for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+              if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+              const tx = fpHero.pos.x + dx, tz = fpHero.pos.z + dz;
+              if (!this.world.isWalkable(tx, tz)) continue;
+              if (this.combat.units.some((u) => u.alive && u.pos.x === tx && u.pos.z === tz)) continue;
+              const p = this.combat.pathTo(f, tx, tz, 60);
+              if (p && p.length) { dest = { x: tx, z: tz }; path = p; break outer; }
+            }
+          }
+          if (dest && path) this.moveUnitAlong(f, path);
+        }
+      }
       // crosshair aim: the dot always points at screen centre. Evaluate the
       // centre pick every frame (cheap raycasts) but only republish hover
       // state when the aim target changes (~6 Hz cap while sweeping/walking).
@@ -4466,6 +4516,12 @@ export class GameEngine {
       this.phaseBanner = null;
       this.emitSnapshot();
     }
+    // combat action banner auto-expires (announce outlives result slightly;
+    // the animation loop replaces it long before these ceilings in practice)
+    if (this.actionBanner && performance.now() - this.actionBanner.at > (this.actionBanner.kind === 'announce' ? 1500 : 1100)) {
+      this.actionBanner = null;
+      this.emitSnapshot();
+    }
 
     // TPK vignette self-heals the moment defeat is over (respawn sets explore)
     if (this.tpkVignette && this.phase !== 'defeat') {
@@ -4507,11 +4563,19 @@ export class GameEngine {
     // ambient cellar motes around the hero (art contract: particles.ts gains
     // FX.ambient(ps, center, dt) — guarded cast keeps the build green until
     // the helper lands, then this is a plain per-frame emitter).
-    if (this.phase !== 'menu' && !this.disposed) {
+    if (this.phase !== 'menu' && !this.inTavern && !this.disposed) {
       const hero = this.combat?.living('party')[0];
       if (hero && fxAmbient) fxAmbient(this.particles, this.unitWorld(hero.pos), dt);
+      // the moon's ±30 shadow frustum rides with the hero — static, it only
+      // covers the map centre and everything beyond loses its shadows
+      const moon = (this as any)._moonLight as THREE.DirectionalLight | null;
+      if (hero && moon) {
+        const wp = this.unitWorld(hero.pos);
+        moon.target.position.copy(wp);
+        moon.position.set(wp.x + 18, wp.y + 28, wp.z + 12);
+        moon.target.updateMatrixWorld();
+      }
     }
-    // AAA: condition VFX loops — burning/poisoned/etc. emit tinted motes above the carrier
     if (!this.disposed) {
       const condVfx: Record<string, { color: number[]; fn: (ps: any, p: any) => void }> = {
         burning: { color: [0xff7a1f, 0xff4400], fn: (ps, p) => FX.blood(ps, p) },
@@ -4640,6 +4704,7 @@ export class GameEngine {
       runStats: { ...this.runStats },
       showDialogue: this.showDialogue,
       diceShow: this.diceShow ? { ...this.diceShow } : null,
+      actionBanner: this.actionBanner ? { kind: this.actionBanner.kind, text: this.actionBanner.text, sub: this.actionBanner.sub, cls: this.actionBanner.cls, id: this.actionBanner.id } : null,
       pendingLoot: this.pendingLoot ? { source: this.pendingLoot.source, items: [...this.pendingLoot.items], gold: this.pendingLoot.gold } : null,
       turnMode: this.combat.turnMode,
       jumpMode: this.jumpMode,

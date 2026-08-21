@@ -76,6 +76,19 @@ function vnoise(x: number, z: number, seed: number): number {
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
+const FLOOR_VOX = 0.165;   // 6 cubes per tile side — textured but cheap
+
+/**
+ * Floor-surface micro-height at a tile's centre — the same per-voxel bump the
+ * floor loop (step 1) applies, sampled at the tile's centre voxel. Props
+ * anchor here so they rest ON the visual surface: the bump is 0..0.02, so
+ * anchoring at the bare height value floats every prop up to 2cm.
+ */
+export function floorSurfaceY(x: number, z: number, h: number, seed: number): number {
+  const centre = TILE / (2 * FLOOR_VOX) - 0.5;   // centre voxel in step-1 loop coords
+  return h + vnoise(x * 3 + centre * 0.3, z * 3 + centre * 0.3, (seed | 0) + 42) * 0.02;
+}
+
 /**
  * Build the full voxel terrain group for a dungeon layout.
  *
@@ -181,7 +194,6 @@ export function buildVoxelTerrain(
   };
   let voxStep = VOX;
   while (estimateDetailBoxes(voxStep) > budget.maxBoxes && voxStep < 0.6) voxStep *= 2;
-
   // ── 1) voxellized floor — each tile is a grid of sub-voxel cubes with
   // per-voxel color jitter and micro-height noise so the floor reads as
   // textured hewn rock, not a flat panel. Uses a FIXED coarse floor-step
@@ -189,7 +201,7 @@ export function buildVoxelTerrain(
   // 120×120 grid stays performant (~144k floor cubes) while still showing
   // texture. ──
   // (skipped on water tiles — those get a translucent sheet later)
-  const floorVox = 0.165;   // 6 cubes per tile side — textured but cheap
+  const floorVox = FLOOR_VOX;
   for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
     if (!walk[x][z]) continue;
     if (water?.[x]?.[z]) continue;

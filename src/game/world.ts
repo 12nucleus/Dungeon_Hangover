@@ -10,7 +10,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { getTextures } from './textures';
 import { createProp, type BuiltProp } from './props';
 import type { LevelDef } from '../levels/levelTypes';
-import { buildVoxelTerrain, DEFAULT_BUDGET, paletteLookup, type Grid } from './voxelTerrain';
+import { buildVoxelTerrain, DEFAULT_BUDGET, floorSurfaceY, paletteLookup, type Grid } from './voxelTerrain';
 
 // decorative props that also block their tile (preserve legacy behaviour)
 const BLOCKING_PROPS = new Set(['torch', 'bonfire', 'brazier']);
@@ -200,6 +200,7 @@ export class VoxelWorld {
         DEFAULT_BUDGET,
         this.waterTiles,
       );
+      this.terrainGroup = voxGroup;
       this.group.add(voxGroup);
       // eslint-disable-next-line no-console
       console.log(`[VoxelWorld] voxel terrain: ${stats.boxes.toLocaleString()} boxes / ~${stats.approxTris.toLocaleString()} tris @ step ${voxStep} (budget ${stats.budget.toLocaleString()})`);
@@ -335,10 +336,11 @@ export class VoxelWorld {
     for (const p of L.props) {
       const wx = (p.x - S / 2 + 0.5) * TILE;
       const wz = (p.z - S / 2 + 0.5) * TILE;
-      // Props are authored around their local voxel origin. The terrain's
-      // top surface is the height value itself; do not add half a voxel here,
-      // otherwise braziers/bonfires visibly float above the floor.
-      const groundTopY = this.heights[p.x][p.z];
+      // Props are authored around their local voxel origin. Anchor at the
+      // floor's VISUAL surface (height + the step-1 micro-bump, sampled at
+      // the tile centre) — the bare height value floats props up to 2cm
+      // above the dipped floor voxels.
+      const groundTopY = floorSurfaceY(p.x, p.z, this.heights[p.x][p.z], this.seed);
       const built = createProp(p.kind, wx, groundTopY, wz, p.seed ?? 0.5);
       if (!built) continue;
       built.group.userData.fogTile = { x: p.x, z: p.z };
@@ -348,6 +350,37 @@ export class VoxelWorld {
       if (built.update) this.propUpdates.push(built.update);
       if (built.blocks || BLOCKING_PROPS.has(p.kind)) this.blocked[p.x][p.z] = true;
     }
+  }
+
+  /** the merged voxel-terrain group — kept so a late carve (the boss-room
+   *  stairwell reveal) can swap the mesh for one built from the updated grid */
+  private terrainGroup: THREE.Group | null = null;
+
+  /** Rebuild the voxel terrain from the CURRENT blocked grid. One-shot
+   *  ~0.5 s hitch — only call from a dramatic one-time beat (never per-frame). */
+  rebuildTerrain() {
+    if (!this.floorMats.length || !this.wallMats.length || !this.wallH.length) return;
+    if (this.terrainGroup) {
+      this.group.remove(this.terrainGroup);
+      this.terrainGroup.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+      });
+    }
+    const walkGrid: Grid = this.blocked.map((row) => row.map((b) => !b));
+    const { group: voxGroup } = buildVoxelTerrain(
+      walkGrid, this.heights, this.wallH, this.floorMats, this.wallMats,
+      {
+        floorPalette: paletteLookup,
+        wallPalette: paletteLookup,
+        seed: this.seed,
+        waterColor: this.level ? this.level.waterColor : 0x2a6f8f,
+      },
+      DEFAULT_BUDGET,
+      this.waterTiles,
+    );
+    this.terrainGroup = voxGroup;
+    this.group.add(voxGroup);
   }
 
   /**
