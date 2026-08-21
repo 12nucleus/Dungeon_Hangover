@@ -9,10 +9,22 @@ import { CONDITIONS, SUMMON_TEMPLATES } from './skills';
 import { activeSkillIds, canUseSkill, effectsForSkill, presentationForSkill } from './skillRuntime';
 import { rollD20, rollDice, abilityMod, fmtMod } from './dice';
 import { skillById } from './skillLookup';
+import { comboConditions, comboDamage, comboKillHeal } from './skillCombos';
+import { skillModifiers } from './skillPassives';
 import { VoxelWorld } from './world';
 import { ENCHANTS, rollLootTable, type Item } from './items';
 import { throwProfile } from './improvised';
-import { effAC, effMove, effMaxHp, effAtkBonus, effPhysResist, hangoverPenalty, XP_THRESHOLDS, MAX_LEVEL } from './stats';
+import { applyLevelUp, effAC, effMove, effMaxHp, effAtkBonus, effPhysResist, hangoverPenalty, XP_THRESHOLDS, MAX_LEVEL } from './stats';
+
+/** rider helper: push a condition onto a target (no duplicate) and float its name */
+function applyRider(rideEv: CombatEvent[], tgt: Unit, condId: string, rounds: number): void {
+  const cond = CONDITIONS[condId];
+  if (!cond) return;
+  if (!tgt.conditions.some((c) => c.id === condId)) {
+    tgt.conditions.push({ id: condId, name: cond.name, roundsLeft: rounds });
+    rideEv.push({ type: 'float', unitId: tgt.id, text: `❄ ${cond.name}`, cls: 'debuff' });
+  }
+}
 
 /** damage-over-time by condition id (ticked at the start of the carrier's turn) */
 const DOT_BY_ID: Record<string, { dice: string; type: DamageType }> = {
@@ -228,18 +240,26 @@ export class Combat {
     this.inCombat = true;
     this.phase = 'combat';
     this.round = 1;
-    let partyIni: { total: number } | null = null;
+    // BG3-style initiative: EVERY fighter rolls d20 + DEX modifier — no side
+    // is predetermined to go first. Buffs nudge it (Inspired/Blessed +2,
+    // Pure Caffeine passive +20), and a surprised team rolls −20 so the
+    // ambushed side acts last on top of losing their first turn.
+    let surprisedTeam: 'party' | 'enemy' | null = null;
+    if (this.pendingSurprise) { surprisedTeam = this.pendingSurprise; this.pendingSurprise = null; }
     for (const u of this.units) {
       if (!u.alive || u.dormant) continue;
-      const r = rollD20(abilityMod(u.abilities.dex));
+      let mod = abilityMod(u.abilities.dex);
+      const notes: string[] = [];
+      if (u.conditions.some((c) => c.id === 'inspired' || c.id === 'blessed')) { mod += 2; notes.push('buff'); }
+      if (u.knownSkills?.includes('pure_caffeine')) { mod += 20; notes.push('Pure Caffeine'); }
+      if (surprisedTeam && u.team === surprisedTeam) { mod -= 20; notes.push('surprised'); }
+      const r = rollD20(mod);
       u.initiative = r.total + r.roll / 100; // tiebreak by raw roll
-      ev.push({ type: 'log', text: `${u.name} rolls initiative ${r.roll}${fmtMod(abilityMod(u.abilities.dex))} = ${r.total}`, kind: 'roll' });
-      if (u.team === 'party' && !partyIni) partyIni = r;
+      ev.push({ type: 'log', text: `${u.name} rolls initiative ${r.roll}${fmtMod(mod)}${notes.length ? ` (${notes.join(', ')})` : ''} = ${r.total}`, kind: 'roll' });
     }
-    // BG3-style GROUPED phases: the whole party acts first (in initiative
-    // order), then every enemy. The rotation wraps once per full round — the
-    // only index wrap is enemy→party, so endTurn's `idx <= activeIdx` round
-    // counter already ticks exactly once per phase cycle.
+    // INDIVIDUAL initiative: one mixed rotation, highest roll first. The
+    // round counter in endTurn (`idx <= activeIdx`) still ticks exactly once
+    // per full rotation regardless of how teams interleave.
     const fighters = this.units.filter((u) => u.alive && !u.dormant);
     const byIni = (a: Unit, b: Unit) => b.initiative - a.initiative;
     // leash every enemy to its home room before the rotation starts: chase
@@ -248,10 +268,7 @@ export class Combat {
     for (const u of fighters) {
       if (u.team === 'enemy' && !u.leash) u.leash = this.leashFor?.(u) ?? undefined;
     }
-    this.turnOrder = [
-      ...fighters.filter((u) => u.team === 'party').sort(byIni),
-      ...fighters.filter((u) => u.team === 'enemy').sort(byIni),
-    ].map((u) => u.id);
+    this.turnOrder = fighters.sort(byIni).map((u) => u.id);
     this.activeIdx = 0;
     ev.push({ type: 'log', text: '— ⚔ COMBAT BEGINS —', kind: 'system' });
     ev.push({ type: 'phase', phase: 'combat' });
@@ -264,10 +281,14 @@ export class Combat {
     return ev;
   }
 
-  /** Start combat from stealth detection — enemies get Surprised */
+  /** surprise team for the NEXT start() — consumed and cleared by the roll */
+  private pendingSurprise: 'party' | 'enemy' | null = null;
+
+  /** Start combat from stealth detection — the ENEMIES are Surprised */
   startDetection(surprise: boolean): CombatEvent[] {
+    if (surprise) this.pendingSurprise = 'enemy';
     const ev = this.start();
-    if (surprise) {
+    if (surprise && this.inCombat) {
       this.surpriseRound = true;
       this.surpriseHits = new Set(this.living('party').map((p) => p.id));
       for (const u of this.units) {
@@ -280,6 +301,20 @@ export class Combat {
     return ev;
   }
 
+  /** Start with the PARTY ambushed — they lose their first turn and act last */
+  startAmbush(): CombatEvent[] {
+    this.pendingSurprise = 'party';
+    const ev = this.start();
+    if (this.inCombat) {
+      this.surpriseRound = true;
+      this.surpriseHits = new Set(this.living('party').map((p) => p.id));
+      for (const p of this.living('party')) {
+        p.conditions.push({ id: 'surprised', name: CONDITIONS.surprised.name, roundsLeft: 1 });
+      }
+      ev.push({ type: 'log', text: '⚡ AMBUSH! The enemy was waiting — you are Surprised!', kind: 'system' });
+    }
+    return ev;
+  }
   private beginTurn(): CombatEvent[] {
     const u = this.active!;
     const ev: CombatEvent[] = [];
@@ -525,6 +560,9 @@ export class Combat {
     const atk = rollD20(bonus);
     const tgtAC = effAC(tgt);
     const hit = atk.crit || (!atk.fumble && atk.total >= tgtAC);
+    ev.push({ type: 'actionAnnounce', unitId: att.id, text: `⚔ ${att.name} — reaction attack`, sub: `→ ${tgt.name}`, cls: `announce ${att.team}`, cue: 'melee', fxColor: 0xffe08a });
+    ev.push({ type: 'melee', unitId: att.id, targetId: tgt.id });
+    ev.push({ type: 'actionResult', unitId: att.id, targetId: tgt.id, text: hit ? `${att.name} hits ${tgt.name}` : `${att.name} misses ${tgt.name}`, sub: `${atk.roll}${fmtMod(bonus)} = ${atk.total} vs AC ${tgtAC}`, outcome: hit ? (atk.crit ? 'crit' : 'hit') : 'miss' });
     ev.push({
       type: 'log',
       text: `⚔ ${att.name} lashes out as ${tgt.name} moves away: ${atk.roll}${fmtMod(bonus)} vs AC ${tgtAC}: ${hit ? '✨CRIT' : hit ? 'HIT' : 'MISS'}`,
@@ -536,7 +574,6 @@ export class Combat {
     }
     return ev;
   }
-
   // ── skill use (player) ─────────────────────────────────────
   private executeTypedEffects(u: Unit, s: SkillDef, center: GridPos, targets: Unit[]): CombatEvent[] {
     const ev: CombatEvent[] = [];
@@ -547,15 +584,21 @@ export class Combat {
       for (const effect of effectsForSkill(s)) {
         if (effect.type === 'damage') {
           let amount = rollDice(effect.dice).total;
+          const combo = comboDamage(u, s.id, target);
           if (effect.save) {
             const save = rollD20(abilityMod(target.abilities[effect.save.ability]));
             const success = save.total >= effect.save.dc;
             ev.push({ type: 'save', unitId: target.id, success, total: save.total });
-            ev.push({ type: 'dice', die: 'd20', total: save.total, reason: `${effect.save.ability.toUpperCase()} save` });
+            ev.push({ type: 'actionResult', unitId: target.id, text: success ? `${target.name} saves` : `${target.name} fails the save`, sub: `${save.total} vs DC ${effect.save.dc}`, outcome: success ? 'save-ok' : 'save-fail' });
             if (success && effect.save.result === 'negate') amount = 0;
             else if (success) amount = Math.floor(amount / 2);
           }
+          amount = Math.round(amount * (1 + skillModifiers(u).damageMultiplier + combo.multiplier) + combo.flat);
           if (amount > 0) this.applyDamage(ev, target, amount, effect.damageType, false);
+          // skill-driven combo riders (e.g. bleed_out → poison, over_heat → burning)
+          if (amount > 0 && target.alive) {
+            for (const conditionId of comboConditions(u, s.id, target)) applyRider(ev, target, conditionId, 2);
+          }
         } else if (effect.type === 'heal') {
           const amount = Math.min(rollDice(effect.dice).total, effMaxHp(target) - target.hp);
           target.hp += amount;
@@ -643,19 +686,22 @@ export class Combat {
     }
 
     const ev: CombatEvent[] = [];
+    // ── action announce — every action opens with a readable beat: a banner
+    // ("Gnaw is casting Soap Storm"), a caster charge VFX and a cast cue ──
+    {
+      const pres = presentationForSkill(s);
+      const single = targets.length === 1 && targets[0] !== u ? targets[0].name : '';
+      const weaponKind = s.kind === 'melee' || s.kind === 'ranged';
+      const text = s.id === 'shove' && single ? `${u.name} shoves ${single}`
+        : weaponKind ? `${u.name} attacks ${single || 'the air'}`
+        : `${u.name} is casting ${s.name}`;
+      const sub = weaponKind ? `${s.icon} ${s.name}${single ? ` → ${single}` : ''}` : (single ? `→ ${single}` : undefined);
+      ev.push({ type: 'actionAnnounce', unitId: u.id, text, sub, cls: `announce ${u.team}`, cue: pres.castAudio, fxColor: s.fxColor });
+    }
     ev.push({ type: 'log', text: `${u.name} uses ${s.icon} ${s.name}`, kind: 'info' });
-
     // shared rider applicator — every rider condition (appliesCondition /
     // appliesCondition2) lands through here so double-rider skills
     // (soap_storm: Scalded + Slippery) never need a per-skill special case.
-    const applyRider = (rideEv: CombatEvent[], tgt: Unit, condId: string, rounds: number) => {
-      const cond = CONDITIONS[condId];
-      if (!cond) return;
-      if (!tgt.conditions.some((c) => c.id === condId)) {
-        tgt.conditions.push({ id: condId, name: cond.name, roundsLeft: rounds });
-        rideEv.push({ type: 'float', unitId: tgt.id, text: `❄ ${cond.name}`, cls: 'debuff' });
-      }
-    };
 
     // pay costs — the basic attack is FREE (spent via attackUsed instead) so
     // the action stays available for one skill per round
@@ -671,7 +717,8 @@ export class Combat {
       }
     }
     if (s.cost === 'bonus') u.hasBonus = false;
-    if (s.cooldown > 0) u.cooldowns[s.id] = s.cooldown + 1; // +1 because it ticks at next turn start
+    const cooldownReduction = skillModifiers(u).cooldownReduction;
+    if (s.cooldown > 0) u.cooldowns[s.id] = Math.max(1, s.cooldown - cooldownReduction) + 1; // +1 because it ticks at next turn start
     if (s.oncePerFight) u.cooldowns[`once_${s.id}`] = 999;
     // AAA: concentration — break previous, start new
     if (s.concentration) {
@@ -691,12 +738,14 @@ export class Combat {
       const dc = 10 + abilityMod(t.abilities.str);
       ev.push({ type: 'log', text: `${u.name} shoves ${t.name}: STR ${atk.roll}${fmtMod(atk.bonus)} vs DC ${dc}`, kind: 'roll' });
       if (atk.total < dc) {
+        ev.push({ type: 'actionResult', unitId: u.id, targetId: t.id, text: `${t.name} holds their ground`, sub: `STR ${atk.roll}${fmtMod(atk.bonus)} = ${atk.total} vs DC ${dc}`, outcome: 'miss' });
         ev.push({ type: 'float', unitId: t.id, text: 'Holds!', cls: 'miss' });
         ev.push({ type: 'log', text: `${t.name} holds their ground.`, kind: 'info' });
         ev.push(...this.checkEnd());
         return ev;
       }
       // displace 1 tile directly away from the attacker
+      ev.push({ type: 'actionResult', unitId: u.id, targetId: t.id, text: `${u.name} shoves ${t.name} back`, sub: `STR ${atk.roll}${fmtMod(atk.bonus)} = ${atk.total} vs DC ${dc}`, outcome: 'hit' });
       const dx = Math.sign(t.pos.x - u.pos.x), dz = Math.sign(t.pos.z - u.pos.z);
       const dest = { x: t.pos.x + dx, z: t.pos.z + dz };
       if (dx !== 0 || dz !== 0) {
@@ -962,7 +1011,7 @@ export class Combat {
         const save = rollD20(abilityMod(t.abilities[s.saveAbility]));
         const success = save.total >= (s.saveDC ?? 12);
         ev.push({ type: 'save', unitId: t.id, success, total: save.total });
-        ev.push({ type: 'dice', die: 'd20', total: save.total, reason: `${s.saveAbility.toUpperCase()} save` });
+        ev.push({ type: 'actionResult', unitId: t.id, text: success ? `${t.name} saves against ${s.name}` : `${t.name} fails the save`, sub: `${save.total} vs DC ${s.saveDC}`, outcome: success ? 'save-ok' : 'save-fail' });
         ev.push({ type: 'log', text: `${t.name} ${s.saveAbility.toUpperCase()} save ${save.total} vs DC ${s.saveDC}: ${success ? 'SUCCESS' : 'FAIL'}`, kind: 'roll' });
         const dmg = rollDice(s.damageDice);
         let amount = dmg.total;
@@ -998,7 +1047,8 @@ export class Combat {
         const blessed = u.conditions.some((c) => c.id === 'blessed');
         const keen = weapon ? effAtkBonus(u) : 0;
       // ── condition modifiers on the attack roll (floor 50) ──
-      let atkMod = abilityMod(u.abilities[s.attackAbility]) + u.proficiency + keen;
+      const skillMods = skillModifiers(u);
+      let atkMod = abilityMod(u.abilities[s.attackAbility]) + u.proficiency + keen + skillMods.attackBonus;
       for (const c of u.conditions) {
         switch (c.id) {
           case 'nauseated': atkMod -= 1; break;
@@ -1025,10 +1075,29 @@ export class Combat {
       else if (elev <= -1) adv = 'dis';                 // fighting from low ground
       else if (elev >= 1) adv = 'adv';                  // high-ground advantage
       else if (t.conditions.some((c) => c.id === 'prone') || t.conditions.some((c) => c.id === 'blinded')) adv = 'adv';
+      // ── positional play: flanking & backstab ──
+      // backstab: a MELEE attacker in the target's rear half-plane (opposite
+      // its last facing) rolls with advantage and +2 damage.
+      // flanking: a MELEE attacker whose ally already stands on the opposite
+      // side of the target rolls with advantage — no facing needed.
+      let posTag: 'backstab' | 'flanked' | null = null;
+      if (s.kind === 'melee') {
+        const dxA = u.pos.x - t.pos.x, dzA = u.pos.z - t.pos.z;
+        if (Math.abs(dxA) + Math.abs(dzA) === 1) {
+          if (typeof t.facing === 'number') {
+            const dotB = dxA * -Math.sin(t.facing) + dzA * -Math.cos(t.facing);
+            if (dotB > 0.4) posTag = 'backstab';
+          }
+          if (!posTag && this.units.some((f) => f.alive && f.team === u.team && f.id !== u.id
+            && Math.abs(f.pos.x - t.pos.x) + Math.abs(f.pos.z - t.pos.z) === 1
+            && ((f.pos.x - t.pos.x) * dxA + (f.pos.z - t.pos.z) * dzA) < 0)) posTag = 'flanked';
+        }
+      }
+      if (posTag) adv = 'adv';
       const atk = rollD20(atkMod, blessed ? '1d4' : '', adv);
-      // combat dice overlay: PARTY attack rolls only (enemy routine rolls
-      // stay off-screen — the spam guard). Saves are always shown above.
-      if (u.team === 'party') ev.push({ type: 'dice', die: 'd20', total: atk.total, reason: `Attack vs ${t.name}` });
+      // dice overlay reserved for the dramatic rolls — crits & fumbles only.
+      // Every roll's numbers still land on the action-result banner below.
+      if (atk.crit || atk.fumble) ev.push({ type: 'dice', die: 'd20', total: atk.total, reason: `Attack vs ${t.name}` });
       const auto = s.id === 'magic_missile';
       // prone targets are easier to hit (+2); cover makes harder (+2/+5)
       const cover = isRanged ? this.coverBonus(u.pos, t.pos) : 0;
@@ -1038,25 +1107,30 @@ export class Combat {
       // sneak (shadow_step / xray): promote to a guaranteed crit hit
       let sneakCrit = false;
       if (u.sneak) { sneakCrit = true; u.sneak = false; }
+      const combo = comboDamage(u, s.id, t);
+      const comboCrit = combo.critChance > 0 && Math.random() < combo.critChance;
+      const passiveCrit = skillMods.critChance > 0 && Math.random() < skillMods.critChance;
       const hit = auto || atk.crit || surpriseCrit || sneakCrit || (!atk.fumble && atk.total >= tgtAC);
-      let crit = !auto && (atk.crit || surpriseCrit || sneakCrit);
+      let crit = !auto && (atk.crit || surpriseCrit || sneakCrit || (hit && (comboCrit || passiveCrit)));
       ev.push({
         type: 'log',
         text: auto
           ? `${s.name} strikes ${t.name} unerringly`
-          : `Attack ${atk.roll}${fmtMod(atk.bonus)}${blessed ? `+${atk.extra}(bless)` : ''}${adv ? ` (${adv === 'adv' ? 'advantage' : 'disadvantage'})` : ''}${cover ? ` [${cover === 5 ? 'full' : 'half'} cover +${cover} AC]` : ''} = ${atk.total} vs AC ${tgtAC}: ${crit ? '✨CRITICAL' : hit ? 'HIT' : 'MISS'}`,
+          : `Attack ${atk.roll}${fmtMod(atk.bonus)}${blessed ? `+${atk.extra}(bless)` : ''}${adv ? ` (${adv === 'adv' ? 'advantage' : 'disadvantage'})` : ''}${posTag ? ` [${posTag === 'backstab' ? '🗡 BACKSTAB' : '⇔ FLANKED'}]` : ''}${cover ? ` [${cover === 5 ? 'full' : 'half'} cover +${cover} AC]` : ''} = ${atk.total} vs AC ${tgtAC}: ${crit ? '✨CRITICAL' : hit ? 'HIT' : 'MISS'}`,
         kind: crit ? 'crit' : hit ? 'hit' : 'miss',
       });
       if (!hit) {
         const why: 'miss' | 'dodge' | 'block' = t.conditions.some((c) => c.id === 'defending') ? 'block'
           : (t.conditions.some((c) => c.id === 'evading') || abilityMod(t.abilities.dex) >= 3) ? 'dodge'
           : 'miss';
+        ev.push({ type: 'actionResult', unitId: u.id, targetId: t.id, text: `${u.name} misses ${t.name}`, sub: `${atk.roll}${fmtMod(atk.bonus)} = ${atk.total} vs AC ${tgtAC}`, outcome: 'miss' });
         ev.push({ type: 'miss', unitId: u.id, targetId: t.id, why });
         ev.push({ type: 'float', unitId: t.id, text: 'Miss', cls: 'miss' });
         continue;
       }
       const dmg = rollDice(diceExpr);
       let amount = dmg.total;
+      if (posTag === 'backstab') amount += 2; // striking from the blind side stings more
       if (crit) amount += rollDice(diceExpr.replace(/[+-]\d+$/, '')).total; // double the dice
       // damage-dealt modifiers (intimidated / enraged / dwarven ale)
       if (u.conditions.some((x) => x.id === 'crash_out')) amount = Math.round(amount * 1.5); // +50% multiplicative
@@ -1064,7 +1138,14 @@ export class Combat {
       if (u.conditions.some((x) => x.id === 'enraged')) amount += 4;
       if (u.conditions.some((x) => x.id === 'lich_form')) amount += 2;
       if (u.conditions.some((x) => x.id === 'inspired')) amount += 2;
+      amount = Math.round(amount * (1 + skillMods.damageMultiplier + combo.multiplier) + combo.flat);
       if (sneakCrit) ev.push({ type: 'log', text: '🎯 Sneak attack — guaranteed crit!', kind: 'crit' });
+      ev.push({
+        type: 'actionResult', unitId: u.id, targetId: t.id,
+        text: auto ? `${u.name}'s ${s.name} strikes ${t.name}` : crit ? `✨ ${u.name} CRITS ${t.name}` : `${u.name} hits ${t.name}`,
+        sub: auto ? `unerring · ${amount} dmg` : `${atk.roll}${fmtMod(atk.bonus)} = ${atk.total} vs AC ${tgtAC}`,
+        outcome: crit ? 'crit' : 'hit',
+      });
       this.applyDamage(ev, t, amount, weapon?.damageType ?? s.damageType, crit);
       // skill rider condition on a landed hit (soap splash → slippery, …)
       if (t.alive && s.appliesCondition && (s.appliesChance ?? 1) > Math.random()) {
@@ -1072,6 +1153,9 @@ export class Combat {
       }
       if (t.alive && s.appliesCondition2 && (s.appliesChance ?? 1) > Math.random()) {
         applyRider(ev, t, s.appliesCondition2, s.appliesRounds2 ?? 2);
+      }
+      if (t.alive) {
+        for (const comboCondition of comboConditions(u, s.id, t)) applyRider(ev, t, comboCondition, 2);
       }
       // weapon on-hit condition + fragile / fumble break / fumble drop
       if (t.alive && weapon?.onHitCondition && Math.random() < weapon.onHitCondition.chance) {
@@ -1085,7 +1169,7 @@ export class Combat {
           const sv = rollD20(abilityMod(t.abilities[u.onHit.saveAbility]));
           applies = sv.total < (u.onHit.saveDC ?? 12);
           ev.push({ type: 'save', unitId: t.id, success: !applies, total: sv.total });
-          ev.push({ type: 'dice', die: 'd20', total: sv.total, reason: `${u.onHit.saveAbility.toUpperCase()} save vs ${u.name}` });
+          ev.push({ type: 'actionResult', unitId: t.id, text: applies ? `${t.name} succumbs to ${u.name}` : `${t.name} resists`, sub: `${sv.total} vs DC ${u.onHit.saveDC ?? 12}`, outcome: applies ? 'save-fail' : 'save-ok' });
         }
         if (applies && !t.conditions.some((x) => x.id === u.onHit!.condition)) {
           t.conditions.push({ id: u.onHit!.condition, name: CONDITIONS[u.onHit!.condition]?.name ?? u.onHit!.condition, roundsLeft: u.onHit!.rounds });
@@ -1207,6 +1291,13 @@ export class Combat {
     out.push({ type: 'log', text: `☠ ${t.name} is slain!`, kind: 'death' });
     if (t.team === 'enemy') {
       out.push(...this.awardXP(t));
+      for (const party of this.living('party')) {
+        const heal = Math.floor(effMaxHp(party) * comboKillHeal(party));
+        if (heal <= 0) continue;
+        party.hp = Math.min(effMaxHp(party), party.hp + heal);
+        out.push({ type: 'heal', unitId: party.id, amount: heal });
+        out.push({ type: 'float', unitId: party.id, text: `+${heal} Death Dividend`, cls: 'heal' });
+      }
       const src = t.bossGroup ? 'boss'
         : t.scheme.monster === 'skeleton' ? 'undead'
         : (t.scheme.monster === 'rat' || t.scheme.monster === 'bat') ? 'beast'
@@ -1565,11 +1656,9 @@ export function grantXp(units: Unit[], baseAmount: number, ringBonus?: (p: Unit)
       p.level++;
       // NO auto-hydration of the class pool — new skills come from the Skill
       // Tree (one skill point per level-up to spend there).
-      p.maxHp += 6;
-      p.hp = Math.min(effMaxHp(p), p.hp + 6);
-      p.skillPoints += 1;
+       applyLevelUp(p);
       ev.push({ type: 'levelup', unitId: p.id });
-      ev.push({ type: 'log', text: `⬆ ${p.name} reaches level ${p.level}! (+6 max HP, +1 skill point — spend it in the Skill Tree)`, kind: 'system' });
+       ev.push({ type: 'log', text: `⬆ ${p.name} reaches level ${p.level}! (+6 max HP, +1 skill point, +1 ability point)`, kind: 'system' });
     }
   }
   return ev;

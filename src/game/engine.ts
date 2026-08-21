@@ -393,7 +393,10 @@ export class GameEngine {
     if (this.narrateRunning || !this.narrateQueue.length) return;
     this.narrateRunning = true;
     try {
-      while (this.narrateQueue.length) {
+      // cap: a scene that keeps re-narrating while draining must never spin
+      // this loop forever (historical freeze suspect) — 64 lines per drain.
+      let narrated = 0;
+      while (this.narrateQueue.length && ++narrated <= 64) {
         const next = this.narrateQueue.shift()!;
         try {
           if (next.npcId && next.nodeId) await this.runBark(next.npcId, next.nodeId, next.text, next.minMs);
@@ -492,6 +495,8 @@ export class GameEngine {
     this.fadeEl.style.opacity = String(v);
   }
   public hoverInfo: string | null = null;
+  /** when hoverInfo was set — toasts self-clear so stale hints don't linger */
+  public hoverInfoAt = 0;
   public keys = new Set<string>();
   public enemyCones: { mesh: THREE.Mesh; yaw: number; targetYaw: number; unitId: string }[] = [];
   public playerCone!: THREE.Mesh;
@@ -1923,7 +1928,7 @@ export class GameEngine {
 
   /** auto-hit smash against a destructible prop with a usable basic damaging skill */
 
-  public setHoverInfoOnce(s: string) { this.hoverInfo = s; this.emitSnapshot(); }
+  public setHoverInfoOnce(s: string) { this.hoverInfo = s; this.hoverInfoAt = performance.now(); this.emitSnapshot(); }
 
   // -- NPC dialogue -----------------------------------------
 
@@ -2172,28 +2177,14 @@ export class GameEngine {
     }
     const s = SKILLS[skillId] ?? ALL_CLASS_SKILLS[skillId];
     if (!s) { this.setHoverInfoOnce('Unknown skill.'); return; }
-    // 3-phase combat: the basic attack lives in the ⚔️ Attack phase; every
-    // other skill is a 🔸 third-phase ability
+    // free-flow phase handling: picking a skill auto-switches the turn ring
+    // to the phase that pays for it. The old hard gate REFUSED hotbar clicks
+    // unless the ring already matched ("Skills are the third phase") while
+    // canvas clicks never gated — two input paths, two different answers,
+    // and the #1 source of the "clunky, can't grasp the phases" feel.
     if (this.combat.inCombat) {
-      if (skillId === 'attack' && this.combat.turnMode !== 'action') {
-        this.setHoverInfoOnce('The basic attack is the ⚔️ Attack phase — switch or Skip there.');
-        return;
-      }
-      if (skillId !== 'attack' && this.combat.turnMode !== 'bonus') {
-        this.setHoverInfoOnce('Skills are the 🔸 third phase — switch or Skip there.');
-        return;
-      }
-    }
-    const deny = this.combat.canUse(active, s);
-    if (deny) { this.setHoverInfoOnce(deny); return; }
-    this.audio.play('ui_click', 0.6);
-    // instant-cast kinds: self-centered novas, self-casts, party-wide buffs/heals.
-    // Ally-targeted buffs (encore, rehearsal, vow, refill) need aiming mode
-    // so they refuse to cast on the caster's own tile.
-    if ((s.kind === 'buff' && !s.targetsAllies) || s.selfCentered || s.selfOnly || s.allAllies) {
-      this.audio.play('dice', 0.7);
-      this.enqueue(this.combat.useSkill(active, s.id, active.pos));
-      return;
+      const want: 'action' | 'bonus' = skillId === 'attack' ? 'action' : 'bonus';
+      if (this.combat.turnMode !== want) this.combat.turnMode = want;
     }
     this.targeting = skillId;
     this.showTargeting(s, active);
@@ -2510,6 +2501,12 @@ export class GameEngine {
 
     // -- restore state --
     this.combat.units = data.units.map((u) => this.clone(u));
+    // pre-fix saves may hold companions without the AI flag — re-assert it so
+    // their turns auto-resolve instead of stalling the rotation (leader is
+    // the only player-driven party member).
+    for (const u of this.combat.units) {
+      if (u.team === 'party' && u.npcId) u.aiControlled = true;
+    }
     for (const u of this.combat.units) ensureSkillState(u);
     this.gold = data.gold;
     this.inventory = data.inventory.map((i) => this.clone(i));
@@ -3555,6 +3552,11 @@ export class GameEngine {
     this.companionHomes[npcId] = { ...near };
     const unit = this.combat.summon(tpl(), near);
     if (!unit) return;
+    // companions are AI-driven (partyAiStep): without this flag their turns
+    // stall the rotation waiting for player input they can never get — the
+    // doc comment on SUMMON_TEMPLATES says "AI-controlled party unit", so
+    // make it true at the source.
+    unit.aiControlled = true;
     // Sporefriend tracks the hero like the offering-bowl recruit does
     if (npcId === 'sporefriend' && leader) {
       unit.level = Math.max(1, leader.level);
@@ -4013,6 +4015,21 @@ export class GameEngine {
     // pause — freeze all simulation while the in-game menu is open.
     // The render loop (composer.render) still runs, so the frozen frame shows.
     if (this.paused) return;
+    // self-heal the phase mirror: a lost 'phase' CombatEvent (queue drained
+    // mid-skip, cutscene teardown) used to leave engine.phase stuck on
+    // 'combat' with no fight live — which silently killed every explore
+    // system gated behind phase === 'explore' (interactable prompts, room
+    // narration, aggro checks). combat.inCombat is authoritative.
+    if (this.combat && !this.combat.inCombat && this.phase === 'combat') {
+      this.phase = 'explore';
+      this.emitSnapshot();
+    }
+    // hover toasts self-expire: a hint like "Can't walk there" must not
+    // linger across turns (players read it as current feedback)
+    if (this.hoverInfo && performance.now() - this.hoverInfoAt > 4200) {
+      this.hoverInfo = null;
+      this.emitSnapshot();
+    }
 
     // (torch fuel timer removed — the torch never burns out)
     // cursed gold: loot quality downgraded while the leader is cursed

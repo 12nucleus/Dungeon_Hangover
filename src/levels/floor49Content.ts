@@ -16,24 +16,24 @@ import { mulberry32 } from './gen/dungeonGen';
 
 /** Narrator's first-entry line for each room (18 rooms, one voice: judgement). */
 export const ROOM_NARRATION: Record<string, string> = {
-  r1: "You enter the Fungal Grotto. It's beautiful. It's glowing. It's ALIVE. It's also judging you. You can tell. The mushrooms have opinions, and one of them is about your posture. Whatever. You're here. You're breathing. The mushrooms hate that.",
-  r2: "The spores. Everywhere. You can see them because they are literally in your face. You can breathe them. You probably shouldn't. You're going to anyway, because you're you, and 'you' is the word for 'a person who breathes the spores.'",
-  r3: "The vines move. The vines are alive. The vines are not your friends. I know, I know — 'vines are plants, plants are chill.' That's what the LAST guy thought. The last guy is mulch. The last guy was also extremely chill about it, right up until the end.",
-  r4: "A pool. Crystal clear. Underground. This is fine. Everything is fine. Do not drink the water. Do not even LOOK at the water. Look at the water, Greg. Drink the water, Greg. You know you want to. You KNOW you want to.",
-  r5: "Seven mushrooms. Seven colors. Seven is a MAGIC number. This is either a ritual or a party. Either way, you're not invited. Unless you bring a mushroom. Then you're the main course AND the entertainment.",
-  r6: "The central grotto. The HEART of the fungal forest. The mushrooms here are bigger. Older. Wiser. WATCHING. It's like walking into a library where every librarian is a mushroom and every book is a judgment.",
-  r7: "The throne. The Spore Mother. The thing that rules this garden. The thing that dreams this garden. The thing that IS this garden. Also, technically, the thing that wrote 'meat' in her diary. You read that. You can't unread that.",
-  r8: "Three pools. Three choices. One heals. One poisons. One shows you the truth. You don't know which is which. You could test them. You could be smart. You're going to guess, aren't you. You're going to guess, and you're going to be wrong, and it's going to be FANTASTIC.",
-  r9: "Water. Knee-deep. Cold. Something is moving in it. Something with legs. Something with a tongue. Something that has watched every one of your mistakes today and has a FIVE-STAR review prepared.",
-  r10: "A mushroom farm. Rows and rows of glowing caps, all standing at attention like tiny soldiers. Somewhere, a farmer is proud. The farmer is a skeleton. The skeleton is wearing a hat. The hat is a mushroom.",
-  r11: "The Rotting Tree. It's not a tree. It's a mushroom that wanted to be a tree so badly it practiced for four hundred years. It almost made it. The hollow trunk is full of secrets, and the kind of quiet that means something is definitely watching you.",
-  r12: "A picnic. A full, untouched picnic. Blanket, basket, little cups. The only thing missing is whoever was supposed to be eating it. They are, presumably, fertilizer now. The view is beautiful. The view is the last thing they saw.",
-  r13: "The nursery. Small mushrooms. Dozens of them. They glow like tiny lanterns, and they're all watching you with the wrong amount of innocence. These are the Spore Mother's children. She loved them. She loved them so much she put a sign on the door. The sign says 'keep out.' You kept out. For once. Mostly.",
-  r14: "A treasure room. A single chest. In the middle of the floor. Untouched. Unlocked. Practically glowing with 'open me.' Nobody leaves a chest in the middle of a room unless they're lazy, careless, or the chest is ALIVE. This chest has been very patient. This chest has DREAMS.",
-  r15: "The spore-grounds. A graveyard for adventurers who trusted the wrong mushroom. Every tombstone has a mushroom growing on it. The mushrooms are not mourning. The mushrooms are celebrating a job well done.",
-  r16: "The echo chamber. Every sound you make comes back to you, repeated, layered, judgmental. Say something dumb in here and you'll hear it for the rest of your life. The crystals are recording. This is the grotto's Twitter.",
-  r17: "The mycelial highway. The grotto's own road system, built from the dreams of mushrooms. It glows green and gold. It hums. It goes exactly where you need it to go. That is suspicious. Everything in this grotto is suspicious. But at least the walk is nice.",
-  r18: "The Sleeping Giant. A mushroom the size of a house, snoring softly. Its dreams smell like the surface. If you wake it up, it will be VERY angry about the surface. If you don't wake it up, you'll wonder forever. You're going to wake it up. Of course you're going to wake it up.",
+  r1: "You enter the Fungal Grotto. It glows. It's pretty. That's the trap. Pretty things, down here, are just ugly things with better marketing. There's a skeleton by the wall. He fell for it. You won't. Probably. You're already breathing the air, Greg, so the clock's running.",
+  r2: "Spores. They're in the air. They're in your air. They're yours now. You didn't pay for them. You didn't ask for them. Congratulations, you're a homeowner. The previous owners left a cloud of sentient glitter and they are NOT coming back for it.",
+  r3: "The vines move. The vines are alive. The vines reach for you the way a landlord reaches for a deposit — slowly, legally, with real enthusiasm. The last guy through here thought vines were, you know, plants. The last guy is now a trellis. He's doing great. He's structurally load-bearing.",
+  r4: "A pool, underground, crystal clear. No filter, no chlorine, no supervision. It's a lawsuit waiting to happen and you are the plaintiff. Don't drink it. You're going to drink it. You're Greg. Drinking the unregulated water is, statistically, your whole deal.",
+  r5: "Seven mushrooms in a ring, each a different color. This is either ancient ritual or a child's birthday party that got out of hand. Either answer is a problem. You weren't invited. Showing up without a gift is rude. Showing up and BEING the gift is, it turns out, the local custom.",
+  r6: "The big room. The mushrooms here are older than your civilization and taller than your last landlord, which is saying something. They're watching you the way a library watches a man who can't read — patiently, with pity, taking notes. Yes. The mushrooms take notes. Did you think they were decorative?",
+  r7: "The Spore Mother's throne. She built it. She grew it. She sat in it and DREAMED this entire floor into existence, which is more productive than anything you've done this year. She is the landlord here. You are the tenant who is six months behind and also holding a sword.",
+  r8: "Three pools. One heals. One poisons. One shows you truths you didn't ask for. They look identical. There are no signs. No Yelp reviews. You could test them carefully. You could think. You're going to close your eyes and pick one like it's a claw machine, aren't you. You are. And you're gonna be wrong.",
+  r9: "Knee-deep water. Cold. Something with a tongue is listening to you breathe and preparing notes. It's a frog. It's a very large frog. It has, and I cannot stress this enough, OPINIONS about your form. Your breathing form. The frog is a coach now. The frog saw a gap in the market.",
+  r10: "A mushroom farm. Rows of glowing caps, standing at attention. Somewhere a farmer is proud. The farmer is a skeleton. The skeleton is wearing a mushroom as a hat. The hat is also a skeleton, spiritually. This is a vertically integrated deceased-agriculture operation. Very efficient.",
+  r11: "The Rotting Tree. It is not a tree. It's a mushroom that wanted to be a tree so badly it spent four hundred years pretending. It almost made it. It's the most inspiring thing in the dungeon, and also the saddest, and also it's watching you. Three things can be true. The tree-mushroom knows this.",
+  r12: "A picnic. Blanket, basket, little cups. Whoever sat down to eat never stood back up. The view is gorgeous. The view is, presumably, the last thing they saw, which makes the view an accomplice. The sandwiches are still here. The sandwiches have outlived their owner. The sandwiches are winning.",
+  r13: "The nursery. Dozens of small mushrooms, glowing softly, all watching you with the wrong amount of innocence. These are the Spore Mother's children. She signed the door, 'KEEP OUT.' She underlined it. Twice. She drew a little frowny face. You went in anyway, because signs are for surfaces and you, my friend, are no longer on a surface.",
+  r14: "One chest. In the middle of the room. Untouched. Unlocked. This is the dungeon's cleanest room and the dungeon's dirtiest trick. Nobody leaves a chest in the exact center of a perfectly clean room unless the chest IS the room's landlord and the rent is paid in YOU.",
+  r15: "A graveyard. Every headstone has a mushroom growing on it, which is either poetry or recycling. The epitaphs are unkind. The epitaphs are accurate. The mushrooms are not grieving. They're buzzing. They're celebrating the close of a fiscal quarter. Greg. You're a quarter.",
+  r16: "An echo chamber. Whatever you say, the room says back, louder, slower, meaner. It's like Twitter but with better acoustics. The crystals record everything. Say something stupid in here and it keeps it, replays it, and eventually improves upon it. You will say something stupid. They always do.",
+  r17: "The Mycelial Highway. A glowing road that hums and goes exactly where you need to go, which is the most suspicious thing a road can do. Infrastructure, down here, does not happen by accident. Someone funded this. Someone expects a return. You are traffic. You are also revenue.",
+  r18: "The Sleeping Giant. A mushroom the size of a duplex, snoring softly. Its dreams smell like the surface. If you wake it, it will be furious about the surface, about weather, about taxes. If you don't, you'll wonder forever. You're going to wake it. You're Greg. You touch things.",
 };
 
 /** spore traps in the field + a vine snare in the tunnel (seeded placement) */
@@ -158,11 +158,11 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r1');
     once('search_skeleton_r1', r.x0, r.z0, '[R] Search the skeleton', (e) => {
       grant(e, ['glowing_spore'], 8);
-      e.pushLog('An adventurer in mushroom-crusted gear. 8 gold and a glowing spore vial. A note, still legible: "The mushrooms are NOT friendly. The mushrooms are NEVER friendly. — signed, someone who was wrong once and then never again."', 'system');
+      e.pushLog('A corpse in fungus-crusted gear. 8 gold, one glowing-spore vial, and a note: "The mushrooms are not friendly. The mushrooms are NEVER friendly. — signed, a man who was right exactly once and then, regrettably, never." The man is the note now. The note is doing better.', 'system');
     });
     once('harvest_r1', r.x0 + 1, r.z1, '[R] Harvest the glowing mushrooms', (e) => {
       grant(e, ['glowing_mushroom', 'glowing_mushroom']);
-      e.pushLog('You pluck two glowing mushrooms. They pulse gently, offended. +2 Glowing Mushroom.', 'system');
+      e.pushLog('You pluck two glowing mushrooms. They pulse, offended, like slow blinks from someone you owe money to. +2 Glowing Mushroom.', 'system');
     });
   }
 
@@ -183,7 +183,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       for (const h of harvest) {
         if (h.boom && rng() < 0.7) {
           e.damageGreg(3, 'spore explosion');
-          e.pushLog('The mushroom EXPLODES. Not with fire. With spores. With a cloud of VERY ANGRY spores. This is the mushroom\'s revenge. This is what happens when you touch a mushroom without asking. The mushroom asked. You ignored it. Rude.', 'hit');
+          e.pushLog('The mushroom EXPLODES. Not fire. Spores. A furious, airborne resentment in cloud form. You touched it without asking. The mushroom asked first. You ignored it. Now you are the lesson, and the lesson is in your sinuses.', 'hit');
           if (Math.random() < 0.5) e.applyCondition(leaderId(e), 'nauseated', 3);
         } else {
           picked.push(h.item);
@@ -191,7 +191,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       }
       if (picked.length) {
         grant(e, picked);
-        e.pushLog(`You salvage ${picked.length} mushrooms before the caps stop glowing. The farm will remember this.`, 'system');
+        e.pushLog(`You salvage ${picked.length} mushrooms before the survivors stop glowing. They are not so much "harvested" as "traumatically relocated". The farm will remember. The farm has a list.`, 'system');
       }
     });
     // breathe deep — the START of Spore Madness (the narrator dares you)
@@ -203,7 +203,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
         e.setFlag('breathed_deep_r2');
         e.startQuest('spore_madness');
         e.applyCondition(leaderId(e), 'hallucinating', 2);
-        void e.narrate('f49_breathe', 'You breathe deep. The spores pour in. The world tilts. The walls become very honest with you — TOO honest. They tell you about your posture. They are right. You are hallucinating now. Welcome to Spore Madness. It is the best quest in the grotto, and you are already failing it.', 5400);
+        void e.narrate('f49_breathe', 'You breathe deep. The spores pour in like the second verse of a song you did not request. The world tilts. The walls go honest with you — too honest. They cover your posture, your credit, your odds. All three are bad. You are hallucinating now. Welcome to Spore Madness, the grotto\'s flagship wellness offering. The first class is free. All subsequent classes are also free, because you can never leave.', 5400);
       },
     });
   }
@@ -214,16 +214,16 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     once('eat_fruit_r3', r.x0, r.z1 - 1, '[R] Eat the glowing fruit', (e) => {
       e.healGreg(10);
       e.applyCondition(leaderId(e), 'hallucinating', 1);
-      e.pushLog('The fruit is warm and tastes like the colour green. +10 HP. The walls are waving at you now. The walls seem nice. The walls are NOT nice.', 'system');
+      e.pushLog('The fruit is warm and tastes like the colour green, which is not a flavour but is being sold to you as one. +10 HP. The walls wave at you. The walls seem friendly. The walls are not friendly. The walls are landlords, Greg. Landlords wave.', 'system');
     });
     once('disarm_vine_trap_r3', (r.x0 + r.x1) >> 1, (r.z0 + r.z1) >> 1, '[R] Disarm the vine trap (DEX)', (e) => {
       if (e.abilityCheck('dex', 12)) {
         e.deactivateTrap?.('snare');
-        e.pushLog('You snip the trip-vine with surgical precision. The trap hangs, harmless. The vines respect the hustle.', 'system');
+        e.pushLog('You snip the trip-vine with surgical precision. The vine hangs limp. Somewhere a vine-manager nods slowly, takes a note, schedules a retraining. The vines respect a clean kill. They do not respect you. They respect the kill.', 'system');
       } else {
         e.damageGreg(3, 'vine trap');
         e.applyCondition(leaderId(e), 'rooted', 1);
-        e.pushLog('The vines SNAP shut around your ankle! 3 damage, and you are bound tight. The vines are not your friends. They never were. They said so in the brochure.', 'hit');
+        e.pushLog('The vines SNAP shut around your ankle. 3 damage, bound tight. Ah. The brochure. You didn\'t read the brochure. Nobody reads the brochure. The brochure is on a vine now. In retrospect, that was a hint. That was always a hint.', 'hit');
       }
     });
     // the spore-wisdom shrine — visible only to the hallucinating (Spore Madness end)
@@ -237,8 +237,8 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       run: (e) => {
         e.completeQuest('spore_madness');
         e.setFlag('spore_wisdom');
-        void e.narrate('f49_shrine', 'The shrine. A ring of quiet mushrooms, hidden where only hallucinating eyes can find it. You breathed the spores. You saw what they see. The shrine pulses once — a blessing. Spore Wisdom: the spores recognize one of their own. They will leave you alone more often now. Mostly. It is mushrooms. There is a limit.', 5400);
-        e.pushLog('🍄 Spore Wisdom gained: 20% of conditions fizzle against you. The spores respect their alumni.', 'system');
+        void e.narrate('f49_shrine', 'The shrine. A ring of quiet mushrooms, hidden where only hallucinating eyes could find it. You breathed the spores. You saw what they see. To them, you are now one of them — a registered spore-citizen, subject to their laws, protected by their indifference. Spore Wisdom: conditions fizzle against you twenty percent of the time. The spores respect their alumni. The spores also forget their alumni. It is mushrooms, Greg. There is a loyalty ceiling.', 5400);
+        e.pushLog('🍄 Spore Wisdom gained: 20% of conditions fizzle against you. You are on the spores\' do-not-call list, which they consult roughly one in five times, because paperwork is not their strong suit.', 'system');
       },
     });
   }
@@ -257,7 +257,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
         e.setFlag('pool_drank');
         e.healGreg(15);
         e.applyCondition(leaderId(e), 'hallucinating', 2);
-        void e.narrate('f49_drink_pool', 'You drink the water. The world spins. The world changes. You see things. You see a mushroom. The mushroom is an OLD MAN. The mushroom is talking to you. The mushroom says: "Wow. You really drank that. Bold. Reckless. I like it." The mushroom is lying. It is a mushroom. It does not like anything.', 5400);
+        void e.narrate('f49_drink_pool', 'You drink the water. You did not pay. You never pay. The world spins and re-negotiates its terms with you on the spot. A mushroom appears, currently shaped like an old man, currently talking. "Wow. You actually drank that," it says. "Bold. Reckless. I respect it." It does not respect it. It is a mushroom. It is doing a bit. You are now hallucinating, which down here just counts as reading the fine print.', 5400);
       },
     });
     // return the 5 glowing mushrooms → Mycologist's Request reward
@@ -269,7 +269,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
         let given = 0;
         while (given < 5 && e.takeItem('glowing_mushroom')) given++;
         e.completeQuest('mycologist_request');
-        e.pushLog('The Hermit Shroom inspects each mushroom with trembling gills. "Five. PERFECT specimens. Science thanks you, fungus-friend. Science is very drunk."', 'system');
+        e.pushLog('The Hermit Shroom inspects each mushroom with trembling gills. "Five," he says. "Perfect specimens. Science thanks you, fungus-friend. Science is also, full disclosure, three sheets to the wind." Science down here has a substance problem. Science down here has had a substance problem for several floors.', 'system');
       },
     });
     // the hidden chest — only visible while hallucinating
@@ -279,12 +279,12 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       visibleIf: (e) => e.hasFlag('pool_drank'),
       run: (e) => {
         grant(e, ['mushroom_cap', 'hallucinogenic_spore'], 25);
-        e.pushLog('A chest you could NOT see before. The hallucinations revealed it. 25 gold, a Mushroom Cap, and a vial of the good stuff. The good stuff is, of course, more hallucinogen. It is a lifestyle.', 'system');
+        e.pushLog('A chest you could NOT see sober. The hallucinations revealed it, the way a hangover reveals regrets. 25 gold, a Mushroom Cap, and a vial of the good stuff. The good stuff is, naturally, more hallucinogen. The whole economy down here is circular, and you are the circle.', 'system');
       },
     });
     once('harvest_moon_cap_r4', r.x0 + 3, r.z0 + 3, '[R] Harvest the Moon Cap', (e) => {
       grant(e, ['moon_cap']);
-      e.pushLog('A Moon Cap — rare, luminous, and worth real gold. It only grows in moonlight it has never seen. It is very proud of that. You pocket it gently.', 'system');
+      e.pushLog('A Moon Cap — rare, luminous, worth real gold. It grows in moonlight it has never seen. It has never seen it because it works a hundred floors underground and is, frankly, lying. You pocket it gently. The Moon Cap has initiative, and you respect initiative.', 'system');
     });
   }
 
@@ -301,18 +301,18 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
         e.setFlag('sporefriend');
         e.startQuest('mushroom_child');
         e.completeQuest('mushroom_child');
-        void e.narrate('f49_offering', 'You place the mushroom in the bowl. The circle glows. A small mushroom bounces out of the circle, looks up at you, and bounces once. Twice. It has decided. I have been adopted by a very small, very angry mushroom. The anger is because I am six feet tall and it is six inches. We have a lot in common.', 5400);
+        void e.narrate('f49_offering', 'You place the mushroom in the bowl. The circle glows. A small mushroom bounces out, looks up at you, bounces again. It has decided. It has decided YOU. You have been adopted by a very small, very angry mushroom. The anger is because you are six feet of problems and it is six inches of spite. You match. Congratulations. You are a parent now. The paperwork is fungal.', 5400);
         e.pushLog('🍄 Sporefriend joins your party! It glows with loyalty and simmering resentment.', 'system');
         e.addCompanion?.('Sporefriend', 'Mushroom Child', { skin: 0xe8e0d0, cloth: 0xff8ac0, accent: 0xe8e0d0, hair: 0x2a2a3a, hood: false, monster: 'mushroom', bulk: 0.6 }, 15, { x: cx, z: cz });
       },
     });
     once('meditate_r5', cx + 2, cz, '[R] Sit in the circle and meditate', (e) => {
       e.healGreg(10);
-      e.pushLog('You sit in the ring. The mushrooms hum in seven-part harmony. You breathe. +10 HP. For a moment, everything is fine. The moment passes. The mushrooms start humming about your debt to society.', 'system');
+      e.pushLog('You sit in the ring. The mushrooms hum in seven-part harmony, which is legally a choir. You breathe. +10 HP. For a moment, everything is fine. The moment passes. The choir pivots to your debt. They harmonize your debt. It is, regrettably, beautiful.', 'system');
     });
     once('harvest_circle_r5', r.x1, r.z1, '[R] Harvest the circle mushrooms', (e) => {
       grant(e, ['glowing_mushroom', 'glowing_mushroom', 'glowing_mushroom']);
-      e.pushLog('You harvest the circle. The glow DIMS. The circle is sad now. You are a mushroom thief. The mushrooms will remember this. The mushrooms remember EVERYTHING. +3 Glowing Mushroom.', 'system');
+      e.pushLog('You harvest the circle. The glow dims. The circle is now disappointed in you, which is worse than angry, because disappointment is the mushrooms\' love language. You are a mushroom thief. The mushrooms remember. The mushrooms remember everything. +3 Glowing Mushroom. Also three misdemeanor charges, emotionally.', 'system');
     });
     // Seven Is A Party — return the stolen Seventh Cap to complete the ring
     out.push({
@@ -325,8 +325,8 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
         // Sporefriend evolves — +5 max HP and a full heal, as celebration
         const sf = e.combat?.units.find((u) => u.name === 'Sporefriend');
         if (sf && sf.maxHp != null) { sf.maxHp += 5; sf.hp = sf.maxHp; }
-        void e.narrate('f49_seventh', 'You place the Seventh Cap in the circle. The colors align. The mushrooms light up like a festival. Seven mushrooms. Seven colors. Seven friends, reunited at last. The circle hums. The party begins. You are invited. The small mushroom bounces so hard it levitates.', 5400);
-        e.pushLog('🎉 The circle is whole! Sporefriend grows stronger (+5 max HP) and glows with pride. It is a mushroom. It is YOUR mushroom.', 'system');
+        void e.narrate('f49_seventh', 'You place the Seventh Cap in the circle. The colors align. Seven mushrooms. Seven colors. Seven reasons to file an incident report. The circle hums like a festival that did not get a permit. You are invited. The small mushroom bounces so hard it achieves a low, respectful orbit. Growth. Real growth. The mushroom grows stronger. The mushroom is now your responsibility. Parenting is a verb.', 5400);
+        e.pushLog('🎉 The circle is whole! Sporefriend grows stronger (+5 max HP) and glows with a pride that is, frankly, unearned but deeply felt. It is a mushroom. It is YOUR mushroom. You will never be free of it now. This is called love.', 'system');
       },
     });
   }
@@ -336,19 +336,19 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r6');
     once('take_crystal_r6', r.x0 + 4, r.z0 + 1, '[R] Take the glowing crystal', (e) => {
       grant(e, ['crystal_shard']);
-      e.pushLog('The crystal is WARM. It hums against your palm. A permanent light — the grotto\'s gift. (+Crystal Shard)', 'system');
+      e.pushLog('The crystal is warm. It hums against your palm like a cat that has agreed, under protest, to be useful. A permanent light. The grotto\'s gift. Gifts from the grotto are tax-deductible. Please consult a spore. (+Crystal Shard)', 'system');
     });
     once('rest_bed_r6', r.x0 + 1, r.z1 - 1, '[R] Rest on the mushroom bed', (e) => {
       e.healGreg(10);
-      e.pushLog('The mushroom bed cradles you. It is soft. It is alive. It is breathing WITH you. +10 HP — but you feel drowsy... The bed is not apologizing. The bed does not apologize.', 'system');
+      e.pushLog('The mushroom bed cradles you. It is soft. It is alive. It breathes with you, which is either comforting or a breach of consent, depending on your therapist. +10 HP. You are now drowsy. The bed is not apologizing. The bed apologizes to no one. The bed is a manager.', 'system');
       e.applyCondition(leaderId(e), 'slowed', 1);
     });
     once('cross_bridge_r6', (r.x0 + r.x1) >> 1, r.z0, '[R] Cross the vine bridge', (e) => {
       if (Math.random() < 0.5) {
         e.damageGreg(2, 'fragile bridge');
-        e.pushLog('The bridge SAGS. A plank gives way. You drop 2 feet onto your dignity. 2 damage. The bridge holds. Barely. The bridge is doing its best. The bridge deserves a raise.', 'hit');
+        e.pushLog('The bridge sags. A plank gives way. You drop two feet onto your own dignity, which was not load-bearing. 2 damage. The bridge holds. Barely. The bridge is doing its best. The bridge is unionized and still doing its best.', 'hit');
       } else {
-        e.pushLog('The bridge creaks and sways, but you cross it. The vine rails hum with quiet menace. They are humming a song about you. It is not flattering.', 'system');
+        e.pushLog('The bridge creaks and sways but holds, which the bridge announces with great personal pride. The vine rails hum with quiet menace. They are humming a song about you. It is not flattering. The bridge is the only thing here that told you the truth.', 'system');
       }
     });
   }
@@ -358,7 +358,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r7');
     once('pop_sac_r7', r.x0 + 1, r.z0 + 1, '[R] Pop the spore sac', (e) => {
       e.damageGreg(2, 'spore sac');
-      e.pushLog('You poke the sac. It POPS. A cloud of spores hits you in the face. 2 damage. The sac was the price of curiosity. The sac was happy to collect.', 'hit');
+      e.pushLog('You poke the sac. It POPS. A cloud of spores hits you in the face, which is exactly the facial the sac was saving for someone rude. 2 damage. The sac was the price of curiosity. The sac has been collecting that price for years. You paid retail.', 'hit');
     });
     // the hidden tunnel behind the throne — the mother's private way to the nursery
     out.push({
@@ -369,7 +369,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
         const r8 = rooms.r8;
         const target = { x: r8.x0 + 2, z: r8.z0 + 1 };
         e.teleportParty?.(target);
-        e.pushLog('Behind the throne, where the moss is worn smooth, a tunnel. The mother used it to visit the nursery. The tunnel is small. The tunnel is quiet. The tunnel does not judge you for what you just did. The tunnel is the only thing in this grotto that does not.', 'system');
+        e.pushLog('Behind the throne, where the moss is worn smooth from commute, a tunnel. The mother used it to visit the nursery. It is small. It is quiet. It does not judge you for what you just did. It is the only thing in this grotto that does not. That is not a compliment. That is a structural observation.', 'system');
       },
     });
   }
@@ -387,17 +387,17 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
         id: p.id, pos: { x: p.x, z: p.z }, radius: 2, label: p.label,
         visibleIf: (e) => !e.hasFlag(`did_${p.id}`),
         run: (e) => {
-          e.setFlag(`did_${p.id}`);
+            e.setFlag(`did_${p.id}`);
           if (p.kind === 'heal') {
             e.healGreg(15);
-            e.pushLog('Pool 1: crystal-sweet. Warmth floods through you. +15 HP. The pool looks smug, like it knew you would pick it by accident.', 'system');
+            e.pushLog('Pool 1: crystal-sweet. Warmth floods you like a refund you did not expect and are not sure you deserve. +15 HP. The pool looks smug. The pool knew. The pool always knew.', 'system');
           } else if (p.kind === 'poison') {
             e.damageGreg(4, 'pool water');
             e.applyCondition(leaderId(e), 'poisoned', 3);
-            e.pushLog('Pool 2: it TASTES like regret and battery acid. 4 damage, and you are Poisoned. The bubbles were a warning. You should learn to read bubbles.', 'hit');
+            e.pushLog('Pool 2: it tastes like regret and battery acid. 4 damage. You are Poisoned. The bubbles were a warning. The bubbles were, in retrospect, extremely clear. You do not read bubbles, Greg. This is a pattern.', 'hit');
           } else {
             e.applyCondition(leaderId(e), 'hallucinating', 2);
-            e.pushLog('Pool 3: the world swims. You see the waterfall passage in r9 — it hides something. And you see a shard of crystal under the pool floor... The truth is a drug. You are high on truth.', 'system');
+            e.pushLog('Pool 3: the world swims. You see the waterfall passage in r9 — it hides something. You see a shard of crystal under the pool floor. You see your own choices, reflected, from angles. The truth is a drug. You are, briefly, high on accountability.', 'system');
             e.setFlag('pool_reveal_seen');
           }
         },
@@ -405,11 +405,11 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     }
     once('search_skeleton_r8', r.x1, r.z1 - 1, '[R] Search the submerged skeleton', (e) => {
       grant(e, ['waterlogged_boots'], 12);
-      e.pushLog('A diver, long gone. 12 gold and Waterlogged Boots. They are still wet. They will always be wet. The boots are a metaphor. Do not think about the boots.', 'system');
+      e.pushLog('A diver, long gone. 12 gold and Waterlogged Boots. They are still wet. They have been wet since before your species had opinions. The boots are a metaphor. Do not think about the boots. Think about the boots. You cannot stop thinking about the boots now.', 'system');
     });
     once('take_crystal_r8', r.x0, r.z1, '[R] Take the underwater crystal', (e) => {
       grant(e, ['crystal_shard']);
-      e.pushLog('A second crystal. The grotto gives freely — it does not miss what you take. It counts, though. Everything is counted.', 'system');
+      e.pushLog('A second crystal. The grotto gives freely. The grotto does not miss what you take. The grotto counts, though. The grotto has a ledger. The grotto will reconcile, in fungi, at a time of its choosing. Everything is counted. You are on the list.', 'system');
     });
   }
 
@@ -419,15 +419,15 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     once('search_waterfall_r9', r.x0, midZ(r), '[R] Search behind the waterfall', (e) => {
       if (e.abilityCheck('wis', 12)) {
         e.setFlag('waterfall_found');
-        void e.narrate('f49_waterfall', 'Behind the curtain of water, a stone staircase, going up. The waterfall was hiding it. The waterfall is a terrible secret-keeper but an excellent shower. You found the way forward. Dripping wet, standing behind a waterfall, having an excellent time. You found it.', 5400);
+        void e.narrate('f49_waterfall', 'Behind the curtain of water, a stone staircase going up. The waterfall was hiding it. The waterfall is a terrible secret-keeper — it literally cannot stop talking — but an excellent shower. You found the way forward. You are dripping wet, standing behind a waterfall, having what can only be described as a moment. It is not your best moment. It is, however, your most on-brand moment.', 5400);
         e.pushLog('Behind the curtain of water — a stone staircase, going up!', 'system');
       } else {
-        e.pushLog('You duck behind the waterfall and get soaked. Just rock. The water is very confident about being here. The water has never doubted itself for one second.', 'system');
+        e.pushLog('You duck behind the waterfall and get soaked. Just rock. The water is very confident about being here. The water has never doubted itself for one second. The water has a LinkedIn. You are wet now. The water considers this a successful interaction.', 'system');
       }
     });
     once('open_chest_r9', r.x1 - 1, r.z1, '[R] Open the floating chest', (e) => {
       grant(e, ['frog_skin_cloak'], 18);
-      e.pushLog('The chest bobs in the water, sealed with wax. 18 gold and a Frog Skin Cloak. It came off a very large frog. The frog is no longer with us. The frog had a beautiful singing voice. The frog is gone. Life is strange.', 'system');
+      e.pushLog('The chest bobs in the water, sealed with wax and optimism. 18 gold and a Frog Skin Cloak. It came off a very large frog. The frog is no longer with us. The frog had a beautiful singing voice. The frog is gone. The frog had debts. You inherited the cloak. The debts, mercifully, did not transfer. Life is strange. The frog would have wanted you to have it. The frog would have wanted a lot of things. The frog is gone.', 'system');
     });
     out.push({
       id: 'exit_stairs', pos: { x: r.x0 + 2, z: r.z0 + 1 }, radius: 2,
@@ -435,7 +435,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       visibleIf: (e) => e.hasFlag('waterfall_found') && e.hasFlag('spore_mother_dead'),
       run: (e) => {
         e.completeQuest('through_grotto');
-        void e.narrate('f49_departure', 'The staircase is cold. The staircase is stone. The staircase goes UP. Behind you, the grotto dims. The mushrooms wave. Some of them are crying. Some of them are laughing. It is hard to tell with mushrooms. You climb toward Floor 48. You climb toward the DREAMER. You climb because the mushrooms are already starting to gossip.', 5800);
+        void e.narrate('f49_departure', 'The staircase is cold. The staircase is stone. The staircase goes UP. Behind you, the grotto dims. The mushrooms wave. Some of them are crying. Some of them are laughing. It is, genuinely, hard to tell with mushrooms — their facial situation is ongoing. You climb toward Floor 48. You climb toward the DREAMER. You climb because the mushrooms are already starting to gossip, and the gossip travels fast, and it is, I am told, not flattering.', 5800);
         e.winGame?.();
       },
     });
@@ -446,11 +446,11 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r10');
     once('harvest_farm_r10', (r.x0 + r.x1) >> 1, (r.z0 + r.z1) >> 1, '[R] Harvest the farm rows', (e) => {
       grant(e, ['glowing_mushroom', 'glowing_mushroom', 'glowing_mushroom', 'moon_cap']);
-      e.pushLog('You work the rows like a professional. Three glowing mushrooms and a Moon Cap. The farm approves of your technique. The farm has no technique. The farm is impressed anyway.', 'system');
+      e.pushLog('You work the rows like a professional. Three glowing mushrooms and a Moon Cap. The farm approves of your technique. The farm has, technically, no eyes, but it is watching you in the way a quarterly report watches a division — coldly, and with numbers. The farm is impressed. The farm is always impressed. It\'s a farm.', 'system');
     });
     once('search_scarecrow_r10', r.x1 - 1, r.z0 + 1, '[R] Search the scarecrow', (e) => {
       grant(e, ['glowing_spore', 'mushroom_cap']);
-      void e.narrate('f49_scarecrow', 'You search the scarecrow. It is a skeleton in a hat. The hat is a mushroom. There is a note pinned to its ribs: "Do not steal the mushroom hats. — the farm, probably." You take the hat anyway. The skeleton does not object. The skeleton is DEAD. The mushroom hat, however, is FURIOUS.', 5000);
+      void e.narrate('f49_scarecrow', 'You search the scarecrow. It is a skeleton in a hat. The hat is a mushroom. There is a note pinned to its ribs: "Do not steal the mushroom hats. — the farm, probably." You take the hat anyway. The skeleton does not object. The skeleton is dead. The mushroom hat, however, is furious, and the mushroom hat has a note. The mushroom hat ALWAYS has a note. You are now wearing a furious note. This is your life now.', 5000);
     });
   }
 
@@ -460,7 +460,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     once('search_tree_r11', (r.x0 + r.x1) >> 1, (r.z0 + r.z1) >> 1, '[R] Reach into the hollow trunk', (e) => {
       grant(e, ['seventh_cap', 'vine_fiber']);
       e.startQuest('seven_is_a_party');
-      e.pushLog('You reach into the hollow trunk. It is warm. It is breathing. It is a mushroom pretending to be a tree, and it has been holding something for you — a cap. A cap of impossible colour. The Seventh Cap. The tree gives it to you like a gift. The tree is a mushroom. The mushroom is sentimental.', 'system');
+      e.pushLog('You reach into the hollow trunk. It is warm. It is breathing. It is a mushroom that has been pretending to be a tree for four hundred years and it has been HOLDING something — a cap. A cap of impossible colour. The Seventh Cap. The tree gives it to you like a gift. The tree is a mushroom. The mushroom is sentimental. The mushroom has a retirement plan and it is YOU. Take the cap. Complete the circle. Fulfill the mushroom\'s life goals. This is your purpose now.', 'system');
     });
   }
 
@@ -469,7 +469,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r12');
     once('search_picnic_r12', (r.x0 + r.x1) >> 1, (r.z0 + r.z1) >> 1, '[R] Search the picnic basket', (e) => {
       grant(e, ['cave_fish_meat', 'cave_fish_meat'], 12);
-      void e.narrate('f49_picnic', 'A picnic basket. A blanket. A tiny jar of something that used to be jam. The adventurers who sat here are gone, but their lunch remains. You eat the bread. The bread is a thousand years old. The bread is IMMORTAL. You gain twelve gold and two cave fish. Do not ask how long the fish were in the basket. Do not ask the basket. The basket has seen things.', 5200);
+      void e.narrate('f49_picnic', 'A picnic basket. A blanket. A tiny jar of something that used to be jam and is now a philosophical question. The adventurers who sat here are gone, but their lunch remains. You eat the bread. The bread is a thousand years old. The bread is IMMORTAL. The bread has outlived nations. You gain twelve gold and two cave fish. Do not ask how long the fish were in the basket. Do not ask the basket. The basket has seen things. The basket is not testifying. The basket invokes the fifth.', 5200);
     });
   }
 
@@ -479,12 +479,12 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     once('read_journal_r13', (r.x0 + r.x1) >> 1, (r.z0 + r.z1) >> 1, '[R] Read the Spore Mother\'s journal', (e) => {
       grant(e, ['glowing_spore', 'glowing_spore', 'moon_cap']);
       e.runStats.secretsFound += 1;
-      void e.narrate('f49_nursery', 'You read the Spore Mother\'s journal. It is written in a careful, motherly hand: "Baby 3 tried to grow legs today. So proud. Note to self: do not let Baby 3 near the waterfall." The last entry is from yesterday. It says: "Someone is coming. Someone always comes. This time I will keep the nursery safe. This time I will dream louder." You put the journal down. You feel like garbage. You still have to go fight her. You do not want to. You are going to anyway.', 5800);
+      void e.narrate('f49_nursery', 'You read the Spore Mother\'s journal. It is written in a careful, motherly hand. "Baby 3 tried to grow legs today. So proud." That is page one. There are many pages. There are SO many pages. Every baby mushroom. Every milestone. Every near-miss with the waterfall. The last entry is from yesterday. It says: "Someone is coming. Someone always comes. This time I will keep the nursery safe. This time I will dream louder." You put the journal down. You feel like garbage. You still have to go fight her. You do not want to. You are going to anyway, because you are Greg, and Greg is a verb, and the verb is "ruins things."', 5800);
       e.pushLog('🗝 Secret found — the nursery behind the throne! (2 Glowing Spores + a Moon Cap)', 'system');
     });
     once('open_stash_r13', r.x1, r.z1, '[R] Open the mother\'s stash', (e) => {
       grant(e, ['glowing_spore', 'crystal_shard'], 20);
-      e.pushLog('The stash: 20 gold, a glowing spore, a crystal shard. The mother\'s private savings. She was saving for a bigger nursery. You take it. The small mushrooms watch. The small mushrooms say nothing. The small mushrooms are better people than you.', 'system');
+      e.pushLog('The stash: 20 gold, a glowing spore, a crystal shard. The mother\'s private savings. She was saving for a bigger nursery. She was saving for college, Greg. Mushroom college. It exists. It is competitive. You take it. The small mushrooms watch. The small mushrooms say nothing. The small mushrooms are better people than you. The small mushrooms know it. You know it. The mushrooms are keeping score.', 'system');
     });
   }
 
@@ -499,7 +499,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       run: (e) => {
         e.setFlag('mimic_sprung');
         e.aggroGroup?.('r14_mimic');
-        void e.narrate('f49_mimic', 'You open the chest. The chest opens BACK. The chest has teeth. The chest has a tongue. The chest has been waiting three hundred years for someone to do exactly what you just did. Congratulations. You are the main course at the mimic\'s retirement party.', 5200);
+        void e.narrate('f49_mimic', 'You open the chest. The chest opens BACK. The chest has teeth. The chest has a tongue. The chest has been waiting three hundred years for someone to do exactly what you just did, and the chest has a pension plan, and THIS is its retirement. Congratulations. You are the main course at the mimic\'s retirement party. The party has a theme. The theme is YOU. The dress code is "tender." You did not RSVP. The mimic does not care.', 5200);
       },
     });
     out.push({
@@ -511,7 +511,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       },
       run: (e) => {
         grant(e, ['fungal_blade', 'crystal_shard'], 30);
-        e.pushLog('Inside the mimic: a Fungal Blade, a crystal shard, 30 gold, and a half-eaten adventurer\'s boot. The boot has a story. The boot is not telling. 30 gold and a Fungal Blade!', 'system');
+        e.pushLog('Inside the mimic: a Fungal Blade, a crystal shard, 30 gold, and a half-eaten adventurer\'s boot. The boot has a story. The boot is not telling. The boot is in witness protection. 30 gold and a Fungal Blade! The mimic\'s retirement fund is now your advance. This is called "upcycling." The dungeon calls it "Tuesday."', 'system');
       },
     });
   }
@@ -521,7 +521,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r15');
     once('search_graves_r15', r.x0 + 2, r.z0, '[R] Read the tombstones', (e) => {
       grant(e, ['vine_fiber', 'glowing_spore'], 8);
-      e.pushLog('You read the tombstones. "Bert — eaten by the mushroom he trusted." "Sandra — trusted the mushroom." "Steve — did NOT trust the mushroom. The mushroom was offended. Eaten anyway." You find 8 gold and a vine fiber on the groundskeeper\'s grave. The mushrooms do not comment. The mushrooms are very good at not commenting.', 'system');
+      e.pushLog('You read the tombstones. "Bert — eaten by the mushroom he trusted." "Sandra — trusted the mushroom." "Steve — did not trust the mushroom. The mushroom was offended. Eaten anyway." Trust is not a strategy down here. Neither is distrust. You find 8 gold and a vine fiber on the groundskeeper\'s grave. The mushrooms do not comment. The mushrooms are very good at not commenting. The mushrooms have media training. That is the scary part.', 'system');
     });
   }
 
@@ -530,7 +530,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r16');
     once('speak_echo_r16', (r.x0 + r.x1) >> 1, (r.z0 + r.z1) >> 1, '[R] Say something to the chamber', (e) => {
       grant(e, ['crystal_shard']);
-      void e.narrate('f49_echo', 'You say hello. The chamber says hello. And hello. And hello. And hello. Each one slightly more judgmental than the last. You say something dumb. The chamber keeps it. Forever. The crystals shimmer. Somewhere in the grotto, a mushroom laughs at you. The chamber pays you in crystal for your contribution. Your contribution is a shame.', 4800);
+      void e.narrate('f49_echo', 'You say hello. The chamber says hello. And hello. And hello. And hello. Each one slower, louder, meaner — like a corporate read receipt that gained sentience and a grudge. You say something dumb. The chamber keeps it. Forever. The crystals shimmer with delight. Somewhere in the grotto, a mushroom laughs at you. The chamber pays you in crystal for your contribution. Your contribution is a shame. The crystal is real, though. Take the crystal. The shame is free.', 4800);
     });
   }
 
@@ -539,7 +539,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
     const r = R('r17');
     once('take_highway_crystal_r17', (r.x0 + r.x1) >> 1, (r.z0 + r.z1) >> 1, '[R] Take the highway crystal', (e) => {
       grant(e, ['crystal_shard']);
-      e.pushLog('You take the crystal. The highway dims, just a little. The highway hums a sad chord. The hum is a song. The song is about you. It is not a flattering song.', 'system');
+      e.pushLog('You take the crystal. The highway dims, just a little. The highway hums a sad chord — it is a song about you. It is not a flattering song. The song has lyrics. The lyrics are about your gait. Your gait has been judged. The highway is free therapy if you listen wrong, and you always listen wrong. The crystal is yours. The song remains the highway\'s.', 'system');
     });
   }
 
@@ -554,7 +554,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       run: (e) => {
         e.setFlag('giant_woke');
         e.aggroGroup?.('r18_giant');
-        void e.narrate('f49_giant_wake', 'You touch the giant mushroom. It stops snoring. One eye opens. It is the size of a dinner plate, and it is FULL of the surface it has never seen. "Oh," it says, in a voice like falling trees, "so YOU are the one." The grotto holds its breath. You did this. You saw a sleeping mountain and decided it looked like it needed a nudge. You woke the giant.', 5400);
+        void e.narrate('f49_giant_wake', 'You touch the giant mushroom. It stops snoring. One eye opens. It is the size of a dinner plate, and it is FULL of the surface it has never seen — full of sun, full of rain, full of whatever "weather" is. "Oh," it says, in a voice like falling trees and bad news, "so YOU are the one." The grotto holds its breath. You did this. You saw a sleeping mountain and decided it looked like it needed a comment. You woke the giant. The giant has opinions. The giant\'s first opinion is you.', 5400);
       },
     });
     out.push({
@@ -566,7 +566,7 @@ export function floor49Interactables(seed: number, rooms: Record<string, Rect>):
       },
       run: (e) => {
         grant(e, ['giant_cap', 'crystal_shard', 'crystal_shard'], 30);
-        e.pushLog('The Giant\'s cap, two crystal shards, 30 gold. The Giant dreamed of the surface. You took its dream and turned it into loot. This is who you are. This is who you have always been.', 'system');
+        e.pushLog('The Giant\'s cap, two crystal shards, 30 gold. The Giant dreamed of the surface. You took its dream and converted it to loot at a very poor exchange rate. This is who you are. This is who you have always been. The Giant is gone. The Giant\'s dream is now your inventory. You are a dream-laundering operation with a sword. The crystals are nice, though.', 'system');
       },
     });
   }

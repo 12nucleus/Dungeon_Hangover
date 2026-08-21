@@ -83,10 +83,14 @@ export interface SkillPresentation {
   burst?: ParticleFX;
   shake?: number;
   flash?: number;
+  /** per-skill playback-rate variation so identical fx families still sound distinct */
+  pitch?: number;
 }
 
 export interface SkillState {
   learned: SkillId[];
+  /** Skills granted at character creation and retained through respecs. */
+  starterSkills: SkillId[];
   loadout: (SkillId | null)[];
   unlockedNodes: string[];
   passiveRanks: Record<string, number>;
@@ -195,7 +199,7 @@ export interface Unit {
   klass: Klass;
   level: number;
   xp: number;             // accumulated experience
-  skillPoints: number;    // unspent (used by a later chunk)
+  skillPoints: number;    // unspent class-tree currency
   /** unspent ability points (granted on sobriety level-ups, spend on abilities) */
   abilityPoints?: number;
   equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; arms?: import('./items').Item; belt?: import('./items').Item; cloak?: import('./items').Item; trinket?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item; ranged?: import('./items').Item };
@@ -208,7 +212,7 @@ export interface Unit {
   pos: GridPos;
   alive: boolean;
   knownSkills: string[];      // starting + unlocked via skill tree
-  equippedSkills: string[];   // the hotbar (max 4)
+  equippedSkills: string[];   // active hotbar skills (max 12)
   unlockedNodes: string[];    // skill-tree node ids
   bonusAC: number;            // permanent passives (skill tree)
   bonusMove: number;
@@ -219,6 +223,8 @@ export interface Unit {
   attackUsed?: boolean;
   movementLeft: number;
   initiative: number;
+  /** last visual facing (radians, atan2(dx,dz)) — drives backstab geometry */
+  facing?: number;
 
   /** Canonical skill ownership/loadout state. Legacy arrays are synchronized during migration. */
   skillState?: SkillState;
@@ -353,6 +359,8 @@ export interface UISnapshot {
   shopStock?: { baseId: string; name: string; icon: string; tier: number; kind: string; price: number; levelReq?: number; canBuy: boolean; pitch: string }[];
   /** big center-screen combat phase flash (keyed by id — re-mounts on change) */
   phaseBanner?: { text: string; cls: string; id: number } | null;
+  /** combat action presentation — "X is casting Y" announce / "X misses (7 vs AC 14)" result */
+  actionBanner?: { kind: 'announce' | 'result'; text: string; sub?: string; cls: string; id: number } | null;
   /** run recap counters (victory screen) */
   runStats?: { kills: number; deaths: number; questsDone: number; secretsFound: number; startedAt: number };
   showDialogue?: { npcId: string; npcName: string; text: string; caption?: string; choices?: { label: string; index: number }[] } | null;
@@ -396,5 +404,7 @@ export type CombatEvent =
   | { type: 'dice'; die: string; total: number; reason: string }
   | { type: 'loot'; items: import('./items').Item[]; gold: number }
   | { type: 'levelup'; unitId: string }
+  | { type: 'actionAnnounce'; unitId: string; text: string; sub?: string; cls: string; cue?: SkillAudioCue; fxColor?: number }
+  | { type: 'actionResult'; unitId: string; targetId?: string; text: string; sub?: string; outcome: 'hit' | 'crit' | 'miss' | 'save-ok' | 'save-fail' }
   | { type: 'shake'; power: number }
   | { type: 'summon'; unit: Unit; summonerId?: string };  // a new unit fades in (boss summons, Scrag hostile)

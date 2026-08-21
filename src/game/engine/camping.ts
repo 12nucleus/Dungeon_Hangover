@@ -7,9 +7,11 @@
 import * as THREE from 'three';
 import { setWeapon, equip, unequip, itemToEquipVisual } from '../characters';
 import { FX } from '../particles';
-import { effMaxHp, MAX_LEVEL, XP_THRESHOLDS } from '../stats';
+import { applyLevelUp, effMaxHp, MAX_LEVEL, XP_THRESHOLDS } from '../stats';
 import type { GridPos } from '../types';
 import { canUnlock, treeFor } from '../skilltree';
+import { ensureSkillState, syncSkillState } from '../skillRuntime';
+import { skillById } from '../skillLookup';
 import { ITEM_BASES, type Item } from '../items';
 import { canEquipIn } from '../improvised';
 import { unitWorld } from './visuals';
@@ -45,7 +47,7 @@ export function lightBonfire(engine: any, idx = 0) {
   engine.bonfirePos = { ...spot };
   spawnBonfireFlame(engine);
   void engine.narrate(`f${engine.floorNumber}_bonfire`, engine.floorNumber === 49
-    ? 'The bonfire catches. The warmth is immediate. The warmth is the first good thing to happen in this soggy, glowing, judgemental garden. The mushrooms watch it enviously. Fire is the only thing they fear — and they have a LOT of opinions about you having it.'
+    ? 'The bonfire catches. The warmth is immediate. The warmth is the first good thing to happen in this soggy, glowing, judgmental garden, and the mushrooms are FURIOUS about it. Fire is the one thing they fear. Fire is the one thing you brought. The mushrooms have a lot of opinions about this. The mushrooms have a lot of opinions about everything. That is their whole personality. Sit. Rest. Let the mushrooms seethe.'
     : 'The bonfire catches. The warmth is immediate. The warmth is the first good thing that has happened to you since you woke up. The warmth is the first good thing that has happened to you in WEEKS.', 4600);
   engine.pushLog('The bonfire roars to life. This place feels safer now...', 'system');
   engine.audio.play('ui_click', 0.6);
@@ -147,11 +149,7 @@ export function levelUpAtBonfire(engine: any, unitId: string) {
     u.level++;
     // NO auto-hydration of the class pool — new skills come from the Skill
     // Tree (one skill point per level-up to spend there).
-    u.maxHp += 6;
-    u.hp = Math.min(effMaxHp(u), u.hp + 6);
-    u.skillPoints += 1;
-    // sobering up also grants an ability point (spend it in the Stats panel)
-    u.abilityPoints = (u.abilityPoints ?? 0) + 1;
+    applyLevelUp(u);
     recomputeHangover(u);
     leveled++;
     engine.pushLog(`⬆ ${u.name} reaches level ${u.level}! (+6 max HP, +1 skill point, +1 ability point — spend them in the Skill Tree & Stats panel)`, 'system');
@@ -410,36 +408,59 @@ export function unlockNode(engine: any, unitId: string, nodeId: string) {
     engine.setHoverInfoOnce(reason);
     return;
   }
+  const state = ensureSkillState(u);
   u.skillPoints -= node.cost;
-  u.unlockedNodes.push(node.id);
-  if (node.unlockSkill && !u.knownSkills.includes(node.unlockSkill)) {
-    u.knownSkills.push(node.unlockSkill);
-    if (u.equippedSkills.length < 12 && !u.equippedSkills.includes(node.unlockSkill)) {
-      u.equippedSkills.push(node.unlockSkill);
+  state.unlockedNodes.push(node.id);
+  if (node.unlockSkill && !state.learned.includes(node.unlockSkill)) {
+    state.learned.push(node.unlockSkill);
+    if (state.loadout.filter(Boolean).length < 12) {
+      const slot = state.loadout.findIndex((id) => id === null);
+      if (slot >= 0) state.loadout[slot] = node.unlockSkill;
     }
   }
-  if (node.passive) {
-    const p = node.passive;
-    if (p.stat === 'str' || p.stat === 'dex' || p.stat === 'con' || p.stat === 'int' || p.stat === 'wis' || p.stat === 'cha') {
-      u.abilities[p.stat] += p.amount;
-    } else if (p.stat === 'maxHp') {
-      u.maxHp += p.amount;
-      u.hp = Math.min(u.hp + p.amount, u.maxHp);
-    } else if (p.stat === 'ac') {
-      u.bonusAC += p.amount;
-    } else if (p.stat === 'move') {
-      u.bonusMove += p.amount;
-    }
+  if (node.passiveSkill) {
+    state.passiveRanks[node.passiveSkill] = (state.passiveRanks[node.passiveSkill] ?? 0) + 1;
+    if (!state.learned.includes(node.passiveSkill)) state.learned.push(node.passiveSkill);
   }
+  syncSkillState(u);
   engine.pushLog(`${u.name} learns ${node.name} from the ${node.branch} branch!`, 'system');
   engine.audio.play('heal', 0.9, 1.3);
+  engine.emitSnapshot();
+}
+
+/** Refund all purchased tree nodes while retaining creation and base skills. */
+export function resetSkillBuild(engine: any, unitId: string) {
+  if (engine.combat.inCombat || (!engine.restingAtBonfire && !engine.gameWon)) {
+    engine.setHoverInfoOnce('You can only respec while resting at a bonfire.');
+    return;
+  }
+  const u = engine.byId(unitId);
+  if (!u || u.team !== 'party') return;
+  const state = ensureSkillState(u);
+  const tree = treeFor(u);
+  const starterNodeIds = new Set(tree.filter((node) => state.starterSkills.includes(node.unlockSkill ?? '')).map((node) => node.id));
+  const refund = state.unlockedNodes.reduce((sum, id) => starterNodeIds.has(id) ? sum : sum + (tree.find((node) => node.id === id)?.cost ?? 0), 0);
+  const preserved = [...new Set([
+    ...state.starterSkills,
+    ...state.learned.filter((id) => !skillById(id)?.classId),
+  ])];
+  state.learned = preserved;
+  state.unlockedNodes = [...starterNodeIds];
+  state.passiveRanks = {};
+  state.loadout = [...preserved.filter((id) => !skillById(id)?.passive)].slice(0, 12);
+  while (state.loadout.length < 12) state.loadout.push(null);
+  u.skillPoints += refund;
+  syncSkillState(u);
+  engine.pushLog(`${u.name} resets their skill build and recovers ${refund} skill points.`, 'system');
+  engine.audio.play('ui_click', 0.7);
   engine.emitSnapshot();
 }
 
 export function equipSkill(engine: any, unitId: string, skillId: string) {
   if (engine.combat.inCombat) return;
   const u = engine.byId(unitId);
-  if (!u || !u.knownSkills.includes(skillId) || u.equippedSkills.includes(skillId) || u.equippedSkills.length >= 12) return;
+  const skill = skillById(skillId);
+  if (!u || skill?.passive || !u.knownSkills.includes(skillId) || u.equippedSkills.includes(skillId) || u.equippedSkills.length >= 12) return;
   u.equippedSkills.push(skillId);
   engine.audio.play('ui_click', 0.5);
   engine.emitSnapshot();

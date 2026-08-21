@@ -25,7 +25,18 @@ BASE_DIR = r"F:\qwen3tts\Qwen3-TTS-12Hz-1.7B-Base"
 DEVICE = "cuda:0"
 DTYPE = torch.bfloat16
 
-CHANGED: set[str] = {"f49_room_r3", "f49_seventh", "f49_departure", "f49_nursery", "f49_giant_wake", "f49_waterfall"}
+CHANGED: set[str] = {
+    # room-entry narration (r1-r18)
+    "f49_room_r1", "f49_room_r2", "f49_room_r3", "f49_room_r4", "f49_room_r5",
+    "f49_room_r6", "f49_room_r7", "f49_room_r8", "f49_room_r9", "f49_room_r10",
+    "f49_room_r11", "f49_room_r12", "f49_room_r13", "f49_room_r14", "f49_room_r15",
+    "f49_room_r16", "f49_room_r17", "f49_room_r18",
+    # interactable / event narration
+    "f49_arrival", "f49_departure", "f49_bonfire", "f49_explored",
+    "f49_breathe", "f49_shrine", "f49_drink_pool", "f49_offering", "f49_seventh",
+    "f49_waterfall", "f49_scarecrow", "f49_picnic", "f49_nursery", "f49_mimic",
+    "f49_echo", "f49_giant_wake",
+}
 
 
 def unescape(s: str) -> str:
@@ -67,6 +78,18 @@ def lines_from_sources() -> dict[str, str]:
     # bonfire lit (floor-scoped f<N>_bonfire) + exploration bonus narration
     camping = os.path.join(ROOT, "src", "game", "engine", "camping.ts")
     lines.update(extract(camping, narrate))
+    # the bonfire line uses a template-literal id (`f${engine.floorNumber}_bonfire`)
+    # that the generic regex above can't match — pull the floor-49 branch directly
+    with open(camping, encoding="utf-8") as f:
+        camp_src = f.read()
+    bf = re.search(
+        r"narrate\(\s*`f\$\{engine\.floorNumber\}_bonfire`\s*,\s*"
+        r"engine\.floorNumber\s*===\s*49\s*\?\s*"
+        r"'((?:[^'\\\\]|\\.)*)'",
+        camp_src, re.MULTILINE,
+    )
+    if bf:
+        lines["f49_bonfire"] = unescape(bf.group(1))
     setup = os.path.join(ROOT, "src", "game", "engine", "dungeonSetup.ts")
     lines.update(extract(setup, narrate))
     content50 = os.path.join(ROOT, "src", "levels", "floor50Content.ts")

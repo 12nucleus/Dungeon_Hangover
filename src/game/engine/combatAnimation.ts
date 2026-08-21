@@ -34,6 +34,20 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms * animSc
 export async function animate(engine: any, ev: CombatEvent) {
   switch (ev.type) {
     case 'log': engine.pushLog(ev.text, ev.kind); await delay(25); break;
+    case 'actionAnnounce': {
+      // readability beat: banner up, camera leans to the caster, motes gather
+      // in the skill colour, the cast cue sounds — then the action lands
+      engine.showActionBanner?.('announce', ev.text, ev.sub, ev.cls);
+      const caster = engine.byId(ev.unitId);
+      if (caster) {
+        engine.iso.focus?.(unitWorld(engine, caster.pos).clone().add(new THREE.Vector3(0, 0.9, 0)));
+        if (ev.fxColor) FX.charge(engine.particles, unitWorld(engine, caster.pos), ev.fxColor);
+      }
+      playSkillCue(engine, ev.cue ?? 'arcane', 0.8);
+      engine.emitSnapshot?.();
+      await delay(820);
+      break;
+    }
     case 'move': await animMove(engine, ev.unitId, ev.path); break;
     case 'melee': await animMelee(engine, ev.unitId, ev.targetId, ev.audioCue); break;
     case 'projectile': await animProjectile(engine, ev); break;
@@ -81,6 +95,16 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (ev.why === 'block') engine.audio.block();
       else if (ev.why === 'dodge') engine.audio.dodge();
       else engine.audio.whiff();
+      break;
+    }
+    case 'actionResult': {
+      // the numbers beat: roll breakdown / outcome banner rides on top of the
+      // strike; crits get the sting and a longer hold so the read lands
+      engine.showActionBanner?.('result', ev.text, ev.sub, `result ${ev.outcome}`);
+      engine.emitSnapshot?.();
+      if (ev.outcome === 'crit') { engine.audio.critHit(); await delay(560); }
+      else if (ev.outcome === 'miss') await delay(420);
+      else await delay(380);
       break;
     }
     case 'block': {
@@ -295,6 +319,7 @@ export async function animate(engine: any, ev: CombatEvent) {
       }
       if (ev.phase === 'explore') {
         engine.phaseBanner = null;    // fight over — no stale phase flash
+        engine.actionBanner = null;   // and no stale action banner either
         engine.hazardUsed?.clear();   // hazards reset per fight
         if (engine.tpkVignette) { engine.tpkVignette = false; engine.emitSnapshot?.(); }
         engine.audio.setMusicDucked(false);
@@ -329,6 +354,7 @@ export async function animMove(engine: any, unitId: string, path: GridPos[]) {
   for (const p of pts) {
     const from = v.rig.group.position.clone();
     v.targetYaw = Math.atan2(p.x - from.x, p.z - from.z);
+    const mu = engine.byId(unitId); if (mu) mu.facing = v.targetYaw;
     const dur = 105 * animScale;
     const t0 = performance.now();
     while (performance.now() - t0 < dur && !engine.disposed) {
@@ -378,6 +404,7 @@ export async function animMelee(engine: any, unitId: string, targetId: string, a
   const vp = v.rig.group.position;
   const tp = tv.rig.group.position;
   v.targetYaw = Math.atan2(tp.x - vp.x, tp.z - vp.z);
+  const au = engine.byId(unitId); if (au) au.facing = v.targetYaw;
   const dir = tp.clone().sub(vp).setY(0).normalize();
   const home = vp.clone();
   if (audioCue === 'impact') engine.audio.hitImpact('bludgeoning');
@@ -398,6 +425,7 @@ export async function smashProp(engine: any, u: Unit, prop: any, skill?: SkillDe
     const vp = v.rig.group.position;
     const tp = engine.props.worldPos(prop);
     v.targetYaw = Math.atan2(tp.x - vp.x, tp.z - vp.z);
+    u.facing = v.targetYaw;
     const dir = tp.clone().sub(vp).setY(0).normalize();
     const home = vp.clone();
     v.rig.anim.lunge = 1;
@@ -537,7 +565,10 @@ export async function animProjectile(engine: any, ev: any) {
   const v = engine.visuals.get(ev.unitId);
   const from = unitWorld(engine, ev.from).add(new THREE.Vector3(0, 1.2, 0));
   const to = unitWorld(engine, ev.to).add(new THREE.Vector3(0, 0.6, 0));
-  if (v) v.targetYaw = Math.atan2(to.x - v.rig.group.position.x, to.z - v.rig.group.position.z);
+  if (v) {
+    v.targetYaw = Math.atan2(to.x - v.rig.group.position.x, to.z - v.rig.group.position.z);
+    const pu = engine.byId(ev.unitId); if (pu) pu.facing = v.targetYaw;
+  }
   const mat = new THREE.MeshBasicMaterial({ color: ev.color });
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), mat);
   engine.scene.add(mesh);
@@ -558,24 +589,24 @@ export async function animProjectile(engine: any, ev: any) {
   else { FX.blood(engine.particles, to); engine.audio.hitImpact('piercing'); }
 }
 
-function playSkillCue(engine: any, cue: string, volume: number) {
+function playSkillCue(engine: any, cue: string, volume: number, pitch = 1) {
   switch (cue) {
     case 'melee': engine.audio.swing(); break;
     case 'impact': engine.audio.hitImpact('bludgeoning'); break;
     case 'fire':
-    case 'fireball_cast': engine.audio.play(cue === 'fire' ? 'fireball' : 'fireball_cast', volume); break;
-    case 'ice': engine.audio.play('magic_missile', volume, 0.6); break;
-    case 'holy': engine.audio.play('heal', volume, 1.4); break;
-    case 'heal': engine.audio.play('heal', volume); break;
-    case 'buff': engine.audio.play('heal', volume, 1.2); break;
+    case 'fireball_cast': engine.audio.play(cue === 'fire' ? 'fireball' : 'fireball_cast', volume, pitch); break;
+    case 'ice': engine.audio.play('cast_ice', volume, pitch); break;
+    case 'holy': engine.audio.play('cast_holy', volume, pitch); break;
+    case 'heal': engine.audio.play('heal', volume, pitch); break;
+    case 'buff': engine.audio.play('cast_buff', volume, pitch); break;
     case 'ranged': engine.audio.play('arrow', volume); break;
-    default: engine.audio.cast(); break;
+    default: engine.audio.play('cast_arcane', volume, pitch); break;
   }
 }
 
 export async function animSkillFx(engine: any, s: SkillDef, at: GridPos, targets: string[], presentation = presentationForSkill(s)) {
   const p = unitWorld(engine, at).add(new THREE.Vector3(0, 0.6, 0));
-  playSkillCue(engine, presentation.castAudio, 0.85);
+  playSkillCue(engine, presentation.castAudio, 0.85, presentation.pitch ?? 1);
   switch (s.fx) {
     case 'fire': FX.explosion(engine.particles, p, s.aoeRadius || 1); engine.iso.shake = Math.max(engine.iso.shake, presentation.shake ?? 0.5); flashLight(engine, p, presentation.flash ?? 0xff7a1f); break;
     case 'ice': FX.ice(engine.particles, p); engine.iso.shake = Math.max(engine.iso.shake, presentation.shake ?? 0.25); break;
@@ -806,6 +837,14 @@ export async function pump(engine: any) {
       console.error('[combatAnimation] event failed:', ev?.type, err);
       engine.pushLog?.(`(a ${ev?.type ?? 'combat'} event hiccuped — the fight continues)`, 'system');
     }
+  }
+  // queue drained: if it's still the player's turn, refresh the move-range
+  // highlight. Actions used to wipe the tiles and never bring them back,
+  // leaving "how far can I still go?" invisible mid-turn.
+  const act = engine.combat?.active;
+  if (engine.combat?.inCombat && engine.phase === 'combat'
+      && act?.team === 'party' && !act.aiControlled && act.alive && !act.unconscious) {
+    showMoveTiles(engine);
   }
   engine.pumping = false;
 }

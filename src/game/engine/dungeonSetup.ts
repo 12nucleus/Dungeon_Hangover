@@ -166,9 +166,14 @@ export function setupDungeon(engine: any, L: LevelDef) {
     engine.rubbleMeshes.push({ mesh: r, tile: t });
   }
   for (const b of st.blockers ?? []) {
+    // secret doors must sit ACROSS their corridor: a vertical lane (x
+    // fixed, corridor runs along z) blocks z-travel → panel wide in x →
+    // axis 'x'; a horizontal lane → 'z'. The old hardcoded 'z' left
+    // vertical-lane doors rotated 90° (the mushroom door).
+    const vertical = b.tiles.length > 1 && b.tiles[0].x === b.tiles[b.tiles.length - 1].x;
     for (const t of b.tiles) {
       const mesh = b.kind === 'secretDoor'
-        ? buildIronDoor('z')
+        ? buildIronDoor(vertical ? 'x' : 'z')
         : buildRubble(0.3 + t.x * 0.07 + t.z * 0.03);
       place(engine, mesh, t);
       engine.world.blocked[t.x][t.z] = true;
@@ -310,10 +315,21 @@ export function updateDungeon(engine: any, dt: number) {
   if ((engine.flags.has('gribnab_dead') || engine.flags.has('gribnab_befriended')) && !engine.stairsRevealed && st.exitStairs) {
     engine.stairsRevealed = true;
     const sx = st.exitStairs.x, sz = st.exitStairs.z;
-    for (let dx = -1; dx <= 1; dx++) for (let dz = 0; dz <= 2; dz++) {
+    for (let dx = -1; dx <= 1; dx++) for (let dz = 0; dz <= 3; dz++) {
       const x = sx + dx, z = sz + dz;
       if (engine.world.inBounds(x, z)) engine.world.blocked[x][z] = false;
     }
+    // the unblocked tiles were WALL — flatten their heights to the room
+    // floor so the carved opening is walkable, then rebuild the voxel
+    // terrain so the opening actually EXISTS visually (the old reveal only
+    // flipped the logical grid: the wall mesh stayed, the "opening" was
+    // invisible). One-shot ~0.5 s rebuild, masked by the reveal beat.
+    const floorH = engine.world.heightAt(sx, sz);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = 2; dz <= 3; dz++) {
+      const x = sx + dx;
+      if (engine.world.inBounds(x, sz + dz)) engine.world.heights[x][sz + dz] = floorH;
+    }
+    engine.world.rebuildTerrain();
     // glowing beacon at the stairwell so the player sees it from across the bath
     try {
       const g = new THREE.Group();
@@ -335,6 +351,21 @@ export function updateDungeon(engine: any, dt: number) {
       const wp2 = engine.world.tileToWorld((st.bossRoom as any).x1 ? ((st.bossRoom.x0 + st.bossRoom.x1) >> 1) : sx, (st.bossRoom as any).z1 ? (st.bossRoom.z1 - 1) : sz);
       FX.levelup(engine.particles, wp.clone().add(new THREE.Vector3(0, 0.6, 0)));
       FX.levelup(engine.particles, wp2.clone().add(new THREE.Vector3(0, 0.6, 0)));
+    } catch { /* dressing only */ }
+    // visible staircase rising into the carved alcove — steps climb away
+    // from the bath toward the (walled) south, reading as "the way up"
+    try {
+      const stair = new THREE.Group();
+      const stepMat = new THREE.MeshStandardMaterial({ color: 0x6f6a78, roughness: 0.9 });
+      const wz = engine.world.tileToWorld(sx, sz + 2);
+      for (let i = 0; i < 4; i++) {
+        const step = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.3, 0.78), stepMat);
+        step.position.set(wz.x, wz.y + 0.15 + i * 0.28, wz.z - 0.35 + i * 0.58);
+        step.castShadow = true; step.receiveShadow = true;
+        stair.add(step);
+      }
+      if (!engine.dressingGroup) { engine.dressingGroup = new THREE.Group(); engine.scene.add(engine.dressingGroup); }
+      engine.dressingGroup.add(stair);
     } catch { /* dressing only */ }
     engine.pushLog('⛩️ The southern wall GROANS and slides open — a stairwell is revealed! (south side of the bath)', 'system');
     engine.bigMessage = 'Stairwell Revealed — Floor 49 Awaits!';
@@ -460,8 +491,8 @@ export function updateDungeon(engine: any, dt: number) {
         const all = Object.keys(engine.roomNarration ?? {}).filter((k) => k.startsWith('r'));
         if (all.length && all.every((r) => engine.flags.has(`visited_${r}`))) {
           engine.setFlag('f49_explored_bonus');
-          engine.pushLog('🗺 You have seen every corner of the grotto. The map bows to you. The mushrooms nod — slowly, respectfully.', 'system');
-          void engine.narrate('f49_explored', 'Every room. Every corner. Every last glowing, judgmental corner. You have seen it ALL. The grotto is impressed. The grotto has never been impressed before. It gives you a gift: two crystal shards, a glowing spore, and forty gold. You earned this. You absolutely earned this.', 5200);
+          engine.pushLog('🗺 You have seen every corner of the grotto. The map bows to you. The mushrooms nod — slowly, respectfully, and with the energy of a board that has just approved your hostile takeover.', 'system');
+          void engine.narrate('f49_explored', 'Every room. Every corner. Every last glowing, judgmental, spore-pushing corner. You have seen it ALL. The grotto is impressed. The grotto has never been impressed before. The grotto\'s previous high-water mark was "mildly intrigued by a rock." You beat a rock. It gives you a gift: two crystal shards, a glowing spore, and forty gold. You earned this. You absolutely earned this. The grotto wants a receipt.', 5200);
           offerLoot(engine, 'Explorer\'s Bonus', [makeItem('crystal_shard'), makeItem('crystal_shard'), makeItem('glowing_spore')], 40);
         }
       }
@@ -622,7 +653,7 @@ function maybeAmbush(engine: any, roomId: string, pos: GridPos) {
     big.onHit = { condition: 'bleeding', chance: 1, rounds: 2, saveAbility: 'con', saveDC: 10 };
     const largeRat = engine.combat.summon(big, pos);
     if (largeRat) engine.addUnit(largeRat);
-    engine.enqueue(engine.combat.start());
+    engine.enqueue(engine.combat.startAmbush());
     return;
   }
   if (['r21', 'r22', 'r24'].includes(roomId) && engine.flags.has('made_noise')) {
@@ -631,7 +662,7 @@ function maybeAmbush(engine: any, roomId: string, pos: GridPos) {
     const guard = SUMMON_TEMPLATES.goblin_guard();
     const unit = engine.combat.summon(guard, pos);
     if (unit) engine.addUnit(unit);
-    engine.enqueue(engine.combat.start());
+    engine.enqueue(engine.combat.startAmbush());
   }
 }
 

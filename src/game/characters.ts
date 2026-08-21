@@ -2030,7 +2030,12 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
 
   rig.group.rotation.x = 0;
   const walking = a.mode === 'walk';
-  const w = walking ? Math.sin(a.t * 11) : 0;
+  const cr = a.crouch ?? 0;
+  // sneaking prowl: slower cadence and a much shorter stride than the run —
+  // the old crouch played the FULL walk swing with squashed legs, which read
+  // as a sprinting crab. `w` now shrinks with crouch depth.
+  const stride = walking ? Math.sin(a.t * (7 + (1 - cr) * 4)) : 0;
+  const w = stride * (1 - cr * 0.6);
   // idle breathing: half the original speed (1.1 vs 2.2) with a per-rig random
   // phase so NPCs don't bop in lockstep. Lazily initialised on first frame.
   if (a.phase === undefined) a.phase = Math.random() * Math.PI * 2;
@@ -2040,7 +2045,6 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   // crouch pose: hips sink deep, knees bend, torso hunches forward, and the
   // forearms come up in a guarded sneaking stance (a proper low crouch rather
   // than a stiff lean). Feet stay planted.
-  const cr = a.crouch ?? 0;
   const HIP = P?.hip ?? 0.25;
   let DROP = cr * 0.34;                                  // world units the hips sink
   let legScaleY = HIP > 0 ? Math.max(0.5, 1 - DROP / HIP) : 1;
@@ -2053,6 +2057,11 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   let hipY = HIP - DROP;
   const hasKnee = !!P && !!p.shinL;                       // two-bone limbs (player / NPC)
   let kneeL = 0.15 + cr * 0.5, kneeR = 0.15 + cr * 0.5;  // deep knee bend in crouch
+  // prowl gait: the swinging leg lifts its knee through the step — a flat
+  // crouch-shuffle looked like ice-skating; this reads as deliberate stalking
+  const prowlStepL = walking ? Math.max(0, stride) * cr * 0.45 : 0;
+  const prowlStepR = walking ? Math.max(0, -stride) * cr * 0.45 : 0;
+  if (walking && cr > 0.05) { kneeL += prowlStepL; kneeR += prowlStepR; }
   let elbowL = 0.2 + cr * 0.5, elbowR = 0.2 + cr * 0.5;  // forearms up, guarded
   let armLZ = 0, armRZ = 0;                                     // upper-arm lateral rotation (swings arm across the body)
   if (cr > 0) { armLZ = -cr * 0.35; armRZ = cr * 0.35; }        // tuck forearms in while crouching
@@ -2065,6 +2074,7 @@ export function updateRig(rig: Rig, dt: number, speed = 1) {
   let legLY = 0, legLZ = 0, legRY = 0, legRZ = 0;
   let kneeLY = 0, kneeLZ = 0, kneeRY = 0, kneeRZ = 0;
   let hipRotX = 0, hipRotY = 0, hipRotZ = 0;               // hip: rotates both legs together relative to torso
+  if (walking && cr > 0.05) torsoZ = cr * 0.05 * stride; // subtle prowl weight shift
 
   // ── drink_anim: Greg's keyframed drinking animation (raise → sip → lower) ──
   // playClipOnRig writes all joint rotations directly from the clip; we set up

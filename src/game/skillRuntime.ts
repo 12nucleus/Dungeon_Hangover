@@ -6,6 +6,9 @@ import { SKILLS, CONDITIONS, SUMMON_TEMPLATES } from './skills';
 import { ALL_CLASS_SKILLS } from './classSkills';
 import { skillById } from './skillLookup';
 import { minLevelForSkill } from './stats';
+import { validateCombos } from './skillCombos';
+import { canUnlock, treeFor, validateSkillTree } from './skilltree';
+import { CLASS_IDS } from './classes';
 
 const ACTIVE_SLOT_LIMIT = 12;
 
@@ -19,11 +22,16 @@ const IMPACT_BY_FX: Partial<Record<SkillDef['fx'], SkillAudioCue>> = {
 };
 
 export function presentationForSkill(skill: SkillDef): SkillPresentation {
+  // per-skill playback-rate seed: identical fx families still sound distinct
+  let h = 0;
+  for (let i = 0; i < skill.id.length; i++) h = (h * 31 + skill.id.charCodeAt(i)) >>> 0;
+  const pitch = 0.92 + (h % 9) * 0.035;   // 0.92 … 1.20
   return {
     castAudio: AUDIO_BY_FX[skill.fx] ?? 'arcane',
     impactAudio: IMPACT_BY_FX[skill.fx],
     trail: skill.projectile ? skill.fx : undefined,
     burst: skill.fx,
+    pitch,
     shake: skill.fx === 'fire' ? 0.5 : skill.aoeRadius > 0 ? 0.28 : skill.kind === 'melee' ? 0.2 : 0.08,
     flash: skill.fx === 'fire' || skill.fx === 'holy' ? skill.fxColor : undefined,
   };
@@ -63,11 +71,17 @@ export function ensureSkillState(u: Unit): SkillState {
     while (loadout.length < ACTIVE_SLOT_LIMIT) loadout.push(null);
     u.skillState = {
       learned,
+      starterSkills: [...learned],
       loadout,
       unlockedNodes: [...(u.unlockedNodes ?? [])],
       passiveRanks: {},
     };
   }
+  if (!u.skillState.starterSkills) u.skillState.starterSkills = [...u.skillState.learned];
+  const starterNodeIds = treeFor(u)
+    .filter((node) => u.skillState!.starterSkills.includes(node.unlockSkill ?? ''))
+    .map((node) => node.id);
+  u.skillState.unlockedNodes = [...new Set([...u.skillState.unlockedNodes, ...starterNodeIds])];
   syncSkillState(u);
   return u.skillState;
 }
@@ -78,7 +92,7 @@ export function syncSkillState(u: Unit): void {
   const filtered = [...new Set(state.learned.filter((id) => !!skillById(id)))];
   // never wipe learned if filtering would empty it (protects starter skills during HMR / stale builds)
   if (filtered.length) state.learned = filtered;
-  state.loadout = state.loadout.slice(0, ACTIVE_SLOT_LIMIT).map((id) => id && state.learned.includes(id) ? id : null);
+  state.loadout = state.loadout.slice(0, ACTIVE_SLOT_LIMIT).map((id) => id && state.learned.includes(id) && !skillById(id)?.passive ? id : null);
   while (state.loadout.length < ACTIVE_SLOT_LIMIT) state.loadout.push(null);
   u.knownSkills = [...state.learned];
   u.unlockedNodes = [...state.unlockedNodes];
@@ -98,13 +112,21 @@ export function canLearnSkill(u: Unit, id: SkillId): SkillRuleResult {
   if (!skill) return { ok: false, reason: 'Unknown skill.' };
   if (!skill.classId) return { ok: false, reason: 'This skill is not learned through a class progression.' };
   if (!(u.classes ?? []).includes(skill.classId)) return { ok: false, reason: 'This skill belongs to another class.' };
-  if (u.level < minLevelForSkill(skill)) return { ok: false, reason: `Requires level ${minLevelForSkill(skill)}.` };
   if (ensureSkillState(u).learned.includes(id)) return { ok: false, reason: 'Already learned.' };
-  if (u.skillPoints <= 0) return { ok: false, reason: 'No skill points available.' };
+  const node = treeFor(u).find((candidate) => candidate.unlockSkill === id || candidate.passiveSkill === id);
+  if (node) {
+    const reason = canUnlock(u, node);
+    if (reason) return { ok: false, reason };
+  } else if (u.level < minLevelForSkill(skill)) {
+    return { ok: false, reason: `Requires level ${minLevelForSkill(skill)}.` };
+  }
+  if (u.skillPoints < (node?.cost ?? 1)) return { ok: false, reason: 'Not enough skill points.' };
   return { ok: true };
 }
 
 export function canEquipSkill(u: Unit, id: SkillId): SkillRuleResult {
+  const skill = skillById(id);
+  if (skill?.passive) return { ok: false, reason: 'Passive skills are always active and do not use a hotbar slot.' };
   const state = ensureSkillState(u);
   if (!state.learned.includes(id)) return { ok: false, reason: 'Skill has not been learned.' };
   if (state.loadout.includes(id)) return { ok: false, reason: 'Skill is already equipped.' };
@@ -138,6 +160,10 @@ export function validateSkills(): SkillValidationIssue[] {
     if (skill.range < 0 || skill.aoeRadius < 0 || skill.cooldown < 0) issues.push({ id: skill.id, message: 'Range, radius, and cooldown must be non-negative.' });
     if (!effectsForSkill(skill).length) issues.push({ id: skill.id, message: 'Skill has no execution effects.' });
     if (skill.combo) for (const partner of skill.combo) if (!all[partner]) issues.push({ id: skill.id, message: `Unknown combo partner ${partner}.` });
+  }
+  for (const issue of validateCombos(all)) issues.push({ id: issue.split(':')[0], message: issue });
+  for (const classId of CLASS_IDS) {
+    for (const issue of validateSkillTree([classId])) issues.push({ id: 'skill-tree', message: issue });
   }
   return issues;
 }

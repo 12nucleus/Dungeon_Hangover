@@ -43,3 +43,10 @@ Shots/
 # Tauri build output (installers are reproducible via `CI=false npx tauri build`;
 # distribute them as GitHub Releases, not as git blobs)
 src-tauri/target/
+
+# Graphify knowledge-graph cache (regenerable)
+graphify-out/
+# Playwright run output
+test-results/
+# Ad-hoc review screenshots
+review-shots/

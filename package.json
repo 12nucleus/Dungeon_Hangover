@@ -13,7 +13,8 @@
     "vox:monsters": "node scripts/gen_monsters_vox.mjs",
     "vox": "node scripts/gen_vox.mjs && node scripts/gen_props_vox.mjs && node scripts/gen_monsters_vox.mjs",
     "tauri": "tauri",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "test:skills": "node scripts/test_skill_progression.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.12.0",

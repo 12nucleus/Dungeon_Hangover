@@ -7,6 +7,7 @@ import { SKILLS } from '../skills';
 import { levelForFloor } from '../../levels';
 import type { GridPos } from '../types';
 import { unitWorld } from './visuals';
+import { applyLevelUp, MAX_LEVEL } from '../stats';
 
 /** TEMP DEBUG (press B): open the iron door, teleport the party just inside
  *  the boss room and fire the bathing-tyrant cutscene on demand. */
@@ -110,8 +111,10 @@ export function executeCheatCommand(engine: any, cmd: string) {
       break;
     case 'levelup':
       if (hero) {
-        hero.level += 1; hero.skillPoints += 1;
-        hero.maxHp += 10; hero.hp = hero.maxHp;
+        if (hero.level >= MAX_LEVEL) { reply(`Already at level ${MAX_LEVEL}.`); break; }
+        hero.level += 1;
+        applyLevelUp(hero);
+        hero.hp = hero.maxHp;
         reply(`Level up! Now level ${hero.level}.`);
       }
       break;

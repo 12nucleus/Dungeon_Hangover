@@ -115,8 +115,8 @@ function ActionFeed({ snap }: { snap: UISnapshot }) {
   if (!log.length) return null;
   return (
     <div className="action-feed">
-      {log.slice(-4).map((l) => (
-        <div key={l.id} className={`action-feed-item ${l.kind}`}>{l.text}</div>
+      {log.slice(-4).map((l, i) => (
+        <div key={`${i}-${l.id}`} className={`action-feed-item ${l.kind}`}>{l.text}</div>
       ))}
     </div>
   );
@@ -142,8 +142,8 @@ function QuestEntry({ q }: { q: QuestRow }) {
             <div className="quest-rewards">
               {q.xpReward > 0 && <span className="quest-reward">✦ {q.xpReward} XP</span>}
               {q.rewardGold > 0 && <span className="quest-reward">🪙 {q.rewardGold}</span>}
-              {q.rewardItems.map((it) => (
-                <span key={it.name} className="quest-reward">{it.icon} {it.name}</span>
+              {q.rewardItems.map((it, ri) => (
+                <span key={`${ri}-${it.name}`} className="quest-reward">{it.icon} {it.name}</span>
               ))}
             </div>
           )}
@@ -454,13 +454,14 @@ export function HUD({ snap, engine }: Props) {
         <div className="initiative">
           <div className="initiative-round">ROUND {snap.round}</div>
           {snap.turnOrder.map((id, i) => {
-            const u = snap.units.find((x) => x.id === id)!;
+            const u = snap.units.find((x) => x.id === id);
+            if (!u) return null; // a stale rotation id (mid-teardown) must never blank the HUD
             const prev = i > 0 ? snap.units.find((x) => x.id === snap.turnOrder[i - 1]) : null;
             const teamColor = TEAM_COLOR[u.team] ?? '#aaa';
             return (
               <div key={id} style={{ display: 'contents' }}>
                 {prev && prev.team !== u.team && (
-                  <div className="initiative-divider">{u.team === 'enemy' ? '▼ ENEMY PHASE' : '▲ YOUR PHASE'}</div>
+                  <div className="initiative-divider">{u.team === 'enemy' ? '▼ NEXT: ENEMY TURN' : '▲ NEXT: YOUR TURN'}</div>
                 )}
                 <div
                   className="initiative-slot"
@@ -488,6 +489,14 @@ export function HUD({ snap, engine }: Props) {
         <div key={snap.phaseBanner.id} className={`phase-banner ${snap.phaseBanner.cls}`}>
           <span>{snap.phaseBanner.text}</span>
           <small>{snap.phaseBanner.cls === 'party' ? 'All heroes act — then the enemy.' : 'The enemy acts. Hold your ground.'}</small>
+        </div>
+      )}
+
+      {/* ══ ACTION BANNER — "X is casting Y" announce / result with roll numbers ══ */}
+      {snap.actionBanner && phase === 'combat' && (
+        <div key={snap.actionBanner.id} className={`action-banner ${snap.actionBanner.cls} ${snap.actionBanner.kind}`}>
+          <span>{snap.actionBanner.text}</span>
+          {snap.actionBanner.sub && <small>{snap.actionBanner.sub}</small>}
         </div>
       )}
 
@@ -607,7 +616,7 @@ export function HUD({ snap, engine }: Props) {
           </div>
           {showLog && (
             <div className="log-body" ref={logRef}>
-              {snap.log.map((l) => <div key={l.id} className={`log-line ${l.kind}`}>{l.text}</div>)}
+              {snap.log.map((l, li) => <div key={`${li}-${l.id}`} className={`log-line ${l.kind}`}>{l.text}</div>)}
             </div>
           )}
         </div>
@@ -630,7 +639,7 @@ export function HUD({ snap, engine }: Props) {
                   <div className="pf-name" style={{ color: TEAM_COLOR[u.team] }}>{u.name}</div>
                   <div className="pf-hp">{u.hp}/{effMaxHp(u)}{u.equipment?.weapon?.enchantId ? ' ✦' : ''}</div>
                   <div className="pf-cond">
-                    {u.conditions.map((c) => <span key={c.id} className="cond-pip" title={c.name}>{c.id === 'blessed' ? '✨' : '❄'}</span>)}
+                    {u.conditions.map((c, ci) => <span key={`${ci}-${c.id}`} className="cond-pip" title={c.name}>{c.id === 'blessed' ? '✨' : '❄'}</span>)}
                   </div>
                 </div>
               </div>
@@ -651,11 +660,20 @@ export function HUD({ snap, engine }: Props) {
           {/* BG3-style bottom hotbar (default actions + 12 skill slots) */}
           {phase !== 'creation' && phase !== 'victory' && phase !== 'defeat' && party.length > 0 && <Hotbar snap={snap} engine={engine!} />}
           {/* persistent phase chip — what you can do RIGHT NOW */}
-          {phase === 'combat' && (
-            <div className={`combat-phase-chip ${activeUnit?.team === 'party' ? 'party' : 'enemy'}`}>
-              {activeUnit?.team === 'party'
-                ? <>⚔ YOUR TURN — move, act, then <b>End Turn</b></>
-                : <>🐀 ENEMY PHASE — {activeUnit?.name ?? 'the enemy'} is acting…</>}
+          {phase === 'combat' && activeUnit && (
+            <div className={`combat-phase-chip ${activeUnit.team === 'party' ? 'party' : 'enemy'}`}>
+              {activeUnit.team === 'party' ? (
+                <span className="action-economy" title="What you can still do this turn">
+                  <span className={activeUnit.movementLeft > 0 ? 'eco eco-on' : 'eco eco-spent'}>🚶 MOVE {activeUnit.movementLeft}</span>
+                  <span className={activeUnit.hasAction ? 'eco eco-on' : 'eco eco-spent'}>⚔ ACTION</span>
+                  <span className={activeUnit.hasBonus ? 'eco eco-on' : 'eco eco-spent'}>🔸 BONUS</span>
+                  {(activeUnit.movementLeft <= 0 && !activeUnit.hasAction && !activeUnit.hasBonus)
+                    ? <b className="eco-done">✅ DONE — Space ends the turn</b>
+                    : <span className="eco-hint">· Space = end turn</span>}
+                </span>
+              ) : (
+                <>🐀 ENEMY PHASE — {activeUnit.name ?? 'the enemy'} is acting…</>
+              )}
             </div>
           )}
 

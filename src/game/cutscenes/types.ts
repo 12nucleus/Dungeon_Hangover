@@ -101,8 +101,10 @@ export interface CutsceneHost {
   cineDelay: (ms: number) => Promise<void>;
   /** narrated subtitle + voice (falls back to text-only if asset missing). */
   narrate: (id: string, text: string, minMs?: number) => Promise<void>;
-  /** speak an NPC line's voice-over (audio/npc/<npcId>_<nodeId>.mp3) */
-  speakDialogue: (npcId: string, nodeId: string) => void;
+  /** speak an NPC line's voice-over (audio/npc/<npcId>_<nodeId>.mp3).
+   *  Resolves when the line chain finishes (or instantly on supersede/skip) —
+   *  cutscenes await it so the scene stays locked to the voice. */
+  speakDialogue: (npcId: string, nodeId: string) => Promise<void>;
   /** show a small subtitle styled for cutscenes */
   showCine: (text: string) => void;
   /** dismiss the cutscene subtitle */

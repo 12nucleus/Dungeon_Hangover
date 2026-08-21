@@ -428,7 +428,7 @@ export const F49_DEBUG = { ROOMS: ROOM_SPECS, CORRIDORS: CORRIDOR_SPECS, map, st
 export const floor49Level: LevelDef = {
   name: 'The Fungal Grotto',
   icon: '🍄',
-  description: "Floor 49. A garden of giant glowing mushrooms, spore fields and underground pools. It is beautiful. It is alive. It is dreaming. The Spore Mother dreams it — and she does not like being woken.",
+  description: "Floor 49. The Fungal Grotto. A glowing garden of giant mushrooms, drifting spores and still underground pools. It is beautiful. It is alive. It is a landlord, and you are behind on rent. The Spore Mother dreamed it into being, and she did not budget for you.",
   groundMats: ['moss', 'cave_floor', 'moss', 'gravel'],
   fillMats: ['wall_moss', 'cave_stone', 'wall_moss', 'cave_floor'],
   arena: { x0: OFFSET.x, z0: OFFSET.z, x1: OFFSET.x + 104, z1: OFFSET.z + 52 },

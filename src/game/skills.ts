@@ -511,7 +511,7 @@ function mkUnit(partial: Partial<Unit> & Pick<Unit, 'name' | 'title' | 'team' | 
     alive: true, cooldowns: {},
     hasAction: true, hasBonus: true, movementLeft: 6,
     initiative: 0, conditions: [], xpValue: 50,
-    skillState: { learned, loadout, unlockedNodes: [], passiveRanks: {} },
+    skillState: { learned, starterSkills: [...learned], loadout, unlockedNodes: [], passiveRanks: {} },
     ...partial,
   } as Unit;
 }

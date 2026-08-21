@@ -6,6 +6,7 @@
 import type { Unit } from './types';
 import { ENCHANTS, type Item } from './items';
 import { useForSlot } from './improvised';
+import { skillModifiers } from './skillPassives';
 
 function equippedPairs(u: Unit): { slot: string; item: Item }[] {
   const e = u.equipment ?? {};   // first-spawn units can lack the field — never crash the UI
@@ -42,14 +43,14 @@ export function effAC(u: Unit): number {
   if (u.conditions.some((c) => c.id === 'stoneskin')) cond += 4;
   if (u.conditions.some((c) => c.id === 'armored')) cond += 5;
   if (u.conditions.some((c) => c.id === 'defending')) cond += 1;
-  return u.ac + bonus + u.bonusAC + cond;
+  return u.ac + bonus + u.bonusAC + cond + skillModifiers(u).acBonus;
 }
 
 export function effMove(u: Unit): number {
   let bonus = 0;
   for (const e of allEnchs(u)) bonus += e?.moveBonus ?? 0;
   for (const { slot, item } of equippedPairs(u)) bonus += useForSlot(item, slot)?.moveBonus ?? 0;
-  return u.moveRange + bonus + u.bonusMove;
+  return u.moveRange + bonus + u.bonusMove + skillModifiers(u).moveBonus;
 }
 
 export function effMaxHp(u: Unit): number {
@@ -59,7 +60,7 @@ export function effMaxHp(u: Unit): number {
     const use = useForSlot(item, slot);
     bonus += use?.hpBonus ?? item.hpBonus ?? 0;
   }
-  return u.maxHp + bonus;
+  return u.maxHp + bonus + skillModifiers(u).maxHpBonus;
 }
 
 /** flat physical-damage reduction from armor (sturdy boots, pipe helmet, …) */
@@ -85,10 +86,28 @@ export function effAtkBonus(u: Unit): number {
 }
 
 // ── XP / levels (Greg starts at level 1) ────────────────────
-// Cumulative XP required to REACH each level (level N → XP_THRESHOLDS[N]).
-// Level 1 is 0 XP; there is no threshold entry for it.
-export const MAX_LEVEL = 6;
-export const XP_THRESHOLDS: Record<number, number> = { 2: 80, 3: 200, 4: 400, 5: 650, 6: 950 };
+// Cumulative XP required to REACH each level. The curve is intentionally
+// predictable: roughly one meaningful level per authored floor, with enough
+// slack for optional fights and quests.
+export const MAX_LEVEL = 50;
+export const XP_THRESHOLDS: Record<number, number> = Object.fromEntries(
+  Array.from({ length: MAX_LEVEL - 1 }, (_, index) => {
+    const level = index + 2;
+    return [level, Math.round(80 * Math.pow(level - 1, 1.65))];
+  }),
+);
+
+export const MIN_LEVEL_BY_TIER: Record<1 | 2 | 3 | 4 | 5, number> = {
+  1: 1, 2: 11, 3: 21, 4: 31, 5: 41,
+};
+
+/** Apply the shared level-up rewards. Both combat XP and bonfire catch-up use this. */
+export function applyLevelUp(u: Unit): void {
+  u.maxHp += 6;
+  u.hp = Math.min(effMaxHp(u), u.hp + 6);
+  u.skillPoints += 1;
+  u.abilityPoints = (u.abilityPoints ?? 0) + 1;
+}
 
 /**
  * Attack penalty from Greg's hangover, by sobriety level:
@@ -106,22 +125,12 @@ export function hangoverPenalty(level: number): number {
  * to the hotbar / learned at the bonfire. Base (non-class) skills fall back
  * to their `levelReq` (default 1).
  *
- * Class skills use their `tier` — note Tier-1 opens at Lv2 so that at Lv1 the
- * ONLY assignable skills are the 2 the player picked at creation:
- *   Tier-1 → level 2
- *   Tier-2 → level 3
- *   Tier-3 → level 4
- *   Tier-4+ → level 4
+ * Class skills use their `tier`. A level is a minimum gate, never an expiry:
+ * once a tier opens it remains available for planning and specialization.
  */
 export function minLevelForSkill(s: { classId?: string; tier?: 1 | 2 | 3 | 4 | 5; levelReq?: number }): number {
   if (s.classId) {
-    switch (s.tier) {
-      case 2: return 3;
-      case 3: return 4;
-      case 4:
-      case 5: return 4;
-      default: return 2; // Tier-1 class skills open at Lv2
-    }
+    return MIN_LEVEL_BY_TIER[s.tier ?? 1];
   }
   return s.levelReq && s.levelReq > 1 ? s.levelReq : 1;
 }
@@ -130,10 +139,11 @@ export function minLevelForSkill(s: { classId?: string; tier?: 1 | 2 | 3 | 4 | 5
  * Class-skill tier that becomes available at each character level (used by
  * `canUnlock` so the skill tree respects level gates too).
  */
-export function tierAtLevel(level: number): 1 | 2 | 3 | 4 {
-  if (level >= 4) return 4;
-  if (level === 3) return 3;
-  if (level === 2) return 2;
+export function tierAtLevel(level: number): 1 | 2 | 3 | 4 | 5 {
+  if (level >= 41) return 5;
+  if (level >= 31) return 4;
+  if (level >= 21) return 3;
+  if (level >= 11) return 2;
   return 1;
 }
 

@@ -7,6 +7,9 @@
 const SFX_FILES = [
   'sword_hit', 'fireball', 'fireball_cast', 'fireball_impact', 'heal', 'magic_missile',
   'arrow', 'dice', 'victory', 'ui_click', 'bonfire_lit',
+  // combat presentation set — real sampled hits (Kenney, CC0) + produced cast layers
+  'whoosh', 'whoosh_soft', 'dodge', 'block', 'hit_slash', 'hit_pierce', 'hit_blunt',
+  'ice_shatter', 'crit_hit', 'cast_fire', 'cast_ice', 'cast_holy', 'cast_arcane', 'cast_buff',
 ] as const;
 
 export type SfxName = (typeof SFX_FILES)[number];
@@ -754,47 +757,60 @@ export class AudioManager {
   }
   /** weapon swing whoosh — plays as the attacker lunges */
   swing(volume = 0.55) {
-    this.noiseBurst(0.18, volume * 0.6, 'bandpass', 1800, 500);
-    this.beep(900, 320, 0.12, volume * 0.14, 'sine');
+    // sampled whoosh — per-call rate variation keeps repeated swings organic
+    this.play('whoosh', volume * 0.9, 0.92 + Math.random() * 0.18);
   }
   /** a clean miss — the swing sails through empty air */
   whiff(volume = 0.5) {
-    this.noiseBurst(0.14, volume * 0.5, 'bandpass', 2400, 900);
+    this.play('whoosh_soft', volume, 0.9 + Math.random() * 0.15);
   }
   /** a dodge — quick airy swish as a target slips a blow */
   dodge(volume = 0.6) {
-    this.noiseBurst(0.12, volume * 0.5, 'highpass', 3200, 2400);
-    this.beep(1200, 2000, 0.1, volume * 0.2, 'sine');
+    this.play('dodge', volume, 0.95 + Math.random() * 0.12);
   }
   /** a blocked blow — metallic clank off armour or a raised shield */
   block(volume = 0.7) {
-    this.noiseBurst(0.08, volume * 0.6, 'highpass', 5200, 3800);
-    this.beep(1600, 900, 0.09, volume * 0.4, 'square', 0.01);
-    this.beep(800, 500, 0.12, volume * 0.3, 'square', 0.03);
+    this.play('block', volume, 0.94 + Math.random() * 0.12);
   }
-  /** an arcane cast — rising chime for spells without their own asset */
+  /** an arcane cast — produced shimmer-swell sample */
   cast(volume = 0.6) {
-    this.beep(440, 880, 0.22, volume * 0.3, 'triangle');
-    this.beep(880, 1320, 0.25, volume * 0.22, 'sine', 0.08);
-    this.beep(660, 1980, 0.3, volume * 0.18, 'triangle', 0.16);
+    this.play('cast_arcane', volume, 0.95 + Math.random() * 0.1);
   }
-  /** weapon impact — character follows the damage type (blade / point / blunt) */
+  /** per-element cast cue for the action-announce beat; `pitch` comes from
+   *  presentationForSkill so two fire spells still sound distinct. */
+  castCue(fx: string, volume = 0.85, pitch = 1) {
+    const rate = Math.max(0.6, Math.min(1.6, pitch * (0.96 + Math.random() * 0.08)));
+    switch (fx) {
+      case 'fire': case 'fireball_cast': this.play('cast_fire', volume, rate); break;
+      case 'ice': this.play('cast_ice', volume, rate); break;
+      case 'holy': this.play('cast_holy', volume, rate); break;
+      case 'heal': this.play('heal', volume, rate); break;
+      case 'buff': this.play('cast_buff', volume, rate); break;
+      case 'melee': case 'slash': this.play('whoosh', volume * 0.8, rate); break;
+      case 'bash': case 'impact': case 'blood': this.play('hit_blunt', volume * 0.7, rate); break;
+      case 'arrow': case 'ranged': this.play('arrow', volume, rate); break;
+      default: this.play('cast_arcane', volume, rate);
+    }
+  }
+  /** critical hit — layered real bell + metal slam */
+  critHit(volume = 1) {
+    this.play('crit_hit', volume, 0.95 + Math.random() * 0.1);
+  }
+  /** weapon impact — sample follows the damage type (blade / point / blunt / element) */
   hitImpact(kind: string, volume = 0.9) {
+    const jitter = 0.95 + Math.random() * 0.1;
     switch (kind) {
-      case 'slashing':
-        this.noiseBurst(0.12, volume * 0.65, 'highpass', 4200, 2600);
-        this.beep(900, 220, 0.08, volume * 0.25, 'square');
-        break;
-      case 'piercing':
-        this.noiseBurst(0.06, volume * 0.6, 'highpass', 5000, 3600);
-        this.beep(1600, 700, 0.05, volume * 0.3, 'square');
-        break;
-      case 'bludgeoning':
-        this.noiseBurst(0.14, volume * 0.7, 'lowpass', 700, 160);
-        this.beep(220, 70, 0.12, volume * 0.35, 'sine');
-        break;
+      case 'slashing': this.play('hit_slash', volume, jitter); break;
+      case 'piercing': this.play('hit_pierce', volume, jitter); break;
+      case 'bludgeoning': this.play('hit_blunt', volume, jitter); break;
+      case 'fire': this.play('fireball_impact', volume, jitter); break;
+      case 'ice': case 'cold': this.play('ice_shatter', volume, jitter); break;
+      case 'radiant': case 'necrotic': case 'force': case 'psychic':
+        this.play('magic_missile', volume * 0.8, jitter * 0.85); break;
+      case 'acid': case 'poison':
+        this.play('hit_blunt', volume * 0.7, jitter * 0.7); break;
       default:
-        this.noiseBurst(0.1, volume * 0.5, 'bandpass', 2000, 700);
+        this.play('hit_blunt', volume * 0.8, jitter * 0.92);
     }
   }
   /** short sting to open the boss fight */

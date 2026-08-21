@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────
 // CLASS SKILLS — all 50 skills × 15 classes (750 total) as full
 // SkillDef data, grouped by class. Tier-1 skills are playable in
-// the current 1–5 level game; Tiers 2–5 are level-gated / passives
-// locked behind higher levels (usable once the level system grows).
+// the level-50 progression; Tiers 2–5 are level-gated / passives locked
+// behind higher levels and branch prerequisites.
 //
 // Many "design-bible" effects (grapple, shove, banish, cooking,
 // spirit summons, form-shifts) map onto the existing combat verbs:
@@ -979,7 +979,7 @@ export const ALL_CLASS_SKILLS: Record<string, SkillDef> = Object.fromEntries(
   Object.values(CLASS_SKILLS).flat().map((sk) => [sk.id, sk]),
 );
 
-/** Skills playable at level 5 or below (current game's max level). */
+/** Active Tier-1 skills offered during character creation. */
 export function tier1SkillsFor(classId: string): SkillDef[] {
   return (CLASS_SKILLS[classId] ?? []).filter((sk) => (sk.tier ?? 1) === 1 && !sk.passive);
 }

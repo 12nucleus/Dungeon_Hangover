@@ -234,7 +234,7 @@ const structures: LevelStructures = {
     { npcId: 'scrag', pos: O({ x: sc(49), z: sc(22) }) },
   ],
   doors: [
-    { id: 'soap_gate', pos: O({ x: 98, z: 50 }), axis: 'z', openedByFlag: 'soap_gate_open' },
+    { id: 'soap_gate', pos: O({ x: 98, z: 50 }), axis: 'x', openedByFlag: 'soap_gate_open' },
     { id: 'trapdoor67', pos: O({ x: 47, z: 106 }), axis: 'z', openedByFlag: 'trapdoor_open' },
   ],
   // gate lanes seal only if the blocker covers the WHOLE single-lane span.

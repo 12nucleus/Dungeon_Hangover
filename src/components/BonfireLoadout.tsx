@@ -29,13 +29,13 @@ export function BonfireLoadout({ snap, engine }: Props) {
   // Every skill the leader knows right now (creation picks + Skill-Tree
   // unlocks). All of them are assignable — level gating lives in the tree.
   const known = useMemo(() => {
-    const seen = new Map<string, { id: string; name: string; icon: string; cls: string; desc: string }>();
+    const seen = new Map<string, { id: string; name: string; icon: string; cls: string; desc: string; passive: boolean }>();
     const add = (id: string) => {
       if (seen.has(id)) return;
       const s = SKILLS[id] ?? ALL_CLASS_SKILLS[id];
       if (!s) return;
       const cls = s.classId ? (classById(s.classId)?.name ?? s.classId) : 'Base';
-      seen.set(id, { id, name: s.name, icon: s.icon, cls, desc: s.desc });
+      seen.set(id, { id, name: s.name, icon: s.icon, cls, desc: s.desc, passive: !!s.passive });
     };
     for (const id of hero?.knownSkills ?? []) add(id);
     return [...seen.values()];
@@ -44,6 +44,10 @@ export function BonfireLoadout({ snap, engine }: Props) {
   if (!hero) return null;
 
   const setSlot = (i: number, id: string | null) => {
+    if (id) {
+      const skill = SKILLS[id] ?? ALL_CLASS_SKILLS[id];
+      if (skill?.passive) return;
+    }
     const next = [...slots];
     // remove this skill from any other slot so each appears once
     if (id) {
@@ -97,8 +101,10 @@ export function BonfireLoadout({ snap, engine }: Props) {
               return (
                 <button
                   key={sk.id}
-                  className={`bl-skill ${already ? 'used' : ''}`}
-                  onClick={() => {
+                    className={`bl-skill ${already ? 'used' : ''} ${sk.passive ? 'passive' : ''}`}
+                    disabled={sk.passive}
+                    onClick={() => {
+                      if (sk.passive) return;
                     // already on the bar → remove it; otherwise place in first empty slot
                     if (already) {
                       setSlot(slots.indexOf(sk.id), null);
@@ -114,7 +120,7 @@ export function BonfireLoadout({ snap, engine }: Props) {
                     <strong>{sk.name}</strong>
                     <em>{sk.cls}</em>
                   </div>
-                  {already && <span className="bl-used">on bar</span>}
+                  {sk.passive ? <span className="bl-used">passive</span> : already && <span className="bl-used">on bar</span>}
                 </button>
               );
             })}
