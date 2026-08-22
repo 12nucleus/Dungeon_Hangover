@@ -20,7 +20,9 @@ interface Props {
 
 export function GregDoll({ unit, width = 160, height = 240 }: Props) {
   const mount = useRef<HTMLDivElement | null>(null);
-
+  // loadout fingerprint — equipment objects are re-created every engine
+  // snapshot, so identity can't be a dep; content equality can.
+  const gearSig = JSON.stringify(unit.equipment ?? {});
   useEffect(() => {
     const host = mount.current;
     if (!host) return;
@@ -76,9 +78,10 @@ export function GregDoll({ unit, width = 160, height = 240 }: Props) {
     rig.group.position.y = 0;
     rig.anim.mode = 'idle';
     scene.add(rig.group);
-
-    // weapon
-    setWeapon(rig, unit.weapon ?? 'unarmed', scheme.accent);
+    // forward tier + enchant from the equipped weapon Item so the doll shows
+    // the same glowing masterwork blade the world rig does
+    const wItem = ((unit.equipment ?? {}) as Record<string, { tier?: number; enchantId?: string; weaponKind?: string } | undefined>).weapon;
+    setWeapon(rig, unit.weapon ?? 'unarmed', scheme.accent, wItem?.tier ?? 1, wItem?.enchantId);
     // worn armor / head / legs etc.
     for (const [slot, item] of Object.entries(unit.equipment ?? {})) {
       if (!item) continue;
@@ -99,9 +102,22 @@ export function GregDoll({ unit, width = 160, height = 240 }: Props) {
         removeTicker(ticker);
         ticker = null;
       }
+      // free the rig's GPU resources — rebuilds used to leak geometry/materials
+      rig.group.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) {
+          m.geometry?.dispose();
+          const mat = m.material as THREE.Material | THREE.Material[];
+          if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+          else mat?.dispose();
+        }
+      });
       view.dispose();
     };
-  }, [unit, width, height]);
-
+  // STABLE deps — `unit` is a fresh object on every engine snapshot, so keying
+  // the effect on it rebuilt the whole rig dozens of times per second (the
+  // "glitching instead of rotating" bug). Rebuild only when the loadout or
+  // the viewed character actually changes.
+  }, [unit.id, unit.weapon, gearSig, width, height]);
   return <div ref={mount} className="greg-doll" style={{ width, height }} />;
 }

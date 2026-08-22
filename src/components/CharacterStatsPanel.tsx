@@ -33,7 +33,7 @@ const COND_META: Record<string, { icon: string; kind: 'buff' | 'debuff' }> = {
 };
 
 export function CharacterStatsPanel({ snap, engine }: Props) {
-  const party = snap.units.filter((u) => u.team === 'party');
+  const party = snap.units.filter((u) => u.team === 'party' && !u.id.startsWith('summon_'));
   const [tab, setTab] = useState(party[0]?.id ?? '');
   const u = party.find((p) => p.id === tab) ?? party[0];
   if (!u) return null;

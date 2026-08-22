@@ -193,15 +193,21 @@ const R6 = map.rooms.r6, R7 = map.rooms.r7, R8 = map.rooms.r8, R9 = map.rooms.r9
 const R10 = map.rooms.r10, R11 = map.rooms.r11, R12 = map.rooms.r12, R13 = map.rooms.r13;
 const R14 = map.rooms.r14, R15 = map.rooms.r15, R16 = map.rooms.r16, R17 = map.rooms.r17, R18 = map.rooms.r18;
 const mid = (r: { x0: number; x1: number }) => (r.x0 + r.x1) >> 1;
+const zmid = (r: { z0: number; z1: number }) => (r.z0 + r.z1) >> 1;
 
-// ── R1 — Entry Hall: no bonfire here (per user request) — just skeleton + glow mushrooms
+// ── R1 — Entry Hall: no bonfire here (per user request) — the fallen
+//    traveler's skeleton is the first thing you see; the grove wakes around it.
 // bonfire removed so entry hall has no save; first saves are at hermit pool / grotto
-putW('skeleton', R1.x0, R1.z0, 0.5);
-putW('glow_mushroom_blue', R1.x0 + 3, R1.z0, 0.3);
-putW('glow_mushroom_green', R1.x1, R1.z0 + 1, 0.7);
-putW('glow_mushroom_purple', R1.x0 + 1, R1.z1, 0.5);
+putW('skeleton', R1.x0, R1.z0, 0.5);                 // the fallen traveler (searchable)
+putW('glow_mushroom_blue', R1.x0 + 3, R1.z0, 0.3);   // north wall glow
+putW('glow_mushroom_green', R1.x1, R1.z0 + 1, 0.7);  // NE corner glow
+putW('glow_mushroom_purple', R1.x0 + 1, R1.z1, 0.5); // the harvestable purple (south wall)
 putW('mushroom_cap', R1.x0 + 2, R1.z1 - 1, 0.6);
 putW('mushroom_cap', R1.x1 - 1, R1.z1, 0.8);
+// focal corner: a stalagmite under the north wall, one last cap by the west door
+putW('stalagmite', R1.x0 + 4, R1.z0, 0.7);
+putW('glow_mushroom_purple', R1.x0 + 5, R1.z0 + 3, 0.4);
+putW('mushroom_cap', R1.x0 + 1, R1.z0 + 1, 0.9);
 
 // ── R2 — Spore Field: caps everywhere, 2 explosive spore sacs, a spore trail ──
 putW('glow_mushroom_blue', R2.x0, R2.z0, 0.2);
@@ -212,17 +218,20 @@ putW('mushroom_cap', R2.x0 + 3, R2.z1 - 1, 0.7);
 putW('mushroom_cap', R2.x1 - 1, R2.z1, 0.3);
 putW('spore_sac', R2.x0 + 2, R2.z0 + 3, 0.6);
 putW('spore_sac', R2.x1 - 1, R2.z0 + 4, 0.8);
-// the spore trail toward r4 — a string of purple glow caps
+// the spore trail toward r4 — a string of purple glow caps leading north
 putW('glow_mushroom_purple', R2.x0 + 1, R2.z0 + 2, 0.5);
-putW('mushroom_cap', mid(R2), mid(R2), 0.6);
+putW('glow_mushroom_purple', R2.x0 + 3, R2.z0 + 1, 0.7);   // trail head at the r4 corridor door
+putW('mushroom_cap', mid(R2), mid(R2), 0.6);               // the harvestable center cap
 
 // ── R3 — Vine Tunnel: hanging vines, a vine trap in the middle ──
 putW('vine', mid(R3), R3.z0, 0.3);
-putW('vine', R3.x0, mid(R3), 0.7);
+putW('vine', R3.x0, zmid(R3), 0.7);
 putW('vine', R3.x1, R3.z0 + 2, 0.5);
 putW('vine', mid(R3), R3.z1, 0.9);
 // the glowing fruit — a big green cap mid-tunnel
 putW('glow_mushroom_green', R3.x0, R3.z1 - 1, 0.6);
+// a purple cap mid-tunnel so the vines are never fully dark
+putW('glow_mushroom_purple', R3.x1, R3.z0 + 10, 0.8);
 
 // ── R4 — Hermit Pool: the pool, glow mushrooms around the edge, the hidden chest ──
 putW('pool', mid(R4), mid(R4), 0.5);
@@ -234,8 +243,9 @@ putW('mushroom_cap', R4.x1, R4.z1, 0.5);
 putW('chest', R4.x0 + 2, R4.z0 + 1, 0.5);
 // the rare Moon Cap
 putW('glow_mushroom_blue', R4.x0 + 3, R4.z0 + 3, 0.9);
-// the hermit's bonfire savepoint (south-east corner)
-putW('bonfire', bonfireHermit.x, bonfireHermit.z, 0.4);
+// the hermit's bonfire savepoint is structural (structures.bonfires) — no prop here;
+// instead, offerings left at the pool's edge for the old hermit
+putW('offering_bowl', R4.x0 + 5, R4.z0 + 2, 0.6);
 
 // ── R5 — Mushroom Circle: seven giant mushrooms in a ring + the offering bowl ──
 {
@@ -248,53 +258,66 @@ putW('bonfire', bonfireHermit.x, bonfireHermit.z, 0.4);
     const kinds: PropKind[] = ['giant_mushroom', 'mushroom_cap', 'glow_mushroom_blue', 'glow_mushroom_green', 'glow_mushroom_purple', 'mushroom_cap', 'giant_mushroom'];
     putW(kinds[i], x, z, 0.3 + i * 0.09);
   }
-  putW('offering_bowl', cx, cz, 0.5);
+  putW('offering_bowl', cx + 1, cz, 0.5);   // beside the ring's heart (sporefriend's spot)
 }
 
-// ── R6 — Central Grotto: the big room. Giant mushrooms, the warm crystal,
-//    a mushroom bed, spore sacs, and the vine bridge north toward the throne ──
-putW('giant_mushroom', R6.x0 + 1, R6.z0 + 1, 0.3);
-putW('giant_mushroom', R6.x1 - 1, R6.z0 + 1, 0.7);
-putW('giant_mushroom', R6.x0 + 2, R6.z1 - 1, 0.5);
-putW('giant_mushroom', R6.x1 - 2, R6.z1 - 2, 0.9);
-putW('glow_mushroom_blue', R6.x0, R6.z0 + 3, 0.4);
-putW('glow_mushroom_green', R6.x1, R6.z0 + 4, 0.6);
-putW('glow_mushroom_purple', R6.x0 + 5, R6.z1, 0.8);
-putW('mushroom_cap', R6.x0 + 3, R6.z0 + 2, 0.5);
-putW('mushroom_cap', R6.x0 + 6, R6.z0 + 3, 0.7);
-putW('crystal_light', R6.x0 + 4, R6.z0 + 1, 0.5);     // the warm beacon
-putW('mushroom_bed', R6.x0 + 1, R6.z1 - 1, 0.5);      // rest here — but you'll be sleepy
-putW('spore_sac', R6.x1 - 1, R6.z0 + 2, 0.6);
-putW('spore_sac', R6.x1 - 1, R6.z1 - 1, 0.8);
-putW('vine_bridge', mid(R6), R6.z0, 0.5);             // the fragile crossing to r7
-// the grotto bonfire savepoint (south-east, before the boss gauntlet)
-putW('bonfire', bonfireGrotto.x, bonfireGrotto.z, 0.4);
+// ── R6 — Central Grotto: the hub room. Four guardian giants at the corners,
+//    the warm crystal beacon + a small cap heart at center, the rest camp in the
+//    south-east, and the vine bridge north toward the throne. (r6's harvestable
+//    spore sacs are spawned by floor49Destructibles, not here.)
+putW('giant_mushroom', R6.x0 + 1, R6.z0 + 1, 0.3);   // NW guardian
+putW('giant_mushroom', R6.x1 - 1, R6.z0 + 1, 0.7);   // NE guardian
+putW('giant_mushroom', R6.x0 + 2, R6.z1 - 1, 0.5);   // SW guardian
+putW('giant_mushroom', R6.x1 - 2, R6.z1 - 2, 0.9);   // SE guardian
+putW('crystal_light', R6.x0 + 4, R6.z0 + 1, 0.5);    // the warm beacon (takeable)
+putW('mushroom_bed', R6.x0 + 1, R6.z1 - 1, 0.5);     // rest here — but you'll be sleepy
+putW('spore_sac', R6.x1 - 1, R6.z0 + 2, 0.6);        // sac against the NE wall
+putW('vine_bridge', mid(R6), R6.z0, 0.5);            // the fragile crossing to r7
+putW('glow_mushroom_blue', R6.x0, R6.z0 + 3, 0.4);   // west wall accent
+putW('glow_mushroom_green', R6.x1, R6.z0 + 4, 0.6);  // east wall accent
+putW('glow_mushroom_purple', R6.x0 + 5, R6.z1, 0.8); // south wall accent
+putW('mushroom_cap', R6.x0 + 8, R6.z0 + 7, 0.5);     // the grotto's heart — a cap cluster
+putW('mushroom_cap', R6.x0 + 6, R6.z0 + 8, 0.7);
+// the grotto bonfire savepoint is structural (structures.bonfires) — no prop here
 
-// ── R7 — Spore Throne: the mother's seat + her spore sacs ──
-putW('mushroom_throne', mid(R7), mid(R7), 0.5);
-putW('spore_sac', R7.x0 + 1, R7.z0 + 1, 0.4);
-putW('spore_sac', R7.x1 - 1, R7.z0 + 1, 0.6);
-putW('spore_sac', R7.x0 + 1, R7.z1 - 1, 0.8);
-putW('spore_sac', R7.x1 - 1, R7.z1 - 1, 0.9);
+// ── R7 — Spore Throne: the mother's arena. The throne itself + her four corner
+//    spore sacs are spawned by floor49Destructibles (smashable in the boss fight);
+//    here we dress the room around them: guardian giants at the south gate, a
+//    diamond of small caps around the throne, and purple/green wall glows.
+putW('giant_mushroom', R7.x0 + 2, R7.z1, 0.5);       // SW gate guardian
+putW('giant_mushroom', R7.x1 - 2, R7.z1, 0.8);       // SE gate guardian
 putW('glow_mushroom_purple', R7.x0, R7.z0 + 2, 0.3);
 putW('glow_mushroom_purple', R7.x1, R7.z0 + 3, 0.7);
-putW('giant_mushroom', R7.x0 + 2, R7.z1, 0.5);
+putW('glow_mushroom_purple', R7.x0, R7.z0 + 8, 0.9);  // west wall accent
+putW('glow_mushroom_green', R7.x1, R7.z0 + 9, 0.6);   // east wall accent
+putW('offering_bowl', mid(R7), zmid(R7) + 1, 0.5);    // set before the throne
+putW('mushroom_cap', mid(R7) - 2, zmid(R7) - 1, 0.4);
+putW('mushroom_cap', mid(R7) + 2, zmid(R7) - 1, 0.6);
+putW('mushroom_cap', mid(R7) - 1, zmid(R7) + 3, 0.5);
+putW('mushroom_cap', mid(R7) + 1, zmid(R7) + 3, 0.7);
 
 // ── R8 — Deep Pools: three pools, the submerged skeleton, a crystal ──
-putW('pool', R8.x0 + 1, R8.z0 + 1, 0.4);
-putW('pool', R8.x0 + 3, R8.z0 + 2, 0.6);
-putW('pool', R8.x1 - 1, R8.z0 + 4, 0.8);
-putW('skeleton', R8.x1, R8.z1 - 1, 0.5);
-putW('crystal_light', R8.x0, R8.z1, 0.5);
+putW('pool', R8.x0 + 1, R8.z0 + 1, 0.4);             // the healing pool
+putW('pool', R8.x0 + 3, R8.z0 + 2, 0.6);             // the poisoned pool
+putW('pool', R8.x1 - 1, R8.z0 + 4, 0.8);             // the revealing pool
+putW('skeleton', R8.x1, R8.z1 - 1, 0.5);             // the submerged skeleton (searchable)
+putW('crystal_light', R8.x0, R8.z1, 0.5);            // the takeable crystal
 putW('glow_mushroom_blue', R8.x0 + 2, R8.z0, 0.3);
 putW('glow_mushroom_green', R8.x1, R8.z0, 0.7);
+putW('glow_mushroom_purple', R8.x0, R8.z0 + 4, 0.9); // west wall accent
+putW('mushroom_cap', R8.x0 + 6, R8.z1 - 2, 0.5);     // a cap drifting on the south pool
+putW('crystal_blue', R8.x0 + 4, R8.z0 + 3, 0.8);     // a blue crystal between the pools
 
 // ── R9 — Flooded Cave: the waterfall, the floating chest, fish-leaping caps ──
-putW('waterfall', R9.x0, mid(R9), 0.5);               // the passage hides behind it
+putW('waterfall', R9.x0, zmid(R9), 0.5);              // the passage hides behind it
 putW('chest', R9.x1 - 1, R9.z1, 0.5);                 // the floating chest
 putW('glow_mushroom_blue', R9.x0 + 1, R9.z1 - 1, 0.4);
 putW('glow_mushroom_green', R9.x1, R9.z0, 0.6);
-putW('mushroom_cap', R9.x0 + 2, R9.z0 + 1, 0.8);
+putW('mushroom_cap', R9.x0 + 2, R9.z0 + 1, 0.8);      // marks the exit stairs
+putW('glow_mushroom_purple', R9.x1 - 2, R9.z0 + 1, 0.9);  // east wall accent
+putW('mushroom_cap', R9.x0 + 5, R9.z0 + 4, 0.5);      // a cap bobbing mid-flood
+putW('crystal_blue', R9.x0 + 4, R9.z0 + 2, 0.7);      // cold light in the flood
+putW('skeleton', R9.x0 + 6, R9.z1 - 1, 0.6);          // a drowned wanderer
 
 // ── R10 — Spore Farm: neat rows of caps + the scarecrow (a skeleton in a hat) ──
 putW('giant_mushroom', R10.x0, R10.z0, 0.3);          // the "farmhouse" — a very large mushroom
@@ -304,23 +327,30 @@ putW('glow_mushroom_green', R10.x0 + 1, R10.z1, 0.4);
 putW('glow_mushroom_blue', R10.x0 + 3, R10.z1 - 1, 0.7);
 putW('glow_mushroom_purple', R10.x1, R10.z1, 0.5);
 putW('mushroom_cap', R10.x0 + 2, R10.z0 + 2, 0.8);
-putW('mushroom_cap', mid(R10), mid(R10), 0.9);
+putW('mushroom_cap', mid(R10), zmid(R10), 0.9);       // the harvestable center row cap
+putW('bucket', R10.x0 + 6, R10.z1 - 2, 0.5);          // the farmer's bucket, waiting
 
 // ── R11 — The Rotting Tree: a mushroom that WANTED to be a tree ──
-putW('giant_mushroom', mid(R11), mid(R11), 0.2);       // the "tree" — hollow, breathing, holding a secret
+putW('giant_mushroom', mid(R11), zmid(R11), 0.2);      // the "tree" — hollow, breathing, holding a secret
 putW('vine', R11.x0, R11.z0, 0.4);
 putW('vine', R11.x1, R11.z1, 0.6);
 putW('glow_mushroom_green', R11.x0 + 1, R11.z0, 0.5);
 putW('glow_mushroom_blue', R11.x1 - 1, R11.z1 - 1, 0.8);
 putW('mushroom_cap', R11.x0, R11.z1 - 1, 0.7);
+putW('glow_mushroom_purple', R11.x1, R11.z0 + 2, 0.9);  // NE corner glow
+putW('mushroom_cap', R11.x0 + 4, R11.z0 + 5, 0.4);      // fallen cap at the tree's roots
+putW('bones', R11.x0 + 5, R11.z0 + 7, 0.6);             // whatever the tree ate last
 
 // ── R12 — The Picnic: a blanket, a basket, and a very old lunch ──
 putW('skeleton', R12.x0 + 1, R12.z0 + 1, 0.5);        // the picnicker (he is fine. he is fertilizer)
-putW('chest', mid(R12), mid(R12), 0.6);               // the picnic basket
+putW('chest', mid(R12), zmid(R12), 0.6);              // the picnic basket
 putW('glow_mushroom_purple', R12.x1, R12.z0, 0.3);
 putW('mushroom_cap', R12.x0, R12.z1, 0.7);
 putW('glow_mushroom_blue', R12.x1 - 1, R12.z1, 0.9);
 putW('vine', R12.x0 + 3, R12.z0, 0.5);                // a vine "napkin"
+putW('rug', mid(R12), zmid(R12) - 1, 0.5);            // the blanket (woven mycelium)
+putW('broken_bottle', R12.x0 + 2, R12.z0 + 5, 0.7);   // the wine did not survive the outing
+putW('glow_mushroom_green', R12.x0 + 6, R12.z0 + 1, 0.4);  // a soft light over the picnic
 
 // ── R13 — Spore Nursery: the mother's children, dozens of tiny caps ──
 putW('giant_mushroom', R13.x0, R13.z0, 0.4);          // "mother" — a big warm cap they all lean on
@@ -332,7 +362,9 @@ putW('mushroom_cap', R13.x1 - 2, R13.z1 - 1, 0.8);
 putW('glow_mushroom_blue', R13.x0 + 4, R13.z0, 0.4);
 putW('glow_mushroom_green', R13.x1, R13.z0 + 3, 0.6);
 putW('glow_mushroom_purple', R13.x0, R13.z1, 0.9);
-putW('mushroom_cap', mid(R13), mid(R13), 0.2);
+putW('mushroom_cap', mid(R13), zmid(R13), 0.2);
+putW('mushroom_cap', R13.x0 + 6, R13.z0 + 2, 0.4);    // two more of the children
+putW('mushroom_cap', R13.x0 + 8, R13.z0 + 7, 0.6);
 putW('chest', R13.x1, R13.z1, 0.5);                   // the mother's private stash
 
 // ── R14 — The Mimic Den: one chest. In the middle. Untouched. DREAMING. ──
@@ -342,42 +374,56 @@ putW('glow_mushroom_purple', R14.x1, R14.z0, 0.6);
 putW('mushroom_cap', R14.x0, R14.z1, 0.5);
 putW('mushroom_cap', R14.x1, R14.z1 - 1, 0.8);
 putW('crystal_light', R14.x0 + 2, R14.z0 + 3, 0.7);   // the "spotlight" — showmanship matters
+putW('bones', R14.x0 + 7, R14.z0 + 3, 0.5);           // previous patrons of the den
+putW('rubble', R14.x0 + 1, R14.z0 + 6, 0.8);          // the den's lousy housekeeping
+putW('glow_mushroom_blue', R14.x0 + 3, R14.z0, 0.4);  // north wall accent
 
 // ── R15 — Spore-Grounds: a graveyard with VERY opinionated epitaphs ──
 putW('mushroom_cap', R15.x0, R15.z0 + 1, 0.4);        // grave #1 (Bert)
 putW('mushroom_cap', R15.x0 + 3, R15.z0 + 2, 0.6);    // grave #2 (Sandra)
 putW('mushroom_cap', R15.x1, R15.z1 - 1, 0.8);        // grave #3 (Steve)
 putW('mushroom_cap', R15.x0 + 1, R15.z1 - 2, 0.5);    // grave #4 (untitled — the mushrooms are still writing)
+putW('mushroom_cap', R15.x0 + 5, R15.z0 + 5, 0.6);    // grave #5 (Ethel — RIP, she fell in)
+putW('mushroom_cap', R15.x0 + 7, R15.z0 + 8, 0.4);    // grave #6 (…the epitaph grew legs)
 putW('skeleton', R15.x0 + 2, R15.z0, 0.7);            // the groundskeeper (he trusted a mushroom)
 putW('glow_mushroom_blue', R15.x1 - 1, R15.z0, 0.3);
 putW('glow_mushroom_purple', R15.x0, R15.z0, 0.9);
+putW('glow_mushroom_green', R15.x0 + 6, R15.z1, 0.8); // south wall light
 
 // ── R16 — Echo Chamber: three crystals that repeat everything (the grotto's Twitter) ──
-putW('crystal_light', R16.x0, mid(R16), 0.4);
-putW('crystal_light', R16.x1, mid(R16), 0.6);
+putW('crystal_light', R16.x0, zmid(R16), 0.4);
+putW('crystal_light', R16.x1, zmid(R16), 0.6);
 putW('crystal_light', mid(R16), R16.z0, 0.5);
 putW('crystal_light', mid(R16), R16.z1, 0.8);
 putW('pool', R16.x0 + 1, R16.z1 - 1, 0.7);            // a still, black pool that listens
 putW('glow_mushroom_blue', R16.x0 + 2, R16.z0 + 2, 0.3);
 putW('glow_mushroom_green', R16.x1 - 1, R16.z1 - 1, 0.9);
+putW('crystal', R16.x0 + 2, R16.z1 - 2, 0.6);         // dull companions to the bright quartet
+putW('crystal_blue', R16.x1 - 2, R16.z0 + 2, 0.8);
+putW('glow_mushroom_purple', R16.x0 + 6, R16.z1 - 2, 0.9);
 
 // ── R17 — Mycelial Highway: a glowing road that hums (and judges your pace) ──
-putW('crystal_light', mid(R17), mid(R17), 0.5);       // the road's "sun"
+putW('crystal_light', mid(R17), zmid(R17), 0.5);      // the road's "sun"
 putW('glow_mushroom_green', R17.x0, R17.z0, 0.3);
 putW('glow_mushroom_green', R17.x1, R17.z0, 0.5);
 putW('glow_mushroom_purple', R17.x0, R17.z1, 0.7);
 putW('glow_mushroom_purple', R17.x1, R17.z1, 0.9);
 putW('mushroom_cap', R17.x0 + 2, R17.z1 - 1, 0.6);
 putW('mushroom_cap', R17.x1 - 2, R17.z1 - 1, 0.8);
+putW('mushroom_cap', R17.x0 + 6, R17.z0, 0.4);        // road-edge caps, north side
+putW('glow_mushroom_blue', R17.x0 + 7, R17.z1, 0.7);  // road-edge glow, south side
 
 // ── R18 — The Sleeping Giant: a mushroom the size of a house. Do not wake it. Wake it. ──
-putW('giant_mushroom', mid(R18), mid(R18), 0.1);      // the Giant (it is snoring)
+putW('giant_mushroom', mid(R18), zmid(R18), 0.1);     // the Giant (it is snoring)
 putW('glow_mushroom_blue', R18.x0, R18.z0, 0.4);
 putW('glow_mushroom_green', R18.x1, R18.z0, 0.6);
 putW('glow_mushroom_purple', R18.x0, R18.z1, 0.8);
 putW('mushroom_cap', R18.x0 + 1, R18.z1 - 1, 0.5);
 putW('mushroom_cap', R18.x1 - 1, R18.z1 - 1, 0.7);
 putW('chest', R18.x0 + 4, R18.z0 + 1, 0.9);           // what the giant was dreaming of (it is gold)
+putW('rubble', R18.x0 + 9, R18.z0 + 3, 0.6);          // rubble kicked loose by the snoring
+putW('glow_mushroom_blue', R18.x0 + 7, R18.z1 - 1, 0.8);
+putW('mushroom_cap', R18.x0 + 2, R18.z0 + 1, 0.5);    // a cap sprouting by the treasure
 
 // sparse glow mushrooms along the corridors — the grotto's ambient light
 const corridorTiles: GridPos[] = [];

@@ -1207,7 +1207,7 @@ export class GameEngine {
       animateTo: (g, s, t, d) => self.animateTo(g, s, t, d),
       faceToward: (v, t, snap) => self.faceToward(v as unknown as UnitVisual, t, snap),
       walkRigTo: (v, tile, dur) => self.walkRigTo(v as unknown as UnitVisual, tile, dur),
-      setWeapon: (rig, kind, accent) => setWeapon(rig, kind as any, accent),
+      setWeapon: (rig, kind, accent, tier?: number, enchantId?: string) => setWeapon(rig, kind as any, accent, tier, enchantId),
 
       // -- fx --
       spawnStars: (p) => self.spawnStars(p),
@@ -2226,6 +2226,24 @@ export class GameEngine {
     this.enqueue(this.combat.endTurn());
   }
 
+  /** companion combat mode — true (default): npc companions auto-resolve
+   *  their turns via partyAiStep; false: they wait for player input like
+   *  the leader (all manual-input gates are team-only, so this just flips
+   *  the auto-resolver off). Session-level preference. */
+  public companionAuto = true;
+
+  public toggleCompanionAuto() {
+    this.companionAuto = !this.companionAuto;
+    for (const u of this.combat?.units ?? []) {
+      if (u.team === 'party' && u.npcId) u.aiControlled = this.companionAuto;
+    }
+    this.audio.play('ui_click', 0.7);
+    this.pushLog(this.companionAuto
+      ? '🤖 Companions fight on their own.'
+      : '🎮 Manual command — companions act on your orders during their turns.', 'system');
+    this.emitSnapshot();
+  }
+
   continueAfterVictory() {
     this.phase = 'explore';
     this.pushLog('The shrine falls quiet. The realm is yours to wander.', 'system');
@@ -2524,7 +2542,7 @@ export class GameEngine {
     // their turns auto-resolve instead of stalling the rotation (leader is
     // the only player-driven party member).
     for (const u of this.combat.units) {
-      if (u.team === 'party' && u.npcId) u.aiControlled = true;
+      if (u.team === 'party' && u.npcId) u.aiControlled = this.companionAuto;
     }
     for (const u of this.combat.units) ensureSkillState(u);
     this.gold = data.gold;
@@ -2608,7 +2626,10 @@ export class GameEngine {
         const vis = itemToEquipVisual(item, slot);
         if (vis) equip(rig, vis);
       }
-      if (u.weapon) setWeapon(rig, u.weapon, u.scheme.accent);
+      // forward the equipped item's tier + enchant so masterwork/enchanted
+      // gear keeps its silhouette and glow after rig rebuilds
+      const wItem = (u.equipment as Record<string, Item | undefined> | undefined)?.weapon;
+      if (u.weapon) setWeapon(rig, u.weapon, u.scheme.accent, wItem?.tier ?? 1, wItem?.enchantId);
     }
     if (this.bonfireLit) this.spawnBonfireFlame();
 
@@ -2989,7 +3010,8 @@ export class GameEngine {
       const prev = this.heroPrevWeapon ?? 'unarmed';
       hero.weapon = prev as typeof hero.weapon;
       this.torchLit = false;
-      if (rig) setWeapon(rig, prev as any, hero.scheme.accent);
+      const wItem = (hero.equipment as Record<string, Item | undefined> | undefined)?.weapon;
+      if (rig) setWeapon(rig, prev as any, hero.scheme.accent, prev === (wItem?.weaponKind ?? prev) ? (wItem?.tier ?? 1) : 1, prev === wItem?.weaponKind ? wItem?.enchantId : undefined);
       this.pushLog('🔦 You stow the torch and take up what you held before.', 'system');
     } else {
       this.heroPrevWeapon = hero.weapon ?? null;
@@ -3362,6 +3384,7 @@ export class GameEngine {
       conditions: [], scheme, weapon: 'unarmed', xpValue: 0,
       npcId: 'sporefriend', classes: [],
       hotbarLoadout: ['spore_throw', 'shove', null, null, null, null, null, null, null, null, null, null],
+      aiControlled: this.companionAuto,
     };
     if (home) this.companionHomes['sporefriend'] = { ...home };
     this.combat.units.push(u);
@@ -3575,7 +3598,7 @@ export class GameEngine {
     // stall the rotation waiting for player input they can never get — the
     // doc comment on SUMMON_TEMPLATES says "AI-controlled party unit", so
     // make it true at the source.
-    unit.aiControlled = true;
+    unit.aiControlled = this.companionAuto;
     // Sporefriend tracks the hero like the offering-bowl recruit does
     if (npcId === 'sporefriend' && leader) {
       unit.level = Math.max(1, leader.level);
@@ -4026,6 +4049,10 @@ export class GameEngine {
       this.visuals.delete(u.id);
     }
     u.alive = false;
+    // leave the roster entirely — a flag-only death kept the expired totem
+    // as a ghost party tab in the inventory/stats menus
+    this.combat.units = this.combat.units.filter((x) => x !== u);
+    if (this.combat.turnOrder) this.combat.turnOrder = this.combat.turnOrder.filter((id) => id !== u.id);
     this.pushLog(`${u.name} fades away.`, 'system');
     this.audio.play('heal', 0.5, 0.7);
   }

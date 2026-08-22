@@ -53,7 +53,7 @@ export interface CharacterScheme {
   beard?: boolean;
 }
 
-export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club' | 'torch' | 'unarmed';
+export type WeaponKind = 'sword' | 'staff' | 'mace' | 'bow' | 'dagger' | 'club' | 'axe' | 'torch' | 'unarmed';
 export type Klass = 'fighter' | 'wizard' | 'cleric' | 'goblin';
 
 /** Result of the character-creation builder, applied to Greg on confirm. */

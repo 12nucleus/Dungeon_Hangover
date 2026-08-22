@@ -390,6 +390,14 @@ function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 
       v.fill(0, 0, 0, 0, 4, 0, 0x6b4a2e);
       v.fill(-1, 4, -1, 1, 5, 1, 0x3a2a18);
       break;
+    case 'axe': {
+      // proper hatchet silhouette — was missing entirely (rusty_axe fell
+      // through to an empty mesh on rigs)
+      if (tier === 3) { v.fill(0, 0, 0, 0, 4, 0, 0x5f3e22); v.fill(-2, 4, 0, -1, 7, 0, METAL); v.fill(1, 4, 0, 2, 6, 0, METAL); v.fill(-2, 7, 0, -1, 7, 0, METAL); v.add(0, 8, 0, 0xffd76b); }
+      else if (tier === 2) { v.fill(0, 0, 0, 0, 4, 0, 0x5f3e22); v.fill(-2, 4, 0, -1, 6, 0, METAL); v.fill(1, 4, 0, 1, 5, 0, METAL_DARK); }
+      else { v.fill(0, 0, 0, 0, 3, 0, grip); v.fill(-1, 3, 0, -1, 4, 0, METAL); v.add(0, 4, 0, METAL_DARK); }
+      break;
+    }
   }
   g.add(v.mesh());
     if (kind === 'staff') {
@@ -419,18 +427,19 @@ function buildWeapon(kind: WeaponKind, accent: number, C: number, SUB: number = 
     const col = colMap[enchantId] ?? 0xffd76b;
     const tipMat = new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.9 });
     const tip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.07), tipMat);
-    tip.position.set(kind === 'bow' ? -2 * C : 0, (kind === 'bow' ? 6 : kind === 'staff' ? 27 : 8) * C, 0);
+    // per-kind tip height — the old hardcoded 8 floated the glow above daggers
+    const tipY: Record<string, number> = { staff: 27, bow: 6, dagger: 6, club: 5, mace: 5, axe: 7, torch: 5 };
+    tip.position.set(kind === 'bow' ? -2 * C : 0, (tipY[kind] ?? 8) * C, 0);
     g.add(tip);
-    if (enchantId === 'flaming') {
-      const light = new THREE.PointLight(col, 1.0, 3, 1.8);
-      light.position.copy(tip.position);
-      g.add(light);
-      g.userData.enchant = 'flaming';
-    }
+    // EVERY enchanted weapon carries its coloured light — not just flaming —
+    // so a frost dagger visibly glows icy in hand
+    const light = new THREE.PointLight(col, 1.1, 3.2, 1.8);
+    light.position.copy(tip.position);
+    g.add(light);
+    g.userData.enchant = enchantId;
   }
   return g;
 }
-
 // ════════════════════════════════════════════════════════════════
 //  NORMAL PLAYER — detailed high-res voxel model (~10k cubes)
 //  Ported from scripts/gen_vox.mjs, split into animated parts.

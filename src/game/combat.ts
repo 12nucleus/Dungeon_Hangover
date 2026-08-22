@@ -471,6 +471,14 @@ export class Combat {
           ev.push({ type: 'revive', unitId: u.id });
           ev.push({ type: 'log', text: `${u.name} stirs and gets back up with 1 HP.`, kind: 'system' });
         }
+        // expired/slain party-side SUMMONS (totems, spirit allies) leave the
+        // roster entirely — flag-only death used to leave them as ghost tabs
+        // in the inventory/stats menus forever.
+        const deadSummons = new Set(this.units.filter((u) => u.team === 'party' && !u.alive && u.id.startsWith('summon_')).map((u) => u.id));
+        if (deadSummons.size) {
+          this.units = this.units.filter((u) => !deadSummons.has(u.id));
+          this.turnOrder = this.turnOrder.filter((id) => !deadSummons.has(id));
+        }
         this.phase = 'explore';
         ev.push({ type: 'log', text: '— ✓ Area secured. —', kind: 'system' });
         ev.push({ type: 'phase', phase: 'explore' });

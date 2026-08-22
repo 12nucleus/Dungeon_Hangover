@@ -2171,3 +2171,7 @@ button:focus-visible, [tabindex]:focus-visible {
   78%  { opacity: 1; }
   100% { transform: translateY(-16px); opacity: 0; }
 }
+
+/* companion auto/manual toggle in the turn ring */
+.turn-mode.companion-mode { font-size: 18px; opacity: 0.55; }
+.turn-mode.companion-mode.on { opacity: 1; box-shadow: 0 0 10px rgba(122, 200, 255, 0.45); border-color: rgba(122, 200, 255, 0.6); }

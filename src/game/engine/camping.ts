@@ -351,7 +351,7 @@ export function equipItem(engine: any, unitId: string, itemId: string, slotHint?
   if (actualSlot === 'weapon' && item.weaponKind) {
     u.weapon = item.weaponKind;
     const rig = engine.visuals.get(u.id)?.rig;
-    if (rig) setWeapon(rig, item.weaponKind, u.scheme.accent);
+    if (rig) setWeapon(rig, item.weaponKind, u.scheme.accent, item.tier, item.enchantId);
     // the torch never burns out — equipping one just lights it if it was stowed
     if (item.weaponKind === 'torch' && !engine.torchLit) {
       engine.torchLit = true;

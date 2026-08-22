@@ -38,7 +38,10 @@ export function Hotbar({ snap, engine }: Props) {
   // 3-phase combat: during the enemy phase the bar stays visible but LOCKED —
   // it previews the party member who acts next (grouped rotation ⇒ the first
   // hero in the order) instead of unmounting.
-  const enemyTurn = snap.phase === 'combat' && combatActive != null && combatActive.team !== 'party';
+  const aiTurn = snap.phase === 'combat' && combatActive != null && combatActive.team === 'party' && combatActive.aiControlled === true;
+  const enemyTurn = (snap.phase === 'combat' && combatActive != null && combatActive.team !== 'party') || aiTurn;
+  const hasCompanion = snap.units.some((u) => u.team === 'party' && u.npcId);
+  const companionAuto = snap.units.some((u) => u.team === 'party' && u.npcId && u.aiControlled);
   const active = enemyTurn
     ? (snap.units.find((u) => u.id === snap.turnOrder[0]) ?? snap.units.find((u) => u.team === 'party'))
     : (combatActive ?? snap.units.find((u) => u.team === 'party'));
@@ -240,6 +243,15 @@ export function Hotbar({ snap, engine }: Props) {
           </button>
           {(active as any).legendaryActions !== undefined && (active as any).bossGroup && (
             <span className="legendary-badge" title={`Legendary actions: ${(active as any).legendaryActions} remaining this round`}>👑 {(active as any).legendaryActions}</span>
+          )}
+          {hasCompanion && (
+            <button
+              className={`turn-mode companion-mode ${companionAuto ? 'on' : ''}`}
+              onClick={() => engine.toggleCompanionAuto()}
+              title={companionAuto ? '🤖 Companions act automatically — click for MANUAL command' : '🎮 Manual command — companions wait for your orders'}
+            >
+              {companionAuto ? '🤖' : '🎮'}
+            </button>
           )}
           <button className={`end-turn ${enemyTurn ? 'disabled' : ''}`} onClick={() => !enemyTurn && engine.endTurn()} title="End turn [Space]">
             END<br />TURN

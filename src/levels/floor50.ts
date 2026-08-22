@@ -416,16 +416,16 @@ put('bonfire', sc(20), sc(37), 0.5);   // the respawn checkpoint fire
 // keep them in the far corners so Greg doesn't spawn inside one
 put('brazier', sc(18), sc(35), 0.5);
 put('brazier', sc(21), sc(38), 0.5);
-// ── room 2 (Hermit's Cell) — his camp: a tent, a crackling campfire,
-//    braziers, a bedroll and a crate. The hermit sits by the fire (his NPC
-//    pos is set next to the campfire in `structures.npcs`). Furniture stays
-//    clear of the corridor mouth (world 56..60,78) so the room reads OPEN.
+// ── room 2 (Hermit's Cell) — his camp: a tent, a crackling campfire, a
+//    corner brazier, a bedroll and the crate that holds his locked chest
+//    (chest_r2 sits at (77,99)). The hermit sits by the fire (his NPC pos is
+//    set next to the campfire in `structures.npcs`). Furniture stays clear
+//    of the corridor mouth so the room reads OPEN.
 put('tent', sc(26), sc(36), 0.3);     // (52,72) r2 back wall
 put('campfire', sc(26), sc(37), 0.5); // (52,74) — the hermit's hearth
-put('brazier', sc(24), sc(37), 0.5);  // (48,74) r2 west wall
 put('brazier', 48, 71, 0.5);          // (48,71) r2 top-left corner (clear of the 1→2 mouth at z=72)
 put('bedroll', sc(25), sc(35), 0.4);  // (50,70) r2 top-right
-put('crate', 53, 75, 0.5);            // (53,75) r2 bottom-right corner
+put('crate', 53, 75, 0.5);            // (53,75) r2 bottom-right corner (the chest)
 // braziers flanking Gribnab's door — inside r24 on either side of the gate
 // lane (120,113..119) so neither blocks the approach
 put('brazier', 121, 113, 0.5);
@@ -433,16 +433,25 @@ put('brazier', 127, 113, 0.5);
 // room 24 braziers
 put('brazier', sc(60), sc(52), 0.5);
 put('brazier', sc(64), sc(56), 0.5);
-// mushrooms: rooms 13 + 12
-put('mushroom', sc(10), sc(20), 0.3);
-put('mushroom', sc(12), sc(22), 0.7);
-put('mushroom', sc(11), sc(21), 0.5);
-put('mushroom', sc(24), sc(5), 0.4);
-put('mushroom', sc(28), sc(7), 0.6);
-// bones: 4 / 5 / 15
-put('bones', sc(8), sc(44), 0.2); put('bones', sc(12), sc(48), 0.8);
-put('bones', sc(9), sc(53), 0.3); put('bones', sc(13), sc(56), 0.9); put('bones', sc(8), sc(57), 0.5);
-put('bones', sc(52), sc(4), 0.4); put('bones', sc(57), sc(9), 0.6); put('bones', sc(54), sc(6), 0.2);
+// mushrooms: r13's four eatable corner patches (mirror eat_mushroom_0..3,
+// world corners (44/49,64/69)) plus the sit_circle ring at the alcove
+// centre; r12 keeps two shelf mushrooms in the flooded den.
+put('mushroom', 20, 40, 0.3);   // (44,64) r13 north-west patch
+put('mushroom', 25, 40, 0.7);   // (49,64) r13 north-east patch
+put('mushroom', 20, 45, 0.6);   // (44,69) r13 south-west patch
+put('mushroom', 25, 45, 0.5);   // (49,69) r13 south-east patch
+put('mushroom', 22, 42, 0.5);   // (46,66) r13 sit_circle ring
+put('mushroom', sc(24), sc(5), 0.4);    // (72,34) r12 shelf
+put('mushroom', sc(28), sc(7), 0.6);    // (80,38) r12 shelf
+// bones: 4 / 5 / 15 — gnawed piles, never stacked on a room's searchable
+// skeleton (r15's skeleton tile at (128,32) stays a skeleton, and the r5
+// pedestal pile below carries Gnaw's mid-room beat).
+put('nest', sc(8), sc(44), 0.5);                           // (40,112) r4 nursery nest (search_nest_r4)
+put('bones', sc(12), sc(48), 0.8);                         // (48,120) r4 south-east gnaw pile
+put('bones', sc(9), sc(53), 0.3);                          // (42,130) r5 west wall
+put('bones', sc(8), sc(57), 0.5);                          // (40,138) r5 south-west corner
+put('bones', sc(57), sc(9), 0.6);                          // (138,42) r15 east corner
+put('bones', sc(54), sc(6), 0.2);                          // (132,36) r15 west corner
 // r4 rat nursery nests — the rats raise their young here: bedrolls repurposed
 // as shredded bedding, a crate of stolen scraps, gnawed bones in the corners
 put('bedroll', sc(9), sc(45), 0.4); put('bedroll', sc(12), sc(47), 0.7); put('bedroll', sc(9), sc(48), 0.6);
@@ -450,13 +459,15 @@ put('crate', sc(10), sc(46), 0.5); put('bones', sc(12), sc(44), 0.3); put('bones
 // r5 Gnaw's lair — a filthy den: gnawed bones piled mid-room (the "bone
 // pedestal" the narrator mentions), webs in the corners, no nesting
 put('bones', sc(10), sc(55), 0.4); put('bones', sc(11), sc(54), 0.8); put('bones', sc(11), sc(56), 0.6);
-put('webpile', sc(9), sc(56), 0.5); put('webpile', sc(13), sc(56), 0.9); put('bones', sc(12), sc(53), 0.2);
+put('webpile', sc(9), sc(56), 0.5); put('webpile', sc(13), sc(56), 0.9);
 // webpiles: corridor corners of 3 / 11
 put('webpile', sc(9), sc(36), 0.5); put('webpile', sc(15), sc(37), 0.9);
 put('webpile', sc(24), sc(12), 0.4); put('webpile', sc(29), sc(13), 0.8);
-// rubble decor: 6 / 19
-put('rubble', sc(16), sc(53), 0.3); put('rubble', sc(22), sc(56), 0.7);
-put('rubble', sc(66), sc(13), 0.5); put('rubble', sc(69), sc(14), 0.9);
+// rubble decor: 6 / 19 — kept clear of the wine press (r6) and the
+// searchable skeleton (r19.x0,z0), which the old coords stacked on top of.
+put('rubble', sc(22), sc(56), 0.7);                        // (68,136) r6 cellar corner
+put('rubble', sc(69), sc(14), 0.9);                        // (162,52) r19 tunnel mouth
+put('rubble', sc(66) + 3, sc(13) + 3, 0.5);                // (159,53) r19 interior cave-in
 // crystal in the hidden room (16)
 put('crystal_green', sc(11), sc(28), 0.4);
 put('crystal_green', sc(10), sc(30), 0.6);
@@ -509,8 +520,10 @@ putW('nest', R11.x0, R11.z1, 0.5);
 // r12 — floating corpse + drain
 putW('body', R12.x0, R12.z0, 0.4);
 putW('drain', R12.x1, R12.z1, 0.5);
-// r13 — note sign (mushrooms already placed)
-putW('sign', R13.x0, mid(R13), 0.5);
+// r13 — note sign on the wall (mirrors read_note_r13 at (x0, z-mid); the
+// old code passed mid() — the X-mid — as the Z, dropping the sign into
+// the void at (44,46))
+putW('sign', R13.x0, (R13.z0 + R13.z1) >> 1, 0.5);
 // r14 — wrench, plunger, pipe fitting, toolbox
 putW('wrench', R14.x0, R14.z0, 0.5);
 putW('plunger', R14.x1, R14.z0, 0.5);
@@ -522,26 +535,36 @@ putW('skeleton', R15.x0, R15.z0, 0.5);
 putW('chest', R16.x1, R16.z1, 0.5);
 putW('mirror', R16.x0, R16.z0, 0.5);
 putW('bunk', mid(R16), R16.z1, 0.6);
-// r17 — vault chest
-putW('chest', mid(R17), mid(R17), 0.5);
+// r17 — vault chest (mirrors chest_vault at (mid-x, mid-z); the old code
+// passed the X-mid as Z too, dropping the chest into the bath chamber at
+// (148,148) — 44 tiles from the vault)
+putW('chest', mid(R17), (R17.z0 + R17.z1) >> 1, 0.5);
 // r18 — compass rose + fountain
 putW('compass', mid(R18), R18.z0, 0.5);
 putW('fountain', mid(R18), R18.z1, 0.5);
 // r19 — the shortcut-entry skeleton
 putW('skeleton', R19.x0, R19.z0, 0.5);
-// r20 — well + well bucket
-putW('well', mid(R20), mid(R20), 0.5);
-putW('bucket', R20.x0, mid(R20), 0.5);
+// r20 — the old well: the shaft rises from the flooded oubliette pit
+// (mirrors well_wish at the pit centre); the bucket and detritus ring the
+// dry rim. mid() is the X-mid only — the Z-mid needs its own expression
+// (the old code passed the X-mid as Z, dropping both props off the map).
+putW('well', mid(R20), (R20.z0 + R20.z1) >> 1, 0.5);   // (158,66) pit centre, in the water
+putW('bucket', R20.x0, (R20.z0 + R20.z1) >> 1, 0.5);  // (156,66) west rim
+put('bones', 133, 40, 0.5);                            // (157,64) north rim
+put('barrel', 136, 45, 0.6);                           // (160,69) south rim
+put('rubble', 137, 42, 0.4);                           // (161,66) east rim
 // r21 — map table, footlockers, stew pot, bunks (it's a barracks!)
 putW('dice_table', R21.x0, R21.z1, 0.5);
 putW('footlocker', R21.x1, R21.z0, 0.5);
 putW('cauldron', mid(R21), R21.z0, 0.5);
 putW('bunk', R21.x1, R21.z1, 0.5);
 putW('bunk', R21.x0 + 1, R21.z0 + 1, 0.5);
-// r22 — weapon racks + note sign
+// r22 — weapon racks + note sign (mirrors read_note_r22 at (x1, z-mid);
+// the old code passed the X-mid as Z, hanging the sign in the bath chamber
+// at (151,147))
 putW('weapon_rack', R22.x0, R22.z0, 0.5);
 putW('weapon_rack', R22.x0, R22.z1, 0.6);
-putW('sign', R22.x1, mid(R22), 0.5);
+putW('sign', R22.x1, (R22.z0 + R22.z1) >> 1, 0.5);
 // r23 — altar + submerged chest
 putW('altar', R23.x0, R23.z0, 0.5);
 putW('chest', R23.x1, R23.z1, 0.5);
@@ -661,44 +684,58 @@ const roomDress = (id: string, kinds: PropKind[], density = 0.6, step = 2) => {
   }
 };
 
-// per-room furniture palette (signature pieces are repeated in the barracks /
-// armory lists so they dominate). Clutter kinds are shared across rooms.
+// per-room furniture palette. Signature pieces live ONLY in the explicit
+// hand-placed blocks above — scatter never duplicates a room's focal prop
+// (no auto-thrones, auto-altars, auto-ducks). An empty palette means the
+// room is fully hand-curated (its scatter IS its identity: the fire camp,
+// the hermit's cell, the wine-cellar bottle field, the fungal alcove's
+// corner patches, the well rim) and dressing is skipped below.
 const THEME: Record<string, PropKind[]> = {
-  r1:  ['barrel', 'bones', 'bucket', 'scratches', 'rubble', 'rug'],
-  r2:  ['barrel', 'bedroll', 'mushroom', 'bones', 'rug'],
-  r3:  ['skeleton', 'barrel', 'bones', 'rubble'],
-  r4:  ['bedroll', 'bones', 'barrel', 'nest', 'mushroom', 'rug'],
-  r5:  ['bones', 'webpile', 'barrel', 'rug'],
-  r6:  ['barrel', 'wine_bottle', 'broken_bottle', 'rubble', 'rug'],
-  r7:  ['body', 'chest', 'barrel', 'bones'],
-  r8:  ['pipe', 'valve', 'barrel', 'rubble'],
-  r9:  ['barrel', 'sign', 'bones', 'rug', 'banner'],
-  r10: ['bunk', 'footlocker', 'dice_table', 'barrel', 'bookshelf', 'rug', 'banner'],
-  r11: ['nest', 'bones', 'barrel', 'mushroom', 'rug'],
-  r12: ['body', 'barrel', 'bones', 'drain'],
-  r13: ['mushroom', 'bones', 'bookshelf', 'barrel', 'rug'],
-  r14: ['wrench', 'plunger', 'pipe_fitting', 'toolbox', 'barrel', 'pipe'],
-  r15: ['skeleton', 'bones', 'barrel', 'rug', 'bookshelf'],
-  r16: ['chest', 'mirror', 'bunk', 'barrel', 'bookshelf', 'rug'],
-  r17: ['chest', 'barrel', 'rug', 'bookshelf'],
-  r18: ['compass', 'fountain', 'barrel', 'rug', 'banner'],
-  r19: ['skeleton', 'rubble', 'barrel', 'bones'],
-  r20: ['well', 'bucket', 'barrel', 'bones', 'rug'],
-  // ── GOBLIN BARRACKS: bunks, footlockers, a map table, the stew pot, clutter ──
-  r21: ['bunk', 'bunk', 'footlocker', 'footlocker', 'dice_table', 'cauldron', 'bedroll', 'barrel', 'banner', 'rug', 'bones'],
-  // ── ARMORY: weapon racks, armor stands, shield racks, a chest, clutter ──
-  r22: ['weapon_rack', 'weapon_rack', 'armor_stand', 'armor_stand', 'shield_rack', 'shield_rack', 'chest', 'barrel', 'banner', 'tapestry', 'rug'],
-  r23: ['altar', 'chest', 'barrel', 'bones'],
-  r24: ['throne', 'banner', 'tapestry', 'chest', 'barrel', 'rug', 'armor_stand', 'bookshelf'],
-  r25: ['towel', 'wine_bottle', 'duck', 'rug', 'tapestry', 'barrel'],
+  r1:  [],                                          // bonfire camp — hand-placed
+  r2:  [],                                          // hermit's cell — hand-placed
+  r3:  ['bones', 'barrel', 'rubble'],               // flooded tunnel: flotsam on the dry rim
+  r4:  ['bedroll', 'bones', 'nest', 'mushroom'],    // rat nursery: shredded bedding & gnaw piles
+  r5:  ['bones', 'webpile'],                        // lair: bone dust and corner webs
+  r6:  [],                                          // the 12-bottle field IS the scatter
+  r7:  ['barrel', 'bones'],                         // flooded passage: drifting barrels
+  r8:  ['rubble'],                                  // pipe junction: debris, not more pipes/barrels
+  r9:  ['bones', 'rubble'],                         // guarded door: kicked-in litter
+  r10: ['barrel', 'bookshelf'],                     // guard post: supplies & reading
+  r11: ['bones', 'barrel', 'mushroom'],             // upper sewer: drift & fungus
+  r12: ['mushroom', 'bones'],                       // flooded den: shelf fungus
+  r13: [],                                          // alcove corners + glow carry it
+  r14: ['barrel', 'rubble'],                        // maintenance: spare parts & mess
+  r15: ['bones'],                                   // bone pit: MORE bones
+  r16: ['rug', 'bookshelf'],                        // hidden room: a tucked-away den
+  r17: ['barrel', 'bookshelf', 'rug'],              // vault: stocked stores
+  r18: ['barrel', 'rug', 'banner'],                 // intersection hub: banners & barrels
+  r19: ['bones', 'rubble'],                         // collapsed tunnel: cave-in debris
+  r20: [],                                          // well rim — hand-placed above
+  // ── GOBLIN BARRACKS: bunks, footlockers, bedrolls + clutter ──
+  r21: ['bunk', 'footlocker', 'bedroll', 'barrel', 'bones'],
+  // ── ARMORY: armor stands, shield racks, chests + trophy clutter ──
+  r22: ['armor_stand', 'shield_rack', 'chest', 'tapestry', 'barrel'],
+  r23: ['barrel', 'bones'],                         // flooded deep: sunken stores
+  r24: ['tapestry', 'rug', 'bookshelf', 'armor_stand', 'barrel'],  // throne room: keep finery
+  r25: ['rug', 'tapestry'],                         // bath chamber: marble runners only
+};
+// per-room scatter density — lowered wherever the hand-placed focal pieces
+// already carry the room (the barracks/armory keep a heavier fill so they
+// still read as lived-in clutter).
+const DENSITY: Record<string, number> = {
+  r3: 0.5, r4: 0.3, r5: 0.22, r7: 0.35, r8: 0.3, r9: 0.9, r10: 0.45, r11: 0.3,
+  r12: 0.35, r14: 0.4, r15: 0.36, r16: 0.4, r17: 0.55, r18: 0.35, r19: 0.45,
+  r21: 0.55, r22: 0.6, r23: 0.35, r24: 0.35, r25: 0.08,
 };
 for (const id of Object.keys(THEME)) {
-  const heavy = id === 'r21' || id === 'r22';
-  roomDress(id, THEME[id], heavy ? 0.78 : 0.6, 2);
+  if (!THEME[id].length) continue;   // hand-curated rooms: no generic scatter
+  roomDress(id, THEME[id], DENSITY[id] ?? 0.45, 2);
 }
-putW('chandelier', mid(R24), (R24.z0 + R24.z1) >> 1, 0.5);
+putW('chandelier', mid(R24), (R24.z0 + R24.z1) >> 1, 0.5);   // mirrors admire_chandelier
+// r22's chandelier hangs one tile off-centre on even offsets so the generic
+// dress pass (odd-step grid from x0+1/z0+1) can never stack a prop under it
+putW('chandelier', R22.x0 + 2, R22.z0 + 2, 0.5);            // (146,98) armory
 putW('chandelier', mid(R25), (R25.z0 + R25.z1) >> 1, 0.5);
-putW('chandelier', mid(R22), (R22.z0 + R22.z1) >> 1, 0.5);
 
 // ── spawns for the roster ─────────────────────────────────────
 const FLOOR50_SPAWNS: Floor50Spawns = {

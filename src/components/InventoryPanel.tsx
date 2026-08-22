@@ -50,7 +50,7 @@ export function InventoryPanel({ snap, engine }: { snap: UISnapshot; engine: Gam
   const [selId, setSelId] = useState<string | null>(null);
   const [inspect, setInspect] = useState<Item | null>(null);
   const [filter, setFilter] = useState<'all' | 'equipment' | 'consumable' | 'throwable'>('all');
-  const party = snap.units.filter((u) => u.team === 'party');
+  const party = snap.units.filter((u) => u.team === 'party' && !u.id.startsWith('summon_'));
   const [tab, setTab] = useState(party[0]?.id ?? '');
   const u = party.find((p) => p.id === tab) ?? party[0];
   const sel = snap.inventory.find((i) => i.id === selId) ?? null;

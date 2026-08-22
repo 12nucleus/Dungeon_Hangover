@@ -333,7 +333,9 @@ function addWeaponEnchantFx(g: THREE.Group, kind: string, enchantId?: string) {
 
 function hashId(s: string): number { let h = 2166136261; for (let i = 0; i < s.length; i++) h = (h ^ s.charCodeAt(i)) * 16777619; return h >>> 0; }
 function buildDistinctWeapon(item: Item): THREE.Group {
-  const kind = item._baseId === 'rusty_axe' ? 'axe' : (item.weaponKind ?? 'sword');
+  // rusty_axe predates the 'axe' WeaponKind and stored 'sword' — keep mapping
+  // it (and any future axe) to the axe silhouette
+  const kind = (item.weaponKind === 'axe' || item._baseId === 'rusty_axe') ? 'axe' : (item.weaponKind ?? 'sword');
   const tier = item.tier;
   const g = buildWeaponModel(kind, 0xc9a227, tier);
   // baseId hash gives each weapon a subtle unique accent so even same kind/tier differ
