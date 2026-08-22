@@ -95,11 +95,24 @@ export function GameCanvas() {
   };
 
   const handleExit = () => {
-    // Tauri desktop: window.close() is a no-op inside the webview — close the
-    // actual app window. Falls back to window.close() in a plain browser.
+    // stop render/audio loops FIRST — a half-dead RAF loop is what painted the
+    // white canvas while the window hung
+    try { engineRef.current?.shutdownForExit(); } catch { /* ignore */ }
+    // Tauri desktop: destroy() bypasses the close-request handler that
+    // window.close() honours — close() could be vetoed/hang and leave the
+    // webview white while the process lived. Destroying the last window
+    // lets the tao event loop end the process naturally.
     void import('@tauri-apps/api/window')
-      .then(({ getCurrentWindow }) => getCurrentWindow().close())
-      .catch(() => window.close());
+      .then((w) => w.getCurrentWindow().destroy())
+      .catch(() => {
+        // close() refused (tab not script-opened): leave a visible goodbye
+        // instead of a frozen canvas pretending to be alive
+        setTimeout(() => {
+          const veil = document.createElement('div');
+          veil.innerHTML = '<div style="display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:#0b0a08;color:#d8c9a3;font-family:monospace;text-align:center"><div style="font-size:30px">🔥 The fire dims.</div><div>Thanks for playing — you can close this tab now.</div></div>';
+          document.body.appendChild(veil);
+        }, 350);
+      });
   };
 
   return (

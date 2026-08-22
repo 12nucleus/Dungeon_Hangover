@@ -221,6 +221,25 @@ export class GameEngine {
     this.actionBanner = { kind, text, sub, cls, id: ++this.actionBannerId, at: performance.now() };
     this.emitSnapshot();
   }
+
+  /** big screen-letter combat popups — "HIT! −4 HP", condition riders, saves.
+   *  Emitted by the animation pump, rendered + expired by the HUD. */
+  public popups: { id: number; text: string; sub?: string; cls: string }[] = [];
+  private popupSeq = 0;
+  public addPopup(text: string, cls: string, sub?: string) {
+    this.popups = [...this.popups.slice(-4), { id: ++this.popupSeq, text, sub, cls }];
+    this.emitSnapshot();
+  }
+
+  /** hard stop for app exit: kill the RAF loop and mute audio so the webview
+   *  can never paint a half-dead frame while the process is tearing down
+   *  (the old exit path left a white canvas hanging in Tauri) */
+  public shutdownForExit() {
+    this.disposed = true;
+    if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
+    try { (this.audio as any).ctx?.suspend?.(); } catch { /* noop */ }
+    try { this.renderer.dispose(); } catch { /* noop */ }
+  }
   /** epoch id of the last critical-hit fullscreen flash (React re-triggers) */
   public critFlash = 0;
   /** defeat (TPK) vignette overlay on */
@@ -4658,6 +4677,7 @@ export class GameEngine {
       itemBar: [...this.itemBarLoadout],
       selectedSkill: this.targeting,
       targeting: !!this.targeting,
+      popups: this.popups,
       log: [...this.log],
       round: this.combat.round,
       muted: this.audio.muted,
@@ -4676,7 +4696,6 @@ export class GameEngine {
       tacticalView: this.tacticalView,
       torchLit: this.torchLit,
       torchEquipped: this.combat?.living('party')[0]?.weapon === 'torch',
-      bigMessage: this.bigMessage,
       cinematic: this.cinematic,
       busy: this.busy,
       paused: this.paused,

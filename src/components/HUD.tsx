@@ -370,6 +370,36 @@ function Minimap({ snap }: { snap: UISnapshot }) {
   );
 }
 
+/** big screen-letter combat popups — engine pushes (id,text,cls) triples,
+ *  HUD renders them stacked top-centre and expires each after 2.2s. */
+function CombatPopups({ snap }: { snap: UISnapshot }) {
+  const [shown, setShown] = useState<{ id: number; text: string; sub?: string; cls: string; at: number }[]>([]);
+  const seen = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    for (const p of snap.popups ?? []) {
+      if (seen.current.has(p.id)) continue;
+      seen.current.add(p.id);
+      setShown((s) => [...s.slice(-5), { ...p, at: Date.now() }]);
+    }
+  }, [snap.popups]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      setShown((s) => (s.some((p) => Date.now() - p.at > 2200) ? s.filter((p) => Date.now() - p.at <= 2200) : s));
+    }, 400);
+    return () => clearInterval(t);
+  }, []);
+  if (!shown.length) return null;
+  return (
+    <div className="combat-popups">
+      {shown.map((p) => (
+        <div key={p.id} className={`combat-popup ${p.cls}`}>
+          {p.text}{p.sub ? <span className="popup-sub">{p.sub}</span> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function HUD({ snap, engine }: Props) {
   const [showLog, setShowLog] = useState(true);
   const [initHover, setInitHover] = useState<string | null>(null);
@@ -392,6 +422,7 @@ export function HUD({ snap, engine }: Props) {
     <div className="hud">
       {/* first-person crosshair — the dot IS the mouse pointer in FP mode */}
       {snap?.firstPerson && <div className="fp-crosshair" />}
+      <CombatPopups snap={snap} />
       {/* ══ MAIN MENU ══ (title idle only — hidden while the intro/cutscene
           narration runs: between caption beats `cinematic` is false but the
           cutscene is still playing, so the menu would flicker over it) */}

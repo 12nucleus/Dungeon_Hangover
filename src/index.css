@@ -2118,3 +2118,56 @@ button:focus-visible, [tabindex]:focus-visible {
   .stc-main { flex-direction: column; }
   .stc-detail { width: auto; }
 }
+
+/* ════════════════════════════════════════════════════════════
+   COMBAT POPUPS — big screen-letter feedback ("HIT −4 HP",
+   "BLEEDING! 1d4/turn", "MISS!", saves). Stacked top-centre.
+   ════════════════════════════════════════════════════════════ */
+.combat-popups {
+  position: absolute;
+  top: 13%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 60;
+}
+.combat-popup {
+  font-family: var(--font-display, 'Cinzel', serif);
+  font-weight: 900;
+  font-size: 34px;
+  letter-spacing: 2px;
+  line-height: 1;
+  padding: 8px 22px;
+  border-radius: 10px;
+  background: rgba(10, 8, 6, 0.72);
+  border: 2px solid rgba(255, 220, 160, 0.25);
+  text-shadow: 0 0 18px currentColor, 0 2px 0 rgba(0, 0, 0, 0.8);
+  animation: popupIn 2.2s cubic-bezier(0.16, 1.4, 0.3, 1) both;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.combat-popup .popup-sub {
+  font-family: monospace;
+  font-weight: 400;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+}
+.combat-popup.popup-hit  { color: #ffd24a; font-size: 30px; }
+.combat-popup.popup-crit { color: #ff5533; font-size: 44px; border-color: rgba(255, 85, 51, 0.6); }
+.combat-popup.popup-miss { color: #9fb4cd; font-size: 30px; }
+.combat-popup.popup-cond { color: #b06bff; font-size: 26px; border-color: rgba(176, 107, 255, 0.5); }
+.combat-popup.popup-fail { color: #ff6b6b; }
+.combat-popup.popup-save { color: #7ce38b; }
+@keyframes popupIn {
+  0%   { transform: scale(0.5) translateY(14px); opacity: 0; }
+  12%  { transform: scale(1.12) translateY(0); opacity: 1; }
+  22%  { transform: scale(1); }
+  78%  { opacity: 1; }
+  100% { transform: translateY(-16px); opacity: 0; }
+}

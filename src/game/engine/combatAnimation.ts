@@ -28,12 +28,18 @@ const fxCritBurst = (FX as Partial<typeof FX> & { critBurst?: (ps: unknown, p: T
 let animScale = 1;
 export function setAnimScale(s: number) { animScale = Math.max(0, s); }
 
-const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms * animScale));
-
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms * PACE * animScale));
+/** global combat pacing multiplier — one knob to slow the whole presentation
+ *  down when fights feel like a blur (tuned against playtester feedback) */
+const PACE = 1.35;
 // ══ main animation loop ════════════════════════════════════
 export async function animate(engine: any, ev: CombatEvent) {
   switch (ev.type) {
     case 'log': engine.pushLog(ev.text, ev.kind); await delay(25); break;
+    case 'popup':
+      engine.addPopup(ev.text, ev.cls || 'popup-cond', ev.sub);
+      await delay(160);
+      break;
     case 'actionAnnounce': {
       // readability beat: banner up, camera leans to the caster, motes gather
       // in the skill colour, the cast cue sounds — then the action lands
@@ -85,6 +91,12 @@ export async function animate(engine: any, ev: CombatEvent) {
         engine.emitSnapshot?.();
         await delay(140);
       }
+      // big screen-letter number so the hit reads even in the chaos
+      engine.addPopup(
+        ev.crit ? `CRIT! −${ev.amount}` : `−${ev.amount}`,
+        ev.crit ? 'popup-crit' : 'popup-hit',
+        ev.dot || undefined,
+      );
       await delay(90);
       // Gribnab parley + boss HP-threshold barks (first crossing, once per fight)
       engine.maybeParley?.(ev.unitId);
@@ -103,7 +115,9 @@ export async function animate(engine: any, ev: CombatEvent) {
       engine.showActionBanner?.('result', ev.text, ev.sub, `result ${ev.outcome}`);
       engine.emitSnapshot?.();
       if (ev.outcome === 'crit') { engine.audio.critHit(); await delay(560); }
-      else if (ev.outcome === 'miss') await delay(420);
+      else if (ev.outcome === 'miss') { engine.addPopup('MISS!', 'popup-miss'); await delay(420); }
+      else if (ev.outcome === 'save-fail') { engine.addPopup('SAVE FAILED', 'popup-fail'); await delay(420); }
+      else if (ev.outcome === 'save-ok') { engine.addPopup('SAVED!', 'popup-save'); await delay(420); }
       else await delay(380);
       break;
     }

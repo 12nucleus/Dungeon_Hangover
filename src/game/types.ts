@@ -381,6 +381,8 @@ export interface UISnapshot {
   critFlash?: number;
   /** TPK defeat vignette overlay on */
   tpkVignette?: boolean;
+  /** big screen-letter combat popups (HIT! −4 HP, Bleeding …) — HUD renders + expires them */
+  popups?: { id: number; text: string; sub?: string; cls: string }[];
 }
 
 // ── combat events: the pure-logic layer (combat.ts) emits these,
@@ -391,7 +393,7 @@ export type CombatEvent =
   | { type: 'melee'; unitId: string; targetId: string; audioCue?: SkillAudioCue }
   | { type: 'projectile'; unitId: string; from: GridPos; to: GridPos; color: number; fx: ParticleFX; audioCue?: SkillAudioCue; impactAudio?: SkillAudioCue }
   | { type: 'skillfx'; skill: SkillDef; at: GridPos; targets: string[]; presentation?: SkillPresentation }
-  | { type: 'damage'; unitId: string; amount: number; kind: DamageType; crit: boolean }
+  | { type: 'damage'; unitId: string; amount: number; kind: DamageType; crit: boolean; dot?: string }
   | { type: 'heal'; unitId: string; amount: number }
   | { type: 'float'; unitId: string; text: string; cls: string }
   | { type: 'save'; unitId: string; success: boolean; total: number }
@@ -407,4 +409,5 @@ export type CombatEvent =
   | { type: 'actionAnnounce'; unitId: string; text: string; sub?: string; cls: string; cue?: SkillAudioCue; fxColor?: number }
   | { type: 'actionResult'; unitId: string; targetId?: string; text: string; sub?: string; outcome: 'hit' | 'crit' | 'miss' | 'save-ok' | 'save-fail' }
   | { type: 'shake'; power: number }
-  | { type: 'summon'; unit: Unit; summonerId?: string };  // a new unit fades in (boss summons, Scrag hostile)
+  | { type: 'summon'; unit: Unit; summonerId?: string }  // a new unit fades in (boss summons, Scrag hostile)
+  | { type: 'popup'; text: string; sub?: string; cls: string }

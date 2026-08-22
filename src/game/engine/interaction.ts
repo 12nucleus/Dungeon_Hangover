@@ -139,7 +139,14 @@ export function pickInteractable(engine: any): InteractPick | null {
     if (ud.unitId) return { kind: 'unit', unitId: ud.unitId as string, dist: 0 };
   }
   const propHit = engine.ray.intersectObjects(engine.props.pickboxes, false)[0];
-  if (propHit) return { kind: 'prop', propId: propHit.object.userData.propId as string, dist: 0 };
+  if (propHit) {
+    const pid = propHit.object.userData.propId as string;
+    // destructible scenery answers directly; non-destructible props (the
+    // bonfire's own pickbox, braziers, torches) must fall through to the
+    // forgiveness pass — in first person the aim ray ALWAYS enters the
+    // bonfire mesh head-on, which made the bonfire unclickable
+    if (engine.props.byId?.(pid)) return { kind: 'prop', propId: pid, dist: 0 };
+  }
 
   // screen-space forgiveness pass
   const r = engine.renderer.domElement.getBoundingClientRect();

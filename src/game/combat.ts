@@ -23,6 +23,7 @@ function applyRider(rideEv: CombatEvent[], tgt: Unit, condId: string, rounds: nu
   if (!tgt.conditions.some((c) => c.id === condId)) {
     tgt.conditions.push({ id: condId, name: cond.name, roundsLeft: rounds });
     rideEv.push({ type: 'float', unitId: tgt.id, text: `❄ ${cond.name}`, cls: 'debuff' });
+    rideEv.push({ type: 'popup', text: cond.name.toUpperCase(), cls: 'popup-cond', sub: DOT_BY_ID[condId] ? `${DOT_BY_ID[condId].dice} dmg/turn · ${rounds} turns` : undefined });
   }
 }
 
@@ -330,7 +331,7 @@ export class Combat {
       if (!dot) continue;
       const dmg = rollDice(dot.dice);
       u.hp = Math.max(0, u.hp - dmg.total);
-      ev.push({ type: 'damage', unitId: u.id, amount: dmg.total, kind: dot.type, crit: false });
+      ev.push({ type: 'damage', unitId: u.id, amount: dmg.total, kind: dot.type, crit: false, dot: c.name });
       ev.push({ type: 'float', unitId: u.id, text: `☠ -${dmg.total}`, cls: 'dmg' });
       ev.push({ type: 'log', text: `${u.name} suffers ${dmg.total} ${dot.type} damage (${c.name})`, kind: 'hit' });
       if (u.hp <= 0 && u.alive) ev.push(...this.onDeath(u));
