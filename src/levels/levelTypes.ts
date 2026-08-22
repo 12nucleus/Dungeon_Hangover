@@ -89,10 +89,10 @@ export interface LevelDef {
   spawn: { party: GridPos[]; enemies: GridPos[] };
   /** props to place */
   props: PropPlacement[];
-  /** lighting overrides */
+  /** lighting overrides — ambient drives the hemisphere trace, sun scales
+   *  the shadow-casting moon wash (×2). The hero torch is wired in engine. */
   ambient: number;
   sun: number;
-  fill: number;
   fogColor: number;
   fogDensity: number;
   /** water appearance */

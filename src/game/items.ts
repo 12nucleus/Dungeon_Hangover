@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────
 import type { DamageType, EquipSlot, WeaponKind } from './types';
 import { extraSlotsFor } from './improvised';
-export type ItemKind = 'weapon' | 'armor' | 'trinket' | 'consumable';
+export type ItemKind = 'weapon' | 'armor' | 'trinket' | 'consumable' | 'ammo';
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic';
 export type Tier = 1 | 2 | 3;
 
@@ -57,6 +57,8 @@ export interface Item {
   consumeCondition?: { id: string; chance: number; rounds: number };
   /** consumable: strips every condition from the drinker */
   cleanses?: boolean;
+  /** ammo: never runs out (basic arrows restock themselves) */
+  infinite?: boolean;
 }
 
 // ── enchantments ─────────────────────────────────────────────
@@ -94,6 +96,7 @@ interface ItemBase {
   fragile?: boolean; fumbleBreak?: number; fumbleDrop?: number;
   onHitCondition?: { id: string; chance: number; rounds: number };
   consumeCondition?: { id: string; chance: number; rounds: number };
+  infinite?: boolean;
   cleanses?: boolean;
 }
 const B = (b: ItemBase) => b;
@@ -107,7 +110,8 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   dagger1: B({ kind: 'weapon', slot: 'weapon', name: 'Rusty Dagger', icon: '🔪', tier: 1, weaponKind: 'dagger', damageDice: '1d4+1', damageType: 'piercing', value: 8, desc: 'Better than fists.' }),
   dagger2: B({ kind: 'weapon', slot: 'weapon', name: 'Fine Dagger', icon: '🔪', tier: 2, weaponKind: 'dagger', damageDice: '1d4+2', damageType: 'piercing', value: 30, desc: 'Slim and silent.' }),
   dagger3: B({ kind: 'weapon', slot: 'weapon', name: 'Masterwork Dagger', icon: '🔪', tier: 3, weaponKind: 'dagger', damageDice: '2d4+2', damageType: 'piercing', value: 95, desc: 'A duellist\'s dream.' }),
-  // bows (piercing) — dedicated ranged slot, usable in and out of combat
+  // arrows — quiver ammo; basic arrows are endless (restock between fights)
+  arrow_basic: B({ kind: 'ammo', slot: 'quiver', name: 'Basic Arrows', icon: '🪶', tier: 1, value: 0, infinite: true, desc: 'A full quiver of plain arrows that never seems to empty. Feeds any bow.' }),
   bow1: B({ kind: 'weapon', slot: 'ranged', name: 'Bent Shortbow', icon: '🏹', tier: 1, weaponKind: 'bow', damageDice: '1d6+1', damageType: 'piercing', value: 14, twoHanded: true, desc: 'Creaks, but shoots true-ish. Equip in Ranged slot (8 tiles).' }),
   bow2: B({ kind: 'weapon', slot: 'ranged', name: 'Fine Shortbow', icon: '🏹', tier: 2, weaponKind: 'bow', damageDice: '1d6+2', damageType: 'piercing', value: 42, twoHanded: true, desc: 'Yew laminate, smooth draw. Ranged 8.' }),
   bow3: B({ kind: 'weapon', slot: 'ranged', name: 'Masterwork Shortbow', icon: '🏹', tier: 3, weaponKind: 'bow', damageDice: '2d6+2', damageType: 'piercing', value: 130, twoHanded: true, desc: 'Elven craftsmanship. Ranged 10.' }),
@@ -238,7 +242,7 @@ export function makeItem(baseId: string, enchantId?: string, rarity?: Rarity): I
     _baseId: baseId,
     hpBonus: b.hpBonus, physResist: b.physResist, levelReq: b.levelReq, tool: b.tool,
     fragile: b.fragile, fumbleBreak: b.fumbleBreak, fumbleDrop: b.fumbleDrop,
-    onHitCondition: b.onHitCondition, consumeCondition: b.consumeCondition, cleanses: b.cleanses,
+    onHitCondition: b.onHitCondition, consumeCondition: b.consumeCondition, cleanses: b.cleanses, infinite: b.infinite,
   };
 }
 
@@ -363,6 +367,8 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
       items.push(makeItem('dagger1'));
       items.push(makeItem('torch1'));
       items.push(makeItem('potion'));
+      items.push(makeItem('bow1'));
+      items.push(makeItem('arrow_basic'));
       gold = 0;
       break;
     case 'floor49_supply':
@@ -370,6 +376,8 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
       items.push(makeItem('potion'));
       items.push(makeItem('potion'));
       items.push(makeItem('potion'));
+      items.push(makeItem('bow1'));
+      items.push(makeItem('arrow_basic'));
       gold = 0;
       break;
   }

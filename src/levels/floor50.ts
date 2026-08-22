@@ -767,18 +767,15 @@ export const floor50Level: LevelDef = {
   arena: { x0: OFFSET.x, z0: OFFSET.z, x1: OFFSET.x + 141, z1: OFFSET.z + 141 },
   spawn: { party: [partySpawn], enemies: [] },
   props,
-  // READABILITY PASS (art) + VIVID-COLOR CORRECTION: the old values rendered
-  // as near-black on most displays, and the teal FogExp2 haze washed the
-  // bright voxels into a blurry film. Player requested vivid colors: fog is
-  // now nearly off (neutral dark, tiny density), the palette is saturated
-  // (see DEFAULT_PALETTE), and the light rig is warmed — ambient/fill (both
-  // cool blue) are trimmed and the warm sun is raised 0.05 → 0.30 so colors
-  // pop instead of washing out under cool light.
-  ambient: 0.4,
-  sun: 0.38,
-  fill: 0.24,
-  fogColor: 0x0a0c0e,
-  fogDensity: 0.004,
+  // CLAUSTROPHOBIA PASS: the vivid-color pass went too bright for a sewer
+  // crypt. Ambient is a near-black trace, the moon wash is faint, and the
+  // fog is back — dense enough that the long corridors vanish into dark a
+  // dozen tiles out. The hero's torch pool (sharp falloff, decay 2) is the
+  // only real light; rooms read via their own sconce/brazier point lights.
+  ambient: 0.06,
+  sun: 0.22,
+  fogColor: 0x06080a,
+  fogDensity: 0.02,
   waterColor: 0x2e8a80,
   waterY: -3,
   layout: {

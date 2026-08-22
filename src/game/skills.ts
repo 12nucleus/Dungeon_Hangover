@@ -721,6 +721,22 @@ const moldScheme = { skin: 0x7aa55a, cloth: 0x4a5a3a, accent: 0x9ac070, hair: 0x
 const boneRatScheme = { skin: 0xd8d2be, cloth: 0x4a3a2a, accent: 0x9a9a9a, hair: 0x8fe3ff, hood: false, monster: 'rat' as const, bulk: 1.05 };
 const goblinGuardScheme = { skin: 0x6f9c3f, cloth: 0x6a5238, accent: 0x2e2418, hair: 0x1c1c1c, hood: false, orc: true, bulk: 0.9 };
 const gribnabScheme = { skin: 0x7a9c4a, cloth: 0x4a6a8a, accent: 0xff9ac0, hair: 0x101010, hood: false, orc: true, bulk: 1.2 };
+const batScheme = { skin: 0x3a3a4a, cloth: 0x4a4a5a, accent: 0x6a6a8a, hair: 0xff4444, hood: false, monster: 'bat' as const };
+
+/** Cave Bat — floor-50 ceiling ambusher. `flying` keeps melee out of reach
+ *  until a successful Shove grounds it; ranged attacks work as normal. */
+export function makeCaveBat(pos: GridPos, i = 0): Unit {
+  return mkUnit({
+    name: i === 0 ? 'Cave Bat' : `Cave Bat ${i + 1}`, title: 'Ceiling Lurker',
+    team: 'enemy', klass: 'goblin', pos: { ...pos },
+    maxHp: 8, hp: 8, ac: 13, level: 1,
+    abilities: { str: 6, dex: 16, con: 10, int: 3, wis: 12, cha: 6 },
+    knownSkills: ['bat_bite', 'bat_screech'], moveRange: 7, xpValue: 14, fleesAtHp: 1,
+    flying: true,
+    scheme: { ...batScheme },
+    weapon: 'unarmed',
+  });
+}
 
 /**
  * Build the full Floor 50 roster. `seed` drives the ±1 spawn jitter so a

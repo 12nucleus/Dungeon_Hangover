@@ -97,6 +97,12 @@ export interface UnitVisual {
   dustDone?: boolean;   // corpse-impact dust already spawned
 }
 
+/** dev-only debug handle set in init() (import.meta.env.DEV) */
+declare global {
+  interface Window {
+    __engine?: GameEngine;
+  }
+}
 export class GameEngine {
   public renderer!: THREE.WebGLRenderer;
   public composer!: EffectComposer;
@@ -230,6 +236,10 @@ export class GameEngine {
     this.popups = [...this.popups.slice(-4), { id: ++this.popupSeq, text, sub, cls }];
     this.emitSnapshot();
   }
+
+  /** Zelda-style special-loot celebration — HUD renders a big centred card
+   *  (keyed by id so it re-mounts and re-animates per pickup). */
+  public lootFlash: { id: number; name: string; icon: string; rarity: string } | null = null;
 
   /** hard stop for app exit: kill the RAF loop and mute audio so the webview
    *  can never paint a half-dead frame while the process is tearing down
@@ -642,6 +652,9 @@ export class GameEngine {
 
   // -- setup -------------------------------------------------
   init() {
+    // dev-only debug handle — same spirit as the backtick cheat console:
+    // lets QA tooling drive/inspect the live sim without touching gameplay.
+    if (import.meta.env.DEV) window.__engine = this;
     void this.physics.init();
     const w = this.container.clientWidth, h = this.container.clientHeight;
     // no `powerPreference: 'high-performance'` — on virtualized GPUs that hint
@@ -665,18 +678,17 @@ export class GameEngine {
     this.scene.fog = new THREE.FogExp2(L.fogColor, L.fogDensity);
     this.scene.background = new THREE.Color(L.fogColor);
 
-    // lights — the dungeon is DARK. A trace of hemisphere ambient (0.03) so
-    // unlit geometry isn't pure black (you can barely make out silhouettes),
-    // but the hero's shadow-casting PointLight is the only real light source.
-    // No sun, no fill — the torch carries everything. AAA: add a very dim
-    // directional moon wash that casts soft shadows for depth, kept ultra-low
-    // so it never competes with the torch.
-    const hemi = new THREE.HemisphereLight(0x5a6a8a, 0x1a1410, 0.04);
+    // lights — per-floor authored rig from LevelDef. `ambient` drives the
+    // hemisphere trace (floor 50's crypt runs near-black; floor 49's grotto
+    // keeps its bioluminescent glow), `sun` scales the shadow-casting moon
+    // wash (×2 ≈ the old hardcoded 0.8 at the vivid-pass sun value). The
+    // hero's torch PointLight remains the only real light source.
+    const hemi = new THREE.HemisphereLight(0x5a6a8a, 0x1a1410, L.ambient);
     this.scene.add(hemi);
     this.hemiLight = hemi;
-    // subtle moon wash — directional shadows for depth. Follows the hero
+    // moon wash — directional shadows for depth. Follows the hero
     // (see update) so its ±30 shadow frustum always covers the played area.
-    const moon = new THREE.DirectionalLight(0x8ea0c8, 0.8);
+    const moon = new THREE.DirectionalLight(0x8ea0c8, Math.max(0.08, L.sun * 2));
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
     moon.shadow.camera.near = 1;
@@ -3910,7 +3922,7 @@ export class GameEngine {
     if (!this.roomLights) return;
     const px = player.pos.x;
     const pz = player.pos.z;
-    const R2 = 22 * 22;
+    const R2 = 13 * 13;
     for (const rl of this.roomLights) {
       const dx = rl.tx - px;
       const dz = rl.tz - pz;
@@ -4304,12 +4316,15 @@ export class GameEngine {
     // brightens the pool.
     const player = this.combat?.living('party')[0];
     if (!this.torchLight) {
-      this.torchLight = new THREE.PointLight(0xffcf9a, 15, 14, 2);
+      // claustrophobia pass: tight radius, decay 2 — sharp falloff to
+      // nothingness just past the hero (user request: circular pool with
+      // hard edge instead of a room-filling wash)
+      this.torchLight = new THREE.PointLight(0xffcf9a, 16, 11, 2);
       this.torchLight.castShadow = true;
       this.torchLight.shadow.mapSize.set(1024, 1024);
       this.torchLight.shadow.bias = -0.001;
       this.torchLight.shadow.camera.near = 0.5;
-      this.torchLight.shadow.camera.far = 16;
+      this.torchLight.shadow.camera.far = 13;
       this.scene.add(this.torchLight);
     }
     if (this.torchLight) {
@@ -4318,8 +4333,8 @@ export class GameEngine {
       if (player && player.weapon === 'torch' && this.torchLit) {
         // torch held: bright warm pool, wider radius
         this.torchLight.color.setHex(0xffb545);
-        this.torchLight.intensity = 15;
-        this.torchLight.distance = 14;
+        this.torchLight.intensity = 18;
+        this.torchLight.distance = 13;
         const wp = this.unitWorld(player.pos);
         this.torchLight.position.set(wp.x, wp.y + 3.0, wp.z);
         // flame FX still renders at the torch in hand (visual only)
@@ -4336,8 +4351,8 @@ export class GameEngine {
       } else {
         // no torch: small dim pool — you can barely see around you
         this.torchLight.color.setHex(0xffd9a0);
-        this.torchLight.intensity = 8;
-        this.torchLight.distance = 8;
+        this.torchLight.intensity = 10;
+        this.torchLight.distance = 7;
         if (player) {
           const wp = this.unitWorld(player.pos);
           this.torchLight.position.set(wp.x, wp.y + 3.0, wp.z);
@@ -4374,7 +4389,16 @@ export class GameEngine {
         const c = u.team === 'party' ? this.crouchLerp : 0;
         v.rig.anim.crouch = c;   // rig bends the knees & hunches ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ feet stay planted
         v.rig.group.scale.y = (u.scheme?.bulk ?? 1);
-        v.rig.group.position.y = (v.rig.group.userData.baseY as number) + (v.walker ? Math.sin(performance.now() * 0.02) * 0.02 : 0);
+        let rigY = (v.rig.group.userData.baseY as number);
+        if (u.flying) {
+          // bats roost high and drop to a bobbing hover — melee stays
+          // blocked until a shove grounds them (flying=false drops this)
+          const dropAt = v.rig.group.userData.dropAt as number | undefined;
+          const k = dropAt === undefined ? 1 : Math.min(1, Math.max(0, (performance.now() - dropAt) / 550));
+          const hoverY = 0.85 + Math.sin(performance.now() * 0.006 + (u.pos.x + u.pos.z) * 1.7) * 0.12;
+          rigY += 3.4 * (1 - k) + hoverY * k;
+        }
+        v.rig.group.position.y = rigY + (v.walker ? Math.sin(performance.now() * 0.02) * 0.02 : 0);
       }
       // smooth facing
       let dy = v.targetYaw - v.yaw;
@@ -4774,6 +4798,7 @@ export class GameEngine {
       showConsole: this.consoleOpen,
       consoleInput: this.consoleInput,
       critFlash: this.critFlash,
+      lootFlash: this.lootFlash ? { ...this.lootFlash } : null,
       tpkVignette: this.tpkVignette,
     });
   }

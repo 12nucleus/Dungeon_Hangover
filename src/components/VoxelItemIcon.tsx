@@ -541,7 +541,23 @@ export function buildItemModel(item: Item): THREE.Group {
   if (item.kind === 'weapon') return buildDistinctWeapon(item);
   if (item.kind === 'armor') return buildDistinctArmor(item);
   if (item.kind === 'consumable') return buildDistinctConsumable(item);
+  if (item.kind === 'ammo') return buildAmmoModel(item);
   return buildDistinctTrinket(item);
+}
+
+/** quiver of arrows — leather tube, arrow shafts + grey fletching */
+function buildAmmoModel(_item: Item): THREE.Group {
+  const g = new THREE.Group();
+  const leather = 0x6b4a2e;
+  for (let y = 0; y <= 3; y++) { addVox(g, -1, y, 0, shade(leather, 0.9)); addVox(g, 1, y, 0, shade(leather, 1.05)); }
+  addVox(g, 0, 0, 0, shade(leather, 0.7));
+  // arrow shafts poking out with steel tips
+  for (const dx of [-1, 0, 1]) {
+    addVox(g, dx, 4, 0, 0x8a6a3a);
+    addVox(g, dx, 5, 0, METAL);
+    if (dx !== 0) addVox(g, dx * 2, 3, 0, 0xd8d2be);
+  }
+  return g;
 }
 
 // ══ per-base item models (floor 50) ════════════════════════

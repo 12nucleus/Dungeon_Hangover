@@ -357,6 +357,19 @@ export async function animate(engine: any, ev: CombatEvent) {
       break;
     }
     case 'shake': engine.iso.shake = Math.max(engine.iso.shake, ev.power); break;
+    case 'loot': {
+      // per-kill rollLootTable drops — was a dead event since the refactor;
+      // route it through the same offer pipeline as deathDrops so it merges
+      // into the loot overlay instead of vanishing
+      const src = ev.source ?? 'the remains';
+      if (ev.items.length || ev.gold) {
+        offerLoot(engine, src, ev.items, ev.gold);
+        for (const it of ev.items) engine.pushLog(`📦 ${src}: ${it.icon} ${it.name}!`, 'system');
+        if (ev.gold) engine.pushLog(`🪙 ${ev.gold} gold clatters from the body.`, 'system');
+      }
+      await delay(120);
+      break;
+    }
   }
 }
 

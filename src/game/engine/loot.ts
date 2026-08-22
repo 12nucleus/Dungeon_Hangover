@@ -82,11 +82,40 @@ function grant(engine: any, items: Item[], gold: number) {
   if (gold) engine.loot.push(`🪙 ${gold} gold`);
 }
 
+/** rarity rank for celebration gating */
+const RARITY_RANK: Record<string, number> = { common: 0, uncommon: 1, rare: 2, epic: 3 };
+let lootFlashSeq = 0;
+
+/** Zelda-flavored pickup feedback — the more special the haul, the bigger
+ *  the noise: epic/quest items get the full banner + fanfare, rare/uncommon
+ *  get a chime, and any gold gets a coin blip + floating popup. */
+function celebrate(engine: any, items: Item[], gold: number) {
+  let best: Item | null = null;
+  let bestRank = -1;
+  let quest = false;
+  for (const it of items) {
+    if (isQuestLoot(it)) quest = true;
+    const r = RARITY_RANK[it.rarity] ?? 0;
+    if (r > bestRank) { bestRank = r; best = it; }
+  }
+  if (quest || bestRank >= 3) {
+    engine.lootFlash = { id: ++lootFlashSeq, name: best?.name ?? 'Treasure', icon: best?.icon ?? '✨', rarity: quest ? 'quest' : (best?.rarity ?? 'epic') };
+    setTimeout(() => { if (engine.lootFlash?.id === lootFlashSeq) { engine.lootFlash = null; engine.emitSnapshot?.(); } }, 2600);
+  } else if (bestRank >= 1) {
+    engine.audio?.lootChime?.(0.8);
+  }
+  if (gold > 0) {
+    engine.audio?.coin?.(0.7);
+    engine.addPopup?.(`+${gold} 🪙`, 'gold');
+  }
+}
+
 /** take everything in the current offer */
 export function takeAllLoot(engine: any) {
   const p = engine.pendingLoot as LootOffer | null;
   if (!p) return;
   grant(engine, p.items, p.gold);
+  celebrate(engine, p.items, p.gold);
   engine.pushLog(`📦 ${p.source}: ${[...p.items.map((i) => `${i.icon} ${i.name}`), p.gold ? `🪙 ${p.gold} gold` : ''].filter(Boolean).join(', ')}.`, 'system');
   engine.pendingLoot = null;
   engine.busy = false;
@@ -101,6 +130,7 @@ export function takeLootItem(engine: any, itemId: string) {
   if (idx < 0) return;
   const [it] = p.items.splice(idx, 1);
   grant(engine, [it], 0);
+  celebrate(engine, [it], 0);
   engine.pushLog(`You take ${it.icon} ${it.name}.`, 'system');
   if (!p.items.length && p.gold <= 0) { engine.pendingLoot = null; engine.busy = false; }
   engine.emitSnapshot?.();
@@ -127,6 +157,7 @@ export function dismissLoot(engine: any) {
   if (lost.length) engine.pushLog(`You leave ${lost.map((i) => i.name).join(', ')} behind.`, 'system');
   if (keep.length) {
     grant(engine, keep, 0);
+    celebrate(engine, keep, 0);
     engine.pushLog(`You keep ${keep.map((i) => `${i.icon} ${i.name}`).join(', ')} (needed).`, 'system');
   }
   engine.pendingLoot = null;

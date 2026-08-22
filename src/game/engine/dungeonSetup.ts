@@ -14,7 +14,7 @@ import { abilityMod } from '../dice';
 import type { GridPos } from '../types';
 import type { LevelDef, Rect } from '../../levels/levelTypes';
 import { NPCS } from '../npc';
-import { SUMMON_TEMPLATES } from '../skills';
+import { SUMMON_TEMPLATES, makeCaveBat } from '../skills';
 import { unitWorld } from './visuals';
 import { animateTo } from './cheats';
 import { offerLoot } from './loot';
@@ -539,6 +539,9 @@ export function updateDungeon(engine: any, dt: number) {
     }
   }
 
+
+  // ── corridor bat roosts: stepping the long corridors wakes the ceiling ──
+  checkCorridorBatAmbush(engine);
   // ── companion tether: a party member (risen skeleton, …) stranded far from
   //    the leader snaps back to a free tile beside them — no more companions
   //    stuck in a room you left an hour ago.
@@ -664,6 +667,75 @@ function maybeAmbush(engine: any, roomId: string, pos: GridPos) {
     if (unit) engine.addUnit(unit);
     engine.enqueue(engine.combat.startAmbush());
   }
+}
+
+/**
+ * Floor-50 corridor bat ambushes — the long empty corridors are NOT empty.
+ * Walking a marked stretch wakes Cave Bats roosting on the ceiling: they
+ * drop down around the party and open with an ambush round. One-shot per
+ * site per run (flag-gated). Flying keeps them safe from melee until a
+ * successful Shove grounds them — the starting bow exists for a reason.
+ */
+interface BatAmbushEngine {
+  floorNumber: number;
+  structures?: unknown;
+  combat: Combat;
+  busy?: boolean;
+  gameWon?: boolean;
+  flags: Set<string>;
+  setFlag(id: string): void;
+  pushLog(text: string, kind?: string): void;
+  narrate(id: string, text: string, ms: number): Promise<void>;
+  audio: { screech(volume?: number): void };
+  addUnit(unit: import('../types').Unit): void;
+  visuals: Map<string, { rig?: { group?: { userData: Record<string, unknown> } } }>;
+  enqueue(events: unknown): void;
+}
+
+const CORRIDOR_BAT_AMBUSHES: { id: string; rect: Rect; line: string }[] = [
+  {
+    id: 'bat_south', rect: { x0: 70, z0: 163, x1: 120, z1: 167 },
+    line: '🦇 The ceiling SQUEAKS — wings pour out of the dark!',
+  },
+  {
+    id: 'bat_east', rect: { x0: 161, z0: 90, x1: 167, z1: 140 },
+    line: '🦇 Something shifts overhead — too many somethings!',
+  },
+  {
+    id: 'bat_spine', rect: { x0: 100, z0: 127, x1: 135, z1: 133 },
+    line: '🦇 A shriek from above — the roost has noticed you!',
+  },
+];
+
+export function checkCorridorBatAmbush(engine: BatAmbushEngine) {
+  if (engine.floorNumber !== 50 || !engine.structures) return;
+  if (engine.combat.inCombat || engine.busy || engine.gameWon) return;
+  const leader = engine.combat.living('party')[0];
+  if (!leader) return;
+  const p = leader.pos;
+  const site = CORRIDOR_BAT_AMBUSHES.find(
+    (s) => !engine.flags.has(s.id) && p.x >= s.rect.x0 && p.x <= s.rect.x1 && p.z >= s.rect.z0 && p.z <= s.rect.z1,
+  );
+  if (!site) return;
+  engine.setFlag(site.id);
+  engine.pushLog(site.line, 'system');
+  void engine.narrate(
+    'f50_bat_ambush',
+    'The dark above was never empty. Wings unfold from the ceiling like bad ideas — and the colony drops ALL AT ONCE.',
+    4200,
+  );
+  engine.audio.screech(0.9);
+  let spawned = 0;
+  for (let i = 0; i < 4; i++) {
+    const unit = engine.combat.summon(makeCaveBat(leader.pos, i), leader.pos);
+    if (!unit) continue;
+    engine.addUnit(unit);
+    spawned++;
+    const v = engine.visuals.get(unit.id);
+    if (v?.rig?.group) v.rig.group.userData.dropAt = performance.now() + 250 + spawned * 70;
+  }
+  if (!spawned) return;
+  engine.enqueue(engine.combat.startAmbush());
 }
 
 export function openIronDoor(engine: any) {

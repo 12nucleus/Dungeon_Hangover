@@ -22,7 +22,7 @@ export type DamageType =
   | 'fire' | 'cold' | 'radiant' | 'force' | 'poison';
 export type SkillCost = 'action' | 'bonus' | 'free';
 export type SkillKind = 'melee' | 'ranged' | 'aoe' | 'heal' | 'buff';
-export type EquipSlot = 'head' | 'chest' | 'legs' | 'boots' | 'gloves' | 'arms' | 'cloak' | 'belt' | 'trinket' | 'weapon' | 'offHand' | 'amulet' | 'ring' | 'ranged';
+export type EquipSlot = 'head' | 'chest' | 'legs' | 'boots' | 'gloves' | 'arms' | 'cloak' | 'belt' | 'trinket' | 'weapon' | 'offHand' | 'amulet' | 'ring' | 'ranged' | 'quiver';
 
 export interface GridPos { x: number; z: number; }
 
@@ -202,7 +202,7 @@ export interface Unit {
   skillPoints: number;    // unspent class-tree currency
   /** unspent ability points (granted on sobriety level-ups, spend on abilities) */
   abilityPoints?: number;
-  equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; arms?: import('./items').Item; belt?: import('./items').Item; cloak?: import('./items').Item; trinket?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item; ranged?: import('./items').Item };
+  equipment: { head?: import('./items').Item; chest?: import('./items').Item; legs?: import('./items').Item; boots?: import('./items').Item; gloves?: import('./items').Item; arms?: import('./items').Item; belt?: import('./items').Item; cloak?: import('./items').Item; trinket?: import('./items').Item; weapon?: import('./items').Item; offHand?: import('./items').Item; amulet?: import('./items').Item; ring1?: import('./items').Item; ring2?: import('./items').Item; ranged?: import('./items').Item; quiver?: import('./items').Item };
   maxHp: number;
   hp: number;
   ac: number;
@@ -383,6 +383,8 @@ export interface UISnapshot {
   tpkVignette?: boolean;
   /** big screen-letter combat popups (HIT! −4 HP, Bleeding …) — HUD renders + expires them */
   popups?: { id: number; text: string; sub?: string; cls: string }[];
+  /** special-loot celebration card (epic/quest pickup) — HUD renders + auto-expires */
+  lootFlash?: { id: number; name: string; icon: string; rarity: string } | null;
 }
 
 // ── combat events: the pure-logic layer (combat.ts) emits these,
@@ -404,7 +406,7 @@ export type CombatEvent =
   | { type: 'turn'; unitId: string; round: number }
   | { type: 'phase'; phase: GamePhase }
   | { type: 'dice'; die: string; total: number; reason: string }
-  | { type: 'loot'; items: import('./items').Item[]; gold: number }
+  | { type: 'loot'; items: import('./items').Item[]; gold: number; source?: string }
   | { type: 'levelup'; unitId: string }
   | { type: 'actionAnnounce'; unitId: string; text: string; sub?: string; cls: string; cue?: SkillAudioCue; fxColor?: number }
   | { type: 'actionResult'; unitId: string; targetId?: string; text: string; sub?: string; outcome: 'hit' | 'crit' | 'miss' | 'save-ok' | 'save-fail' }

@@ -25,13 +25,13 @@ export interface SlotUse {
 export const SLOT_LABEL: Record<EquipSlot, string> = {
   head: 'Head', chest: 'Chest', legs: 'Legs', boots: 'Boots', gloves: 'Gloves',
   arms: 'Arms', cloak: 'Cloak', belt: 'Belt', trinket: 'Charm',
-  weapon: 'Weapon', offHand: 'Off-Hand', amulet: 'Amulet', ring: 'Ring', ranged: 'Ranged',
+  weapon: 'Weapon', offHand: 'Off-Hand', amulet: 'Amulet', ring: 'Ring', ranged: 'Ranged', quiver: 'Quiver',
 };
 
 export const SLOT_ICON: Record<string, string> = {
   head: '⛑️', chest: '🦺', legs: '👖', boots: '👢', gloves: '🧤', arms: '💪',
   cloak: '🧥', belt: '🧷', trinket: '🧿', weapon: '⚔️', offHand: '🛡️',
-  amulet: '📿', ring: '💍', ring1: '💍', ring2: '💍', ranged: '🏹',
+  amulet: '📿', ring: '💍', ring1: '💍', ring2: '💍', ranged: '🏹', quiver: '🪶',
 };
 
 const U = (u: SlotUse) => u;
@@ -235,6 +235,13 @@ function deriveUses(item: Item): SlotUse[] {
         item.physResist ? `physical −${item.physResist}` : null,
         item.hpBonus ? `+${item.hpBonus} HP` : null,
       ].filter(Boolean).join(', ') || 'Worn.',
+    });
+  } else if (item.kind === 'ammo') {
+    const slot = item.slot ?? 'quiver';
+    uses.push({
+      slot,
+      role: SLOT_LABEL[slot] ?? 'Quiver',
+      note: item.infinite ? 'Endless basic arrows — restocks itself.' : (item.desc || 'Ammunition.'),
     });
   } else if (item.kind === 'trinket') {
     const slot = item.slot ?? 'trinket';

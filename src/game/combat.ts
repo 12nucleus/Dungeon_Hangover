@@ -633,20 +633,48 @@ export class Combat {
     return canUseSkill(u, s);
   }
 
+  /** effective basic-attack profile: melee reach 1, or bow range 8 (10 at
+   *  tier 3) when a bow sits in the ranged slot with a quiver to feed it. */
+  basicAttackProfile(u: Unit): { range: number; ranged: boolean } {
+    const bow = u.equipment?.ranged;
+    if (bow?.weaponKind === 'bow' && u.equipment?.quiver) return { range: bow.tier >= 3 ? 10 : 8, ranged: true };
+    return { range: 1, ranged: false };
+  }
+
+
   /** targets = explicit tile (AoE) or unit id (single). Returns events or throws string reason. */
   useSkill(u: Unit, skillId: string, target: GridPos | string): CombatEvent[] {
     // the universal 'attack' skill takes its dice from the equipped weapon
     // (fists if unarmed) so a weaponless/utility build can always fight
     let s: SkillDef | undefined = skillById(skillId);
     if (skillId === 'attack') {
-      const w = u.equipment?.weapon as { damageDice?: string; damageType?: string; icon?: string; name?: string } | undefined;
-      s = {
-        ...(s ?? { id: 'attack', name: 'Attack', icon: '⚔️', kind: 'melee', desc: 'A basic weapon attack.', range: 1, aoeRadius: 0, cost: 'action', cooldown: 0, attackAbility: 'str', damageDice: '1d4', damageType: 'bludgeoning', fxColor: 0xffe08a, fx: 'slash' }),
-        damageDice: w?.damageDice ?? '1d4',
-        damageType: (w?.damageType as DamageType) ?? 'bludgeoning',
-        icon: w?.icon ?? '👊',
-        name: w ? `Attack (${w.name ?? 'weapon'})` : 'Punch',
-      } as SkillDef;
+      const w = u.equipment?.weapon as { kind?: string; weaponKind?: string; damageDice?: string; damageType?: string; icon?: string; name?: string } | undefined;
+      const bow = (u.equipment?.ranged?.weaponKind === 'bow' ? u.equipment.ranged : undefined) as
+        | { tier: number; damageDice?: string; name?: string }
+        | undefined;
+      const hasArrows = !!u.equipment?.quiver;
+      const melee = w && w.kind === 'weapon' && w.weaponKind !== 'bow' ? w : undefined;
+      const tPos = typeof target === 'string' ? this.byId(target)?.pos : target;
+      const dist = tPos ? Combat.dist(u.pos, tPos) : 1;
+      const tFlying = typeof target === 'string' ? !!this.byId(target)?.flying : false;
+      // shoot when the target is beyond arm's reach, or when it flies out of
+      // melee reach entirely, or when there is no melee weapon to swing
+      const shoot = !!bow && hasArrows && (!melee || dist > 1 || tFlying);
+      s = shoot
+        ? {
+            ...(s ?? { id: 'attack', name: 'Attack', icon: '⚔️', kind: 'melee', desc: 'A basic weapon attack.', range: 1, aoeRadius: 0, cost: 'action', cooldown: 0, attackAbility: 'str', damageDice: '1d4', damageType: 'bludgeoning', fxColor: 0xffe08a, fx: 'slash' }),
+            kind: 'ranged', range: (bow?.tier ?? 1) >= 3 ? 10 : 8,
+            attackAbility: 'dex',
+            damageDice: bow?.damageDice ?? '1d6', damageType: 'piercing',
+            icon: '🏹', name: `Shot (${bow?.name ?? 'bow'})`, projectile: true, fx: 'arrow', fxColor: 0xd8b46a,
+          } as SkillDef
+        : {
+            ...(s ?? { id: 'attack', name: 'Attack', icon: '⚔️', kind: 'melee', desc: 'A basic weapon attack.', range: 1, aoeRadius: 0, cost: 'action', cooldown: 0, attackAbility: 'str', damageDice: '1d4', damageType: 'bludgeoning', fxColor: 0xffe08a, fx: 'slash' }),
+            damageDice: melee?.damageDice ?? '1d4',
+            damageType: ((melee?.damageType ?? w?.damageType) as DamageType) ?? 'bludgeoning',
+            icon: melee?.icon ?? w?.icon ?? '👊',
+            name: melee ? `Attack (${melee.name ?? 'weapon'})` : w ? `Attack (${w.name ?? 'weapon'})` : 'Punch',
+          } as SkillDef;
     }
     if (!s || (skillId !== 'attack' && skillId !== 'shove' && !activeSkillIds(u).includes(skillId))) return [];
     const deny = this.canUse(u, s);
@@ -692,6 +720,12 @@ export class Combat {
       if (!s.targetsAllies && t.team !== u.team && t.conditions.some((c) => c.id === 'evading')) return [{ type: 'log', text: `${t.name} is Evading — they cannot be targeted!`, kind: 'info' }];
     } else {
       return [{ type: 'log', text: 'No target selected.', kind: 'info' }];
+    }
+    // airborne foes are untouchable by melee — only ranged attacks (or
+    // Shove, which rips them out of the air) can reach a flying target
+    if (!s.targetsAllies && s.kind === 'melee' && targets.some((t) => t.flying)) {
+      const f = targets.find((t) => t.flying)!;
+      return [{ type: 'log', text: `🦇 ${f.name} flaps out of reach — bring it down with a ranged attack or a shove!`, kind: 'info' }];
     }
 
     const ev: CombatEvent[] = [];
@@ -752,6 +786,13 @@ export class Combat {
         ev.push({ type: 'log', text: `${t.name} holds their ground.`, kind: 'info' });
         ev.push(...this.checkEnd());
         return ev;
+      }
+      // a successful shove rips a flyer out of the air — grounded bats are
+      // melee-reachable again (flying=false ends hover + melee immunity)
+      if (t.flying) {
+        t.flying = false;
+        ev.push({ type: 'float', unitId: t.id, text: '🦇 Grounded!', cls: 'dmg' });
+        ev.push({ type: 'log', text: `${t.name} slams into the stone — grounded!`, kind: 'hit' });
       }
       // displace 1 tile directly away from the attacker
       ev.push({ type: 'actionResult', unitId: u.id, targetId: t.id, text: `${u.name} shoves ${t.name} back`, sub: `STR ${atk.roll}${fmtMod(atk.bonus)} = ${atk.total} vs DC ${dc}`, outcome: 'hit' });
@@ -1312,7 +1353,7 @@ export class Combat {
         : (t.scheme.monster === 'rat' || t.scheme.monster === 'bat') ? 'beast'
         : 'goblin';
       const drop = rollLootTable(src);
-      if (drop.items.length || drop.gold) out.push({ type: 'loot', items: drop.items, gold: drop.gold });
+      if (drop.items.length || drop.gold) out.push({ type: 'loot', items: drop.items, gold: drop.gold, source: `${t.name}'s body` });
     }
     out.push(...this.checkEnd());
     return out;

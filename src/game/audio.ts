@@ -750,6 +750,26 @@ export class AudioManager {
     this.beep(2600, 3400, 0.12, volume * 0.35, 'sawtooth');
     this.beep(3200, 2400, 0.1, volume * 0.3, 'sawtooth', 0.05);
   }
+  /** Zelda-style special-loot fanfare — rising arpeggio with a sparkle tail */
+  lootFanfare(volume = 0.9) {
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 · E5 · G5 · C6
+    notes.forEach((f, i) => {
+      this.beep(f, f * 1.01, 0.16, volume * 0.28, 'square', i * 0.11);
+      this.beep(f * 2, f * 2.02, 0.12, volume * 0.13, 'triangle', i * 0.11 + 0.02);
+    });
+    this.beep(1046.5, 1052, 0.55, volume * 0.24, 'triangle', 0.44);
+    for (let i = 0; i < 4; i++) this.beep(1600 + i * 300, 2200 + i * 300, 0.08, volume * 0.11, 'sine', 0.56 + i * 0.06);
+  }
+  /** shorter pickup chime — uncommon/rare hauls */
+  lootChime(volume = 0.8) {
+    this.beep(880, 884, 0.18, volume * 0.24, 'triangle');
+    this.beep(1318.5, 1322, 0.28, volume * 0.2, 'triangle', 0.09);
+  }
+  /** coin clink — gold pickups */
+  coin(volume = 0.7) {
+    this.beep(1250, 1250, 0.07, volume * 0.22, 'square');
+    this.beep(1900, 1904, 0.09, volume * 0.18, 'square', 0.06);
+  }
   /** dry bone rattle */
   boneRattle(volume = 0.8) {
     for (let i = 0; i < 5; i++) this.noiseBurst(0.05, volume * 0.4, 'highpass', 4000, 3500);

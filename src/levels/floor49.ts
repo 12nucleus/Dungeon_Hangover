@@ -484,7 +484,6 @@ export const floor49Level: LevelDef = {
   // mushrooms carry the color with their own point lights
   ambient: 0.42,
   sun: 0.06,
-  fill: 0.22,
   fogColor: 0x1a1f2e,
   fogDensity: 0.02,
   waterColor: 0x3a86c8,

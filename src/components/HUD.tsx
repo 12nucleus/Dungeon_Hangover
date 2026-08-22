@@ -400,6 +400,24 @@ function CombatPopups({ snap }: { snap: UISnapshot }) {
   );
 }
 
+/** special-loot celebration — big centred card with rarity-colored rays.
+ *  Engine sets lootFlash on epic/quest pickups; auto-clears engine-side
+ *  (2.6s), the CSS animation runs on mount via key={id}. */
+function LootFlash({ snap }: { snap: UISnapshot }) {
+  const f = snap.lootFlash;
+  if (!f) return null;
+  return (
+    <div key={f.id} className="loot-flash" data-rarity={f.rarity}>
+      <div className="loot-flash-rays" />
+      <div className="loot-flash-card">
+        <div className="loot-flash-icon">{f.icon}</div>
+        <div className="loot-flash-name">{f.name}</div>
+        <div className="loot-flash-tag">{f.rarity === 'quest' ? '★ QUEST ITEM ★' : `${f.rarity.toUpperCase()} FIND!`}</div>
+      </div>
+    </div>
+  );
+}
+
 export function HUD({ snap, engine }: Props) {
   const [showLog, setShowLog] = useState(true);
   const [initHover, setInitHover] = useState<string | null>(null);
@@ -423,6 +441,7 @@ export function HUD({ snap, engine }: Props) {
       {/* first-person crosshair — the dot IS the mouse pointer in FP mode */}
       {snap?.firstPerson && <div className="fp-crosshair" />}
       <CombatPopups snap={snap} />
+      <LootFlash snap={snap} />
       {/* ══ MAIN MENU ══ (title idle only — hidden while the intro/cutscene
           narration runs: between caption beats `cinematic` is false but the
           cutscene is still playing, so the menu would flicker over it) */}

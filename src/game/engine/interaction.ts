@@ -745,8 +745,13 @@ export function clickCombat(engine: any, pick: InteractPick | null, tile: GridPo
         return;
       }
       const basic = skillById('attack');
+      const prof = engine.combat.basicAttackProfile(active);
       const attackReady = !!basic && !engine.combat.canUse(active, basic);
-      const inReach = basic ? Combat.dist(active.pos, t.pos) <= Math.max(1, basic.range) : false;
+      if (t.flying && !prof.ranged) {
+        setHoverInfoOnce(engine, `${t.name} is airborne — melee can't reach it. Arm the bow!`);
+        return;
+      }
+      const inReach = basic ? Combat.dist(active.pos, t.pos) <= Math.max(1, prof.range) : false;
       if (attackReady && inReach) {
         engine.combat.turnMode = 'action';
         engine.audio.play('dice', 0.7);
@@ -767,7 +772,7 @@ export function clickCombat(engine: any, pick: InteractPick | null, tile: GridPo
           const d = Combat.dist({ x, z }, t.pos);
           if (d < bestD) { bestD = d; best = { x, z }; }
         }
-        if (best && bestD <= Math.max(1, basic.range)) {
+        if (best && bestD <= Math.max(1, prof.range)) {
           const moveEvents = engine.combat.moveActiveTo(best);
           let attackEvents: CombatEvent[] = [];
           if (!engine.combat.canUse(active, basic)) {

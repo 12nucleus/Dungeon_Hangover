@@ -2008,6 +2008,68 @@ button:focus-visible, [tabindex]:focus-visible {
   100% { opacity: 0; }
 }
 
+/* ── special-loot celebration: centred card + rotating rarity rays ──
+   Epic = gold rays, quest = violet. Mounts via key={id} so each pickup
+   re-runs the animation; the engine clears the flag after 2.6s. */
+.loot-flash {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none; z-index: 30;
+  animation: lootFlashIn 2.6s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+.loot-flash-rays {
+  position: absolute; width: 130vmax; height: 130vmax;
+  background: repeating-conic-gradient(
+    from 0deg,
+    var(--ray, rgba(255, 200, 60, 0.16)) 0deg 11deg,
+    transparent 11deg 24deg);
+  mask-image: radial-gradient(circle at 50% 50%, #000 0%, rgba(0, 0, 0, 0.5) 34%, transparent 62%);
+  animation: lootRays 9s linear infinite;
+}
+.loot-flash[data-rarity='quest'] .loot-flash-rays { --ray: rgba(190, 120, 255, 0.17); }
+.loot-flash[data-rarity='rare'] .loot-flash-rays { --ray: rgba(110, 180, 255, 0.15); }
+.loot-flash-card {
+  position: relative;
+  padding: 26px 54px 20px;
+  text-align: center;
+  color: #f7ecd4;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 226, 140, 0.18), transparent 65%),
+    linear-gradient(180deg, rgba(24, 16, 8, 0.94), rgba(12, 8, 4, 0.96));
+  border: 1px solid var(--edge, #e0a83a);
+  box-shadow: 0 0 44px var(--glow, rgba(240, 180, 60, 0.45)), inset 0 0 26px rgba(0, 0, 0, 0.7);
+  animation: lootCardPop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.loot-flash[data-rarity='quest'] .loot-flash-card { --edge: #b07ae0; --glow: rgba(160, 100, 230, 0.5); }
+.loot-flash[data-rarity='rare'] .loot-flash-card { --edge: #6eb4ff; --glow: rgba(90, 160, 240, 0.45); }
+.loot-flash-icon {
+  font-size: 56px; line-height: 1;
+  filter: drop-shadow(0 0 14px var(--glow, rgba(240, 180, 60, 0.8)));
+  animation: lootIconBob 1.3s ease-in-out infinite alternate;
+}
+.loot-flash-name {
+  margin-top: 10px; font-size: 21px; font-weight: 700; letter-spacing: 0.06em;
+  font-family: 'Cinzel', serif;
+  color: var(--edge, #f2c96b);
+}
+.loot-flash-tag { margin-top: 4px; font-size: 12px; letter-spacing: 0.32em; opacity: 0.85; }
+@keyframes lootFlashIn {
+  0% { opacity: 0; }
+  8% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes lootRays { to { transform: rotate(360deg); } }
+@keyframes lootCardPop {
+  0% { transform: scale(0.4) translateY(26px); opacity: 0; }
+  60% { transform: scale(1.06) translateY(0); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes lootIconBob {
+  from { transform: translateY(0) scale(1); }
+  to { transform: translateY(-7px) scale(1.08); }
+}
+
 /* ── total party kill: the world goes cold and colourless ──
    NOTE: the base rule is INVISIBLE (opacity:0) and the freeze animation only
    runs when the `.on` modifier is present. The div is mounted unconditionally
