@@ -31,7 +31,6 @@ qwen3-tts/
 # Junk / temp files
 $null
 ts-errors.txt
-this.spawnDrunkStars(rig)
 __pycache__/
 scripts/acestep_out/
 
