@@ -4747,6 +4747,7 @@ export class GameEngine {
       tacticalView: this.tacticalView,
       torchLit: this.torchLit,
       torchEquipped: this.combat?.living('party')[0]?.weapon === 'torch',
+      bigMessage: this.bigMessage,
       cinematic: this.cinematic,
       busy: this.busy,
       paused: this.paused,
