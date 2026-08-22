@@ -202,8 +202,10 @@ export class VoxelWorld {
       );
       this.terrainGroup = voxGroup;
       this.group.add(voxGroup);
-      // eslint-disable-next-line no-console
-      console.log(`[VoxelWorld] voxel terrain: ${stats.boxes.toLocaleString()} boxes / ~${stats.approxTris.toLocaleString()} tris @ step ${voxStep} (budget ${stats.budget.toLocaleString()})`);
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.log(`[VoxelWorld] voxel terrain: ${stats.boxes.toLocaleString()} boxes / ~${stats.approxTris.toLocaleString()} tris @ step ${voxStep} (budget ${stats.budget.toLocaleString()})`);
+      }
     } else {
       // ══ FALLBACK: original textured-InstancedMesh cave builder ══
       const CAVE_VOX = 0.22;   // unified fine voxel (matches monster/player detail)
