@@ -409,6 +409,27 @@ export class Combat {
     if (u.bossGroup) u.legendaryActions = 3;
     ev.push({ type: 'turn', unitId: u.id, round: this.round });
     ev.push({ type: 'log', text: `▶ ${u.name}'s turn`, kind: 'system' });
+    // AAA windup duel: a party member's charge fires at their turn start —
+    // the action was paid at declaration, so the payout is free (but it IS
+    // their action). Enemies resolve through aiStep instead: a charge eats
+    // their whole turn.
+    if (u.team === 'party' && u.pendingSkill) {
+      u.pendingRounds = (u.pendingRounds ?? 0) - 1;
+      if (u.pendingRounds <= 0) {
+        const id = u.pendingSkill;
+        const tgt = u.pendingTarget;
+        u.pendingSkill = undefined;
+        u.pendingTarget = undefined;
+        u.pendingRounds = undefined;
+        this.resolvingTelegraph = true;
+        const tev = this.useSkill(u, id, tgt as GridPos | string);
+        this.resolvingTelegraph = false;
+        ev.push(...tev);
+        u.hasAction = false;
+      } else {
+        ev.push({ type: 'log', text: `${u.name} keeps winding up…`, kind: 'system' });
+      }
+    }
     return ev;
   }
 
@@ -685,7 +706,9 @@ export class Combat {
           } as SkillDef;
     }
     if (!s || (skillId !== 'attack' && skillId !== 'shove' && skillId !== 'interrupt' && !activeSkillIds(u).includes(skillId))) return [];
-    const deny = this.canUse(u, s);
+    // telegraph payout skips gating: the skill passed canUse when declared,
+    // and the cooldown charged at declaration must not block its own payout
+    const deny = this.resolvingTelegraph ? null : this.canUse(u, s);
     if (deny) return [{ type: 'log', text: deny, kind: 'info' }];
     // BG3 phase advance: action → bonus (if any left), bonus → back to walk
     if (u.team === 'party' && (s.cost === 'action' || s.cost === 'bonus')) {
@@ -737,10 +760,9 @@ export class Combat {
     }
 
     const ev: CombatEvent[] = [];
-    // ── telegraphed windup (ENEMY SKILLS ONLY): the enemy spends its action
-    // at declaration and the skill pays out one full round later. The winding
-    // enemy does not move or act while charging. (Cost is spent by the normal
-    // pay-cost block when the skill actually resolves next round.)
+    // ── telegraphed windup: the declarer spends its action at declaration
+    // and the skill pays out one full round later. A winding enemy does not
+    // move or act while charging; a party member keeps movement + bonus.
     if (s.windup && s.windup > 0 && !this.resolvingTelegraph) {
       let threatTiles: GridPos[] = [];
       if (s.selfCentered || s.aoeRadius > 0) {
@@ -757,9 +779,26 @@ export class Combat {
       u.pendingSkill = s.id;
       u.pendingTarget = target;
       u.pendingRounds = s.windup;
+      // pay the cost NOW — declaring a slow move IS the action; the payout
+      // fires free at this unit's next turn start
+      if (skillId !== 'attack' && s.cost === 'action') {
+        u.hasAction = false;
+        if (u.cooldowns['frenzy_extra']) {
+          delete u.cooldowns['frenzy_extra'];
+          u.hasAction = true;
+          ev.push({ type: 'log', text: `${u.name} is FRENZIED — they act again!`, kind: 'system' });
+        }
+      }
+      if (s.cost === 'bonus') u.hasBonus = false;
+      if (s.cooldown > 0) u.cooldowns[s.id] = Math.max(1, s.cooldown - skillModifiers(u).cooldownReduction) + 1;
+      if (s.oncePerFight) u.cooldowns[`once_${s.id}`] = 999;
       ev.push({ type: 'telegraph', unitId: u.id, skillId: s.id, tiles: threatTiles });
       ev.push({ type: 'log', text: `${u.name} is winding up ${s.name}!`, kind: 'system' });
       ev.push({ type: 'float', unitId: u.id, text: `⚠ ${s.name}`, cls: 'warn' });
+      // AAA windup duel: declaring a big move with a sharp-eyed foe in melee
+      // range is risky — they may spend their reaction to smash it out of
+      // the air (reflex gate, then a STR contest).
+      if (u.team === 'party') ev.push(...this.counterInterrupt(u, s));
       return ev;
     }
     // ── action announce — every action opens with a readable beat: a banner
@@ -780,22 +819,25 @@ export class Combat {
     // (soap_storm: Scalded + Slippery) never need a per-skill special case.
 
     // pay costs — the basic attack is FREE (spent via attackUsed instead) so
-    // the action stays available for one skill per round
-    if (skillId === 'attack') {
-      u.attackUsed = true;
-    } else if (s.cost === 'action') {
-      u.hasAction = false;
-      // frenzy: the carrier's extra action is granted after its first action
-      if (u.cooldowns['frenzy_extra']) {
-        delete u.cooldowns['frenzy_extra'];
-        u.hasAction = true;
-        ev.push({ type: 'log', text: `${u.name} is FRENZIED — they act again!`, kind: 'system' });
+    // the action stays available for one skill per round. Telegraph payouts
+    // skip all of it: the cost was already paid at declaration.
+    if (!this.resolvingTelegraph) {
+      if (skillId === 'attack') {
+        u.attackUsed = true;
+      } else if (s.cost === 'action') {
+        u.hasAction = false;
+        // frenzy: the carrier's extra action is granted after its first action
+        if (u.cooldowns['frenzy_extra']) {
+          delete u.cooldowns['frenzy_extra'];
+          u.hasAction = true;
+          ev.push({ type: 'log', text: `${u.name} is FRENZIED — they act again!`, kind: 'system' });
+        }
       }
+      if (s.cost === 'bonus') u.hasBonus = false;
+      const cooldownReduction = skillModifiers(u).cooldownReduction;
+      if (s.cooldown > 0) u.cooldowns[s.id] = Math.max(1, s.cooldown - cooldownReduction) + 1; // +1 because it ticks at next turn start
+      if (s.oncePerFight) u.cooldowns[`once_${s.id}`] = 999;
     }
-    if (s.cost === 'bonus') u.hasBonus = false;
-    const cooldownReduction = skillModifiers(u).cooldownReduction;
-    if (s.cooldown > 0) u.cooldowns[s.id] = Math.max(1, s.cooldown - cooldownReduction) + 1; // +1 because it ticks at next turn start
-    if (s.oncePerFight) u.cooldowns[`once_${s.id}`] = 999;
     // AAA: concentration — break previous, start new
     if (s.concentration) {
       if (u.concentration && u.concentration !== s.id) {
@@ -861,29 +903,10 @@ export class Combat {
         ev.push({ type: 'log', text: "They aren't winding up an attack.", kind: 'info' });
         return ev;
       }
-      const atk = rollD20(abilityMod(u.abilities.str));
-      const dc = 10 + abilityMod(t.abilities.str);
-      ev.push({ type: 'log', text: `${u.name} tries to interrupt ${t.name}: STR ${atk.roll}${fmtMod(atk.bonus)} vs DC ${dc}`, kind: 'roll' });
-      if (atk.total >= dc) {
-        t.pendingSkill = undefined;
-        t.pendingTarget = undefined;
-        t.pendingRounds = undefined;
-        ev.push({ type: 'telegraphCancel', unitId: t.id });
-        ev.push({ type: 'float', unitId: t.id, text: 'Interrupted!', cls: 'buff' });
-        if (!t.conditions.some((c) => c.id === 'dazed')) {
-          t.conditions.push({ id: 'dazed', name: CONDITIONS.dazed.name, roundsLeft: 1 });
-          ev.push({ type: 'float', unitId: t.id, text: 'Dazed!', cls: 'debuff' });
-        }
-        ev.push({ type: 'log', text: `${u.name} interrupts ${t.name}'s swing!`, kind: 'hit' });
-      } else {
-        ev.push({ type: 'actionResult', unitId: u.id, targetId: t.id, text: `${u.name} fails to interrupt ${t.name}`, sub: `STR ${atk.roll}${fmtMod(atk.bonus)} = ${atk.total} vs DC ${dc}`, outcome: 'miss' });
-        ev.push({ type: 'float', unitId: t.id, text: 'Too slow!', cls: 'miss' });
-        ev.push({ type: 'log', text: `${t.name} ducks away — the windup continues!`, kind: 'info' });
-      }
+      this.interruptWindup(u, t, ev, false);
       ev.push(...this.checkEnd());
       return ev;
     }
-
 
     // ── summons (boss minions): clone the template onto a free tile ──
     if (s.summonId) {
@@ -1320,6 +1343,96 @@ export class Combat {
     ev.push(...this.checkEnd());
     return ev;
   }
+
+  /** shared interrupt core — success clears the windup + Dazes 1 round,
+   *  failure lets the charge stand. `perfect` (reflex QTE) skips the contest. */
+  private interruptWindup(u: Unit, t: Unit, ev: CombatEvent[], perfect: boolean): void {
+    const atk = rollD20(abilityMod(u.abilities.str));
+    const dc = 10 + abilityMod(t.abilities.str);
+    if (!perfect) {
+      ev.push({ type: 'log', text: `${u.name} tries to interrupt ${t.name}: STR ${atk.roll}${fmtMod(atk.bonus)} vs DC ${dc}`, kind: 'roll' });
+    }
+    if (perfect || atk.total >= dc) {
+      t.pendingSkill = undefined;
+      t.pendingTarget = undefined;
+      t.pendingRounds = undefined;
+      ev.push({ type: 'telegraphCancel', unitId: t.id });
+      ev.push({ type: 'float', unitId: t.id, text: 'Interrupted!', cls: 'buff' });
+      if (!t.conditions.some((c) => c.id === 'dazed')) {
+        t.conditions.push({ id: 'dazed', name: CONDITIONS.dazed.name, roundsLeft: 1 });
+        ev.push({ type: 'float', unitId: t.id, text: 'Dazed!', cls: 'debuff' });
+      }
+      ev.push({ type: 'log', text: `${u.name} interrupts ${t.name}'s swing!`, kind: 'hit' });
+    } else {
+      ev.push({ type: 'actionResult', unitId: u.id, targetId: t.id, text: `${u.name} fails to interrupt ${t.name}`, sub: `STR ${atk.roll}${fmtMod(atk.bonus)} = ${atk.total} vs DC ${dc}`, outcome: 'miss' });
+      ev.push({ type: 'float', unitId: t.id, text: 'Too slow!', cls: 'miss' });
+      ev.push({ type: 'log', text: `${t.name} ducks away — the windup continues!`, kind: 'info' });
+    }
+  }
+
+  /** AAA reflex interrupt (real-time QTE): an adjacent, reaction-ready party
+   *  member smashes a winding foe's windup. Free (no bonus action) — timing
+   *  buys the free contest. Perfect timing auto-succeeds. */
+  reactInterrupt(interrupter: Unit, target: Unit, perfect: boolean): CombatEvent[] {
+    const ev: CombatEvent[] = [];
+    if (!interrupter.alive || !target.alive || !target.pendingSkill) return ev;
+    if (interrupter.hasReaction === false) return ev;
+    if (Combat.dist(interrupter.pos, target.pos) > 1) return ev;
+    interrupter.hasReaction = false;
+    this.interruptWindup(interrupter, target, ev, perfect);
+    ev.push(...this.checkEnd());
+    return ev;
+  }
+
+  /** sharpest adjacent party member eligible to react to a winding foe
+   *  (alive, has its reaction, not stunned, within melee range) */
+  reactionCandidate(target: Unit): Unit | null {
+    const cands = this.living('party').filter((p) =>
+      p.hasReaction !== false
+      && !p.conditions.some((c) => c.id === 'stunned')
+      && Combat.dist(p.pos, target.pos) <= 1);
+    return cands.sort((a, b) => b.abilities.dex - a.abilities.dex)[0] ?? null;
+  }
+
+  /** enemy counterplay: adjacent sharp foes may spend their reaction to
+   *  break a party member's windup (reflex gate, then a STR contest) */
+  private counterInterrupt(u: Unit, s: SkillDef): CombatEvent[] {
+    const out: CombatEvent[] = [];
+    const foes = this.living('enemy').filter((foe) =>
+      foe.hasReaction !== false
+      && !foe.conditions.some((c) => c.id === 'stunned' || c.id === 'dazed')
+      && Combat.dist(foe.pos, u.pos) <= 1
+      && (foe.elite || foe.bossGroup || abilityMod(foe.abilities.dex) >= 1));
+    for (const foe of foes) {
+      foe.hasReaction = false;
+      const gate = rollD20(abilityMod(foe.abilities.dex));
+      const gateDc = 10 + abilityMod(u.abilities.dex);
+      if (gate.total < gateDc) {
+        out.push({ type: 'log', text: `${foe.name} is too slow to read ${u.name}'s windup.`, kind: 'info' });
+        continue;
+      }
+      const contest = rollD20(abilityMod(foe.abilities.str));
+      const dc = 10 + abilityMod(u.abilities.str);
+      out.push({ type: 'log', text: `${foe.name} tries to interrupt ${u.name}'s ${s.name}: STR ${contest.roll}${fmtMod(contest.bonus)} vs DC ${dc}`, kind: 'roll' });
+      if (contest.total >= dc) {
+        u.pendingSkill = undefined;
+        u.pendingTarget = undefined;
+        u.pendingRounds = undefined;
+        out.push({ type: 'telegraphCancel', unitId: u.id });
+        out.push({ type: 'float', unitId: u.id, text: 'Interrupted!', cls: 'buff' });
+        if (!u.conditions.some((c) => c.id === 'dazed')) {
+          u.conditions.push({ id: 'dazed', name: CONDITIONS.dazed.name, roundsLeft: 1 });
+          out.push({ type: 'float', unitId: u.id, text: 'Dazed!', cls: 'debuff' });
+        }
+        out.push({ type: 'log', text: `${foe.name} slams ${u.name} mid-windup — the ${s.name} fizzles!`, kind: 'hit' });
+        break;
+      }
+      out.push({ type: 'float', unitId: u.id, text: 'Holds!', cls: 'buff' });
+      out.push({ type: 'log', text: `${u.name} powers through — the ${s.name} continues!`, kind: 'info' });
+    }
+    return out;
+  }
+
 
   private applyDamage(ev: CombatEvent[], t: Unit, amount: number, kind: DamageType, crit: boolean) {
     if (this.godMode && t.team === 'party') return;   // cheat: party takes no damage

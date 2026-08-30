@@ -27,7 +27,7 @@ import { TrapManager } from './traps';
 import { ensureSkillState, syncSkillState } from './skillRuntime';
 import { SurfaceSystem } from './surfaces';
 import { PhysicsWorld } from './physics';
-import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, SkillDef, UISnapshot, Unit, EquipSlot, Ability } from './types';
+import type { CharacterBuild, CombatEvent, GamePhase, GridPos, LogEntry, ReactionWindow, SkillDef, UISnapshot, Unit, EquipSlot, Ability } from './types';
 import { NPCS, type NPCDef, type DialogueAction } from './npc';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { LogicalSize } from '@tauri-apps/api/dpi';
@@ -335,6 +335,9 @@ export class GameEngine {
   public nearDeathNarrated = false;
   /** active telegraphed threat — winding unit + its threatened tiles (painted orange) */
   public threat: { unitId: string; tiles: GridPos[] } | null = null;
+  /** live reflex QTE — a winding foe offers an adjacent party member a beat
+   *  to smash the windup (E). Auto-expires at `deadline`. */
+  public reaction: ReactionWindow | null = null;
   /** ids of destroyed props — persisted so rests/loads keep them gone */
   public destroyedProps = new Set<string>();
   /** player-curated item-bar keys (baseIds, max 6) — persisted */
@@ -3936,6 +3939,30 @@ export class GameEngine {
 
   // combat animation
   public enqueue(events: CombatEvent[]) { enqueue(this, events); }
+
+  /** AAA reflex interrupt (real-time QTE): E pressed inside a reaction window.
+   *  Perfect timing auto-succeeds; otherwise the normal STR contest runs.
+   *  Free — the reflex replaces the bonus-action Interrupt. */
+  public tryReaction(): void {
+    const r = this.reaction;
+    if (!r || !this.combat) return;
+    const now = performance.now();
+    this.reaction = null;
+    this.emitSnapshot();
+    if (now > r.deadline) return; // too late — the charge lands
+    const u = this.combat.units.find((x) => x.id === r.interrupterId);
+    const t = this.combat.units.find((x) => x.id === r.targetId);
+    if (!u || !t || !u.alive || !t.alive || !t.pendingSkill) return;
+    this.enqueue(this.combat.reactInterrupt(u, t, now <= r.perfectUntil));
+  }
+
+  /** close the reaction window without an attempt (expiry, cancel, death) */
+  public clearReaction(): void {
+    if (this.reaction) {
+      this.reaction = null;
+      this.emitSnapshot();
+    }
+  }
   public checkCombatTrigger() { checkCombatTrigger(this); }
   public smashProp(u: Unit, prop: Destructible, skill?: SkillDef) { smashProp(this, u, prop, skill); }
   public triggerTrap(u: Unit, trap: any) { triggerTrapModule(this, u, trap); }
@@ -4601,6 +4628,12 @@ export class GameEngine {
       this.actionBanner = null;
       this.emitSnapshot();
     }
+    // reflex QTE window auto-expires — a missed beat simply lets the
+    // telegraphed attack land
+    if (this.reaction && performance.now() > this.reaction.deadline) {
+      this.reaction = null;
+      this.emitSnapshot();
+    }
 
     // TPK vignette self-heals the moment defeat is over (respawn sets explore)
     if (this.tpkVignette && this.phase !== 'defeat') {
@@ -4788,6 +4821,7 @@ export class GameEngine {
       actionBanner: this.actionBanner ? { kind: this.actionBanner.kind, text: this.actionBanner.text, sub: this.actionBanner.sub, cls: this.actionBanner.cls, id: this.actionBanner.id } : null,
       pendingLoot: this.pendingLoot ? { source: this.pendingLoot.source, items: [...this.pendingLoot.items], gold: this.pendingLoot.gold } : null,
       turnMode: this.combat.turnMode,
+      reaction: this.reaction,
       jumpMode: this.jumpMode,
       showConsole: this.consoleOpen,
       consoleInput: this.consoleInput,

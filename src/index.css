@@ -2247,3 +2247,49 @@ button:focus-visible, [tabindex]:focus-visible {
 /* companion auto/manual toggle in the turn ring */
 .turn-mode.companion-mode { font-size: 18px; opacity: 0.55; }
 .turn-mode.companion-mode.on { opacity: 1; box-shadow: 0 0 10px rgba(122, 200, 255, 0.45); border-color: rgba(122, 200, 255, 0.6); }
+
+/* ── AAA reflex-QTE prompt: smash a winding foe's telegraph with E ── */
+.reaction-prompt {
+  position: absolute;
+  left: 50%;
+  top: 76px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 18px;
+  border-radius: 10px;
+  background: rgba(24, 10, 6, 0.88);
+  border: 1px solid #ff7a6b;
+  color: #ffd76b;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 40;
+  animation: rp-pulse 0.9s ease-in-out infinite;
+  text-shadow: 0 0 8px rgba(255, 122, 107, 0.7);
+}
+.reaction-prompt.perfect {
+  border-color: #4ade80;
+  color: #4ade80;
+  text-shadow: 0 0 10px rgba(74, 222, 128, 0.7);
+}
+.reaction-prompt .rp-bar {
+  width: 240px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.reaction-prompt .rp-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #ffd76b, #ff7a6b);
+}
+.reaction-prompt .rp-key { font-weight: 700; }
+@keyframes rp-pulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.05); }
+}

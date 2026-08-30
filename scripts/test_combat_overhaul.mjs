@@ -1,5 +1,4 @@
 // ─────────────────────────────────────────────────────────────
-// Combat overhaul AAA unit checks (node, no browser):
 //   (a) windup: a windup:1 enemy skill declares a `telegraph` (no damage),
 //       then resolves exactly once on the following aiStep.
 //   (b) interrupt: a party bonus action vs a winding foe emits
@@ -8,6 +7,12 @@
 //   (d) elites: createFloor50Roster seeds at least one Champion with
 //       1.5× max HP and +2 AC.
 //   (e) combos: validateCombos over the full skill table reports 0 issues.
+//   (f) party windup: declaring pays the action at declaration; the payout
+//       fires free next turn start (canUse bypass + no double pay).
+//   (g) counter-interrupt: an adjacent sharp foe breaks a party windup
+//       (telegraphCancel, Dazed, reaction spent).
+//   (h) reflex QTE: reactInterrupt with perfect timing auto-succeeds for
+//       free, consumes the interrupter's hasReaction, and refuses repeats.
 // Run with:   node scripts/test_combat_overhaul.mjs
 // ─────────────────────────────────────────────────────────────
 import esbuild from 'esbuild';
@@ -175,6 +180,74 @@ console.log('\n── (e) combo validation ──');
   const all = { ...SKILLS, ...ALL_CLASS_SKILLS };
   const issues = validateCombos(all);
   check('validateCombos reports 0 issues over the full skill table', issues.length === 0, issues.join(' | ') || 'none');
+}
+
+// ══ (f) party windup: pay-at-declaration, free payout ══
+console.log('\n── (f) party windup duel: declaration + payout ──');
+{
+  const c = new Combat(world);
+  const greg = mkUnit({ id: 'greg', name: 'Greg', team: 'party', pos: { x: 5, z: 5 }, hp: 30, maxHp: 30, ac: 10, knownSkills: ['fireball'] });
+  const boss = mkUnit({ id: 'boss', name: 'Baron Gnaw', team: 'enemy', pos: { x: 12, z: 12 }, hp: 25, maxHp: 25, ac: 10, knownSkills: ['tail_sweep'] });
+  c.units = [greg, boss];
+  c.inCombat = true;
+  c.turnOrder = [greg.id, boss.id];
+  c.activeIdx = 0;
+
+  const decl = c.useSkill(greg, 'fireball', { x: 12, z: 12 });
+  check('party declaration emits a telegraph', decl.some((e) => e.type === 'telegraph'));
+  check('declaration pays the action immediately', greg.hasAction === false);
+  check('declaration keeps the bonus action', greg.hasBonus === true);
+  check('cooldown charged at declaration', (greg.cooldowns['fireball'] ?? 0) > 0, `cd=${greg.cooldowns['fireball']}`);
+
+  // round trip: boss turn, then Greg's turn start resolves the payout
+  c.endTurn();
+  const payout = c.endTurn();
+  check('payout fires on the declarer next turn start', payout.some((e) => e.type === 'damage' || e.type === 'actionResult'), 'events=' + payout.map((e) => e.type).join(','));
+  check('payout is a normal resolve (no re-telegraph)', !payout.some((e) => e.type === 'telegraph'));
+  check('the payout IS the turn action', greg.hasAction === false);
+  check('payout did not re-charge the cooldown', (greg.cooldowns['fireball'] ?? 0) === 3, `cd=${greg.cooldowns['fireball']} (expect 3: declared 4, ticked 1 at turn start)`);
+}
+
+// ══ (g) enemy counter-interrupt on a party telegraph ══
+console.log('\n── (g) counter-interrupt ──');
+{
+  const c = new Combat(world);
+  // str 30 (+10) auto-wins the contest; dex 30 passes the reflex gate
+  const foe = mkUnit({ id: 'foe', name: 'Champion Sewer Leech', team: 'enemy', pos: { x: 6, z: 5 }, hp: 20, maxHp: 20, ac: 10, abilities: { str: 30, dex: 30, con: 10, int: 10, wis: 10, cha: 10 } });
+  const greg = mkUnit({ id: 'greg', name: 'Greg', team: 'party', pos: { x: 5, z: 5 }, hp: 30, maxHp: 30, ac: 10, knownSkills: ['fireball'], abilities: { str: 3, dex: 3, con: 10, int: 10, wis: 10, cha: 10 } });
+  c.units = [greg, foe];
+  c.inCombat = true;
+  c.turnOrder = [greg.id, foe.id];
+  c.activeIdx = 0;
+
+  const decl = c.useSkill(greg, 'fireball', foe.id);
+  check('party windup declared with foe adjacent', decl.some((e) => e.type === 'telegraph'));
+  check('adjacent sharp foe breaks the windup', decl.some((e) => e.type === 'telegraphCancel'));
+  check('pending windup cleared by counter-interrupt', greg.pendingSkill === undefined && greg.pendingTarget === undefined);
+  check('declarer is Dazed', greg.conditions.some((x) => x.id === 'dazed'));
+  check('the foe spent its reaction', foe.hasReaction === false);
+}
+
+// ══ (h) reflex QTE: perfect timing auto-succeeds, free ══
+console.log('\n── (h) reflex interrupt (QTE) ──');
+{
+  const c = new Combat(world);
+  const boss = mkUnit({ id: 'boss', name: 'Baron Gnaw', team: 'enemy', pos: { x: 5, z: 5 }, hp: 12, maxHp: 25, knownSkills: ['tail_sweep'], abilities: { str: 1, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } });
+  const greg = mkUnit({ id: 'greg', name: 'Greg', team: 'party', pos: { x: 5, z: 6 }, hp: 30, maxHp: 30, ac: 10, abilities: { str: 1, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } });
+  c.units = [boss, greg];
+  c.inCombat = true;
+  c.turnOrder = [boss.id, greg.id];
+  c.activeIdx = 0;
+
+  c.useSkill(boss, 'tail_sweep', boss.pos);            // wind it up
+  check('reaction candidate picks the adjacent party member', c.reactionCandidate(boss)?.id === 'greg');
+  const evs = c.reactInterrupt(greg, boss, true);      // perfect timing
+  check('perfect reflex emits telegraphCancel', evs.some((e) => e.type === 'telegraphCancel'));
+  check('perfect interrupt costs no bonus action', greg.hasBonus === true);
+  check('the interrupter spent its reaction', greg.hasReaction === false);
+  check('winding foe is Dazed', boss.conditions.some((x) => x.id === 'dazed'));
+  const again = c.reactInterrupt(greg, boss, true);
+  check('a spent reaction cannot react again', again.length === 0);
 }
 
 await rm(OUT_DIR, { recursive: true, force: true });

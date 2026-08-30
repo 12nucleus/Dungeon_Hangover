@@ -52,8 +52,8 @@ export const SKILLS: Record<string, SkillDef> = {
   // ── Wizard ───────────────────────────────────────────────
   fireball: {
     id: 'fireball', name: 'Fireball', icon: '🔥', kind: 'aoe',
-    desc: 'Hurl a bead of flame that explodes: 6d6 fire in a 2-tile blast. DEX save DC 14 for half.',
-    range: 9, aoeRadius: 2, cost: 'action', cooldown: 3,
+    desc: 'Hurl a bead of flame that explodes: 6d6 fire in a 2-tile blast. DEX save DC 14 for half. Takes a turn to charge — adjacent foes can interrupt it.',
+    range: 9, aoeRadius: 2, cost: 'action', cooldown: 3, windup: 1,
     attackAbility: 'int', damageDice: '6d6', damageType: 'fire',
     saveAbility: 'dex', saveDC: 14, projectile: true,
     fxColor: 0xff7a1f, fx: 'fire',
@@ -101,15 +101,15 @@ export const SKILLS: Record<string, SkillDef> = {
   // ── Skill-tree unlockables ────────────────────────────────
   power_strike: {
     id: 'power_strike', name: 'Power Strike', icon: '💥', kind: 'melee',
-    desc: 'A crushing overhead blow. 3d6+3 slashing. (CD 2)',
-    range: 1, aoeRadius: 0, cost: 'action', cooldown: 2,
+    desc: 'A crushing overhead blow. 3d6+3 slashing. Takes a turn to charge — adjacent foes can interrupt it. (CD 2)',
+    range: 1, aoeRadius: 0, cost: 'action', cooldown: 2, windup: 1,
     attackAbility: 'str', damageDice: '3d6+3', damageType: 'slashing',
     fxColor: 0xffb054, fx: 'slash',
   },
   whirlwind: {
     id: 'whirlwind', name: 'Whirlwind', icon: '🌪️', kind: 'aoe',
-    desc: 'Spin your weapon in a full circle: 2d6+3 slashing to ALL adjacent enemies. (CD 3)',
-    range: 0, aoeRadius: 1, cost: 'action', cooldown: 3,
+    desc: 'Spin your weapon in a full circle: 2d6+3 slashing to ALL adjacent enemies. Takes a turn to charge — adjacent foes can interrupt it. (CD 3)',
+    range: 0, aoeRadius: 1, cost: 'action', cooldown: 3, windup: 1,
     attackAbility: 'str', damageDice: '2d6+3', damageType: 'slashing',
     fxColor: 0xffb054, fx: 'slash', selfCentered: true,
   },

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameEngine } from '@/game/engine';
-import type { UISnapshot, Unit } from '@/game/types';
+import type { ReactionWindow, UISnapshot, Unit } from '@/game/types';
 import { CONDITIONS, SKILLS } from '@/game/skills';
 import { ALL_CLASS_SKILLS } from '@/game/classSkills';
 import { effMaxHp, xpProgress } from '@/game/stats';
@@ -31,6 +31,31 @@ function Portrait({ u, size = 44, active = false }: { u: Unit; size?: number; ac
         </span>
       </div>
       <div className="portrait-hp"><i style={{ width: `${pct * 100}%`, background: pct > 0.5 ? '#4ade80' : pct > 0.25 ? '#facc15' : '#ef4444' }} /></div>
+    </div>
+  );
+}
+
+/** AAA reflex-QTE prompt — a winding foe offers an adjacent party member a
+ *  real-time beat to smash the windup with E. Ticks its own countdown bar;
+ *  gold = perfect timing (auto-success), red = still possible (STR contest). */
+function ReactionPrompt({ reaction, engine }: { reaction: ReactionWindow; engine: GameEngine }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => {
+      if (performance.now() > reaction.deadline) engine.clearReaction();
+      else tick((t) => t + 1);
+    }, 50);
+    return () => clearInterval(iv);
+  }, [reaction, engine]);
+  const now = performance.now();
+  if (now > reaction.deadline) return null;
+  const frac = (reaction.deadline - now) / Math.max(1, reaction.deadline - reaction.declaredAt);
+  const perfect = now <= reaction.perfectUntil;
+  return (
+    <div className={`reaction-prompt ${perfect ? 'perfect' : ''}`} onClick={() => engine.tryReaction()}>
+      <span className="rp-label">⚡ {reaction.skillName} — {reaction.targetName}</span>
+      <div className="rp-bar"><i style={{ width: `${Math.max(0, frac) * 100}%` }} /></div>
+      <span className="rp-key">[E] Interrupt{perfect ? ' · PERFECT' : ''}</span>
     </div>
   );
 }
@@ -708,6 +733,10 @@ export function HUD({ snap, engine }: Props) {
           })}
         </div>
       )}
+      {snap.reaction && engine && phase !== 'menu' && (
+        <ReactionPrompt reaction={snap.reaction} engine={engine} />
+      )}
+
       {phase !== 'menu' && (
         <div className="bottom-bar">
           {/* torch indicator — the torch never burns out; T equips/stows it */}

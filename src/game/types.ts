@@ -307,6 +307,18 @@ export interface Unit {
 export type LogKind = 'info' | 'hit' | 'miss' | 'crit' | 'heal' | 'death' | 'system' | 'roll';
 export interface LogEntry { id: number; text: string; kind: LogKind; }
 
+/** live reflex-interrupt window (real-time QTE): a winding foe offers an
+ *  adjacent, reaction-ready party member a beat to smash the windup */
+export type ReactionWindow = {
+  interrupterId: string;
+  targetId: string;
+  targetName: string;
+  skillName: string;
+  declaredAt: number;
+  deadline: number;
+  perfectUntil: number;
+};
+
 /** Snapshot pushed to the React HUD whenever anything changes. */
 export interface UISnapshot {
   phase: GamePhase;
@@ -315,6 +327,8 @@ export interface UISnapshot {
   floorName?: string;
   units: Unit[];
   activeId: string | null;
+  /** live reflex QTE — non-null while a reaction window is open */
+  reaction?: ReactionWindow | null;
   turnOrder: string[];
   selectedSkill: string | null;
   targeting: boolean;

@@ -147,7 +147,9 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   if (k === 'q' && !cutscene && !engine.firstPerson) engine.iso.rotate(1);
   // E rotates the camera EXCEPT when an interact prompt is live — then it
   // interacts (ARPG muscle memory: E = use). R keeps working everywhere.
+  // Highest priority: a live reflex-QTE window — E smashes the windup.
   if (k === 'e' && !cutscene && !engine.firstPerson) {
+    if (engine.reaction) { engine.tryReaction(); return; }
     if (engine.activeInteractable && !engine.isOverlayOpen()
       && engine.phase === 'explore' && !engine.combat.inCombat) engine.triggerActiveInteractable();
     else engine.iso.rotate(-1);

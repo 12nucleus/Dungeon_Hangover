@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 import * as THREE from 'three';
 import { Combat } from '../combat';
-import { CONDITIONS } from '../skills';
+import { CONDITIONS, SKILLS } from '../skills';
 import { rollDice } from '../dice';
 import { FX } from '../particles';
 import { makeItem, rollLootTable } from '../items';
@@ -182,6 +182,25 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (caster) {
         engine.iso.focus?.(unitWorld(engine, caster.pos));
         FX.charge(engine.particles, unitWorld(engine, caster.pos).clone().add(new THREE.Vector3(0, 0.7, 0)), 0xff5a1f);
+        // AAA reflex QTE: the sharpest reaction-ready party member adjacent to
+        // the winding foe gets a real-time window to smash the charge (E).
+        if (caster.team === 'enemy' && caster.alive) {
+          const cand = engine.combat?.reactionCandidate(caster);
+          if (cand) {
+            const now = performance.now();
+            const windowMs = Math.min(3500, Math.max(1200, 900 + 40 * cand.abilities.dex));
+            engine.reaction = {
+              interrupterId: cand.id,
+              targetId: caster.id,
+              targetName: caster.name,
+              skillName: SKILLS[ev.skillId]?.name ?? 'Attack',
+              declaredAt: now,
+              deadline: now + windowMs,
+              perfectUntil: now + Math.max(300, windowMs * 0.3),
+            };
+            engine.emitSnapshot();
+          }
+        }
       }
       engine.audio.play('whoosh_soft', 0.9);
       await delay(140);
@@ -192,6 +211,7 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (foe) FX.scareFlash(engine.particles, unitWorld(engine, foe.pos).clone().add(new THREE.Vector3(0, 0.8, 0)));
       clearDanger(engine);
       engine.threat = null;
+      engine.clearReaction();
       engine.addPopup('INTERRUPTED', 'popup-hit');
       await delay(140);
       break;
@@ -199,6 +219,8 @@ export async function animate(engine: any, ev: CombatEvent) {
     case 'death': {
       const v = engine.visuals.get(ev.unitId);
       const slain = engine.byId(ev.unitId);
+      // a winding unit that dies takes its reaction prompt with it
+      if (engine.reaction?.targetId === ev.unitId) engine.clearReaction();
       // kill slow-mo + kill cam — non-boss, non-trivial kills only (setAnimScale
       // treats the value as a duration multiplier, so >1 = slow-mo).
       if (slain && !slain.bossGroup && slain.xpValue >= 10) {
@@ -315,12 +337,15 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (u) {
         engine.iso.focus(unitWorld(engine, u.pos));
         clearHighlights(engine);
-        // keep a live telegraph's threat tiles painted across the round; once
-        // the winding unit has resolved (pendingSkill cleared) let them fade.
         if (engine.threat) {
           const threatUnit = engine.byId(engine.threat.unitId);
-          if (threatUnit?.pendingSkill) paint(engine, engine.threat.tiles, 'danger');
-          else engine.threat = null;
+          const stillCharging = !!threatUnit?.pendingSkill;
+          if (stillCharging) paint(engine, engine.threat.tiles, 'danger');
+          else {
+            // the charge resolved at its owner's turn start — window closes
+            if (engine.reaction?.targetId === engine.threat.unitId) engine.clearReaction();
+            engine.threat = null;
+          }
         }
         // 3-phase combat: flash a big banner whenever the rotation crosses
         // from one team's phase to the other (party → enemy → party …).
@@ -379,6 +404,7 @@ export async function animate(engine: any, ev: CombatEvent) {
         break;
       }
       engine.phase = ev.phase;
+      engine.clearReaction();
       if (ev.phase === 'defeat') {
         engine.runStats.deaths += 1;
         // TPK juice: vignette + a random narrator line (once per defeat)
