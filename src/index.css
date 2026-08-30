@@ -467,6 +467,7 @@ button:focus-visible, [tabindex]:focus-visible {
 .bottom-bar {
   position: absolute; left: 0; right: 0; bottom: 0;
   display: flex; align-items: flex-end; justify-content: space-between;
+  flex-wrap: wrap; row-gap: 6px;
   padding: 10px 14px; gap: 12px;
   /* darken layer removed — the bottom of the canvas stays clear so the
      hover tooltip and action text over it remain legible */
@@ -517,22 +518,22 @@ button:focus-visible, [tabindex]:focus-visible {
 
 /* BG3-style bottom hotbar */
 .hotbar-bg3 {
-  display: flex; gap: 5px; align-items: center; pointer-events: auto;
+  display: flex; gap: 4px; align-items: center; pointer-events: auto;
   background:
     radial-gradient(130% 220% at 50% -70%, rgba(201, 162, 39, 0.09), transparent 60%),
     linear-gradient(180deg, rgba(19, 22, 34, 0.95), rgba(9, 11, 17, 0.93));
-  border: 1px solid var(--gold-lo); border-radius: 13px; padding: 8px 10px;
+  border: 1px solid var(--gold-lo); border-radius: 13px; padding: 6px 8px;
   box-shadow: inset 0 0 0 1px #04050a, inset 0 1px 0 rgba(232, 196, 102, 0.12), 0 8px 28px rgba(0,0,0,0.6);
 }
-.hotbar-defaults { display: flex; gap: 5px; align-items: center; }
-.hotbar-divider { width: 1px; height: 42px; background: linear-gradient(180deg, transparent, var(--gold-dim), transparent); margin: 0 7px; }
-.hotbar-skills { display: flex; gap: 5px; align-items: center; }
+.hotbar-defaults { display: flex; gap: 4px; align-items: center; }
+.hotbar-divider { width: 1px; height: calc(var(--hb) * 0.78); background: linear-gradient(180deg, transparent, var(--gold-dim), transparent); margin: 0 5px; }
+.hotbar-skills { display: flex; gap: 4px; align-items: center; }
 
 /* usable item bar — a dedicated row above the skill bar (drink / eat / use),
    reachable any time in or out of combat */
-.hotbar-stack { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.hotbar-stack { display: flex; flex-direction: column; align-items: center; gap: 4px; --hb: clamp(30px, 2.9vw, 44px); }
 .item-bar {
-  display: flex; gap: 6px; align-items: center; padding: 4px 10px;
+  display: flex; gap: 5px; align-items: center; padding: 3px 8px;
   background: linear-gradient(180deg, rgba(24, 32, 44, 0.94), rgba(14, 18, 28, 0.92));
   border: 1px solid var(--edge-hi); border-radius: 11px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.4);
@@ -542,7 +543,7 @@ button:focus-visible, [tabindex]:focus-visible {
   user-select: none; padding-right: 4px;
 }
 .item-bar-label.on { color: #7dd3fc; text-shadow: 0 0 8px rgba(125, 211, 252, 0.6); }
-.item-bar-slots { display: flex; gap: 6px; align-items: center; }
+.item-bar-slots { display: flex; gap: 5px; align-items: center; }
 .item-slot { position: relative; }
 .item-count {
   position: absolute; bottom: 1px; left: 3px; min-width: 14px; height: 14px;
@@ -575,9 +576,9 @@ button:focus-visible, [tabindex]:focus-visible {
 .item-pin-state { font-size: 11px; width: 14px; text-align: center; }
 .item-bar-pop-empty { padding: 8px; font-size: 11px; color: var(--parchment-dim); }
 .item-use {
-  position: relative; width: 44px; height: 44px; cursor: pointer;
+  position: relative; width: calc(var(--hb) * 0.84); height: calc(var(--hb) * 0.84); cursor: pointer;
   background: linear-gradient(180deg, var(--stone-hi), var(--stone-lo) 70%, #11141d);
-  border: 1px solid var(--edge-hi); border-radius: 9px; font-size: 22px; color: var(--text);
+  border: 1px solid var(--edge-hi); border-radius: 8px; font-size: calc(var(--hb) * 0.5); color: var(--text);
 }
 .item-use:hover { transform: translateY(-2px); border-color: var(--gold); box-shadow: 0 0 12px rgba(201, 162, 39, 0.4); }
 .item-use.disabled { opacity: 0.38; cursor: not-allowed; }
@@ -595,17 +596,17 @@ button:focus-visible, [tabindex]:focus-visible {
 /* the equipped-weapon label under the basic-attack button */
 .skill-btn .weapon-label {
   position: absolute; left: 50%; bottom: -12px; transform: translateX(-50%);
-  font-size: 8.5px; line-height: 1; color: var(--parchment-dim); background: rgba(5, 6, 11, 0.85);
-  border: 1px solid var(--edge); border-radius: 4px; padding: 2px 5px; white-space: nowrap;
-  max-width: 150px; overflow: hidden; text-overflow: ellipsis;
+  font-size: 8px; line-height: 1; color: var(--parchment-dim); background: rgba(5, 6, 11, 0.85);
+  border: 1px solid var(--edge); border-radius: 4px; padding: 2px 4px; white-space: nowrap;
+  max-width: 110px; overflow: hidden; text-overflow: ellipsis;
 }
 .skill-btn.default.backstab { border-color: var(--gold-hi); box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 0 12px rgba(201, 162, 39, 0.6); }
 
 /* beveled stone/gold hotbar slot */
 .skill-btn {
-  position: relative; width: 52px; height: 52px; cursor: pointer;
+  position: relative; width: var(--hb); height: var(--hb); cursor: pointer;
   background: linear-gradient(180deg, var(--stone-hi), var(--stone-lo) 70%, #11141d);
-  border: 1px solid var(--edge-hi); border-radius: 9px; font-size: 24px;
+  border: 1px solid var(--edge-hi); border-radius: 8px; font-size: calc(var(--hb) * 0.5);
   display: flex; align-items: center; justify-content: center; color: var(--text);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
@@ -622,21 +623,21 @@ button:focus-visible, [tabindex]:focus-visible {
 .skill-btn.default { border-color: #6a6250; }
 .skill-btn.default.on { border-color: var(--gold); box-shadow: 0 0 12px rgba(201, 162, 39, 0.5); }
 .skill-key {
-  position: absolute; top: 2px; left: 4px; font-size: 9px; color: var(--parchment-dim);
+  position: absolute; top: 1px; left: 3px; font-size: 8px; color: var(--parchment-dim);
   font-family: var(--font-display); letter-spacing: 0.5px; text-shadow: 0 1px 2px #000;
 }
-.skill-cost { position: absolute; bottom: 1px; right: 4px; font-size: 9px; color: #f0b060; font-weight: 800; }
+.skill-cost { position: absolute; bottom: 1px; right: 3px; font-size: 8px; color: #f0b060; font-weight: 800; }
 .skill-cd {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  background: rgba(5, 6, 11, 0.78); border-radius: 9px; color: var(--gold-hi); font-size: 20px; font-weight: 800;
+  background: rgba(5, 6, 11, 0.78); border-radius: 8px; color: var(--gold-hi); font-size: calc(var(--hb) * 0.45); font-weight: 800;
 }
 
 /* end-turn + turn-phase ring */
 .end-turn {
-  font-family: var(--font-display); cursor: pointer; margin-left: 7px;
+  font-family: var(--font-display); cursor: pointer; margin-left: 5px;
   background: linear-gradient(180deg, #6e1f1f, #471313 70%, #340d0d); color: #ffd9b0;
-  border: 1px solid #a05030; border-radius: 9px; padding: 8px 13px;
-  font-size: 12px; font-weight: 800; letter-spacing: 1px; line-height: 1.3;
+  border: 1px solid #a05030; border-radius: 8px; padding: 6px 10px;
+  font-size: 11px; font-weight: 800; letter-spacing: 1px; line-height: 1.3;
   box-shadow: inset 0 1px 0 rgba(255, 180, 140, 0.2), inset 0 -3px 6px rgba(0,0,0,0.5);
   transition: transform var(--t-fast), box-shadow var(--t-fast);
 }
@@ -648,8 +649,8 @@ button:focus-visible, [tabindex]:focus-visible {
 .hotbar-stack.enemy-phase .hotbar-bg3,
 .hotbar-stack.enemy-phase .item-bar { opacity: 0.55; filter: saturate(0.55); transition: opacity var(--t-fast), filter var(--t-fast); }
 .turn-mode {
-  font-family: inherit; font-size: 15px; cursor: pointer;
-  width: 38px; height: 38px; border-radius: 9px;
+  font-family: inherit; font-size: 13px; cursor: pointer;
+  width: calc(var(--hb) * 0.78); height: calc(var(--hb) * 0.78); border-radius: 8px;
   background: linear-gradient(180deg, var(--stone-hi), var(--stone-lo));
   border: 1px solid var(--edge-hi); color: var(--text-dim);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -2px 5px rgba(0,0,0,0.55);
@@ -664,9 +665,9 @@ button:focus-visible, [tabindex]:focus-visible {
 
 /* 3-phase combat: persistent "what can I do right now" chip */
 .combat-phase-chip {
-  align-self: center; font-size: 13.5px; font-weight: 700; letter-spacing: 0.3px;
-  border-radius: 9px; padding: 8px 16px; white-space: nowrap;
-  pointer-events: none; max-width: 460px; text-align: center; margin-bottom: 8px;
+  align-self: center; font-size: 12px; font-weight: 700; letter-spacing: 0.3px;
+  border-radius: 9px; padding: 6px 10px; white-space: nowrap;
+  pointer-events: none; max-width: 320px; text-align: center; margin-bottom: 8px;
   box-shadow: inset 0 0 0 1px #04050a, 0 6px 18px rgba(0,0,0,0.55);
   animation: chip-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
@@ -684,9 +685,9 @@ button:focus-visible, [tabindex]:focus-visible {
 }
 @keyframes enemy-pulse { 0%, 100% { box-shadow: inset 0 0 0 1px #04050a, 0 0 0 0 rgba(255, 110, 60, 0); } 50% { box-shadow: inset 0 0 0 1px #04050a, 0 0 18px rgba(255, 110, 60, 0.35); } }
 /* action economy strip — MOVE / ACTION / BONUS pips with spent states */
-.action-economy { display: inline-flex; align-items: center; gap: 14px; }
-.eco { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 7px;
-       border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.25); font-size: 12.5px; }
+.action-economy { display: inline-flex; align-items: center; gap: 8px; }
+.eco { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 7px;
+       border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.25); font-size: 11px; }
 .eco-on  { color: #e8ffd6; border-color: rgba(150, 220, 110, 0.55); box-shadow: inset 0 0 8px rgba(140, 220, 90, 0.15); }
 .eco-spent { color: #7a8a70; opacity: 0.55; text-decoration: line-through; border-color: rgba(255,255,255,0.07); }
 .eco-hint { font-weight: 400; opacity: 0.75; }
