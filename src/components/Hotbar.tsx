@@ -75,6 +75,59 @@ export function Hotbar({ snap, engine }: Props) {
 
   return (
     <div className={`hotbar-stack ${enemyTurn ? 'enemy-phase' : ''}`}>
+      {/* green helper strip — MOVE / ACTION / BONUS with the CURRENT phase highlighted;
+          the pips double as phase selectors (replaces the old turn-ring buttons) */}
+      {phase === 'combat' && (
+        <div className={`combat-phase-chip ${active.team === 'party' ? 'party' : 'enemy'}`}>
+          {active.team !== 'party' ? (
+            <>🐀 ENEMY PHASE — {active.name ?? 'the enemy'} is acting…</>
+          ) : (
+            <span className="action-economy">
+              <button
+                className={`eco ${snap.turnMode === 'walk' ? 'eco-cur' : ''} ${active.movementLeft > 0 ? 'eco-on' : 'eco-spent'}`}
+                onClick={() => !enemyTurn && engine.setTurnMode('walk')}
+                title="🚶 Movement — click a tile to walk. Free-flow: move any time you have steps left.">
+                🚶 MOVE {active.movementLeft}
+              </button>
+              <button
+                className={`eco ${snap.turnMode === 'action' ? 'eco-cur' : ''} ${active.hasAction ? 'eco-on' : 'eco-spent'}`}
+                onClick={() => !enemyTurn && engine.setTurnMode('action')}
+                title="⚔️ Attack — click an enemy to swing your weapon (free, once per turn).">
+                ⚔ ACTION
+              </button>
+              <button
+                className={`eco ${snap.turnMode === 'bonus' ? 'eco-cur' : ''} ${active.hasBonus ? 'eco-on' : 'eco-spent'}`}
+                onClick={() => !enemyTurn && engine.setTurnMode('bonus')}
+                title="🔸 Skills — arm a skill, then click a target">
+                🔸 BONUS
+              </button>
+              <button
+                className={`turn-mode defend ${active.conditions.some((c) => c.id === 'defending') ? 'on' : ''}`}
+                onClick={() => !enemyTurn && engine.defaultAction('defend')}
+                title="Defensive posture — +1 AC until your next turn (free)">
+                🛡️
+              </button>
+              {hasCompanion && (
+                <button
+                  className={`turn-mode companion-mode ${companionAuto ? 'on' : ''}`}
+                  onClick={() => !enemyTurn && engine.toggleCompanionAuto()}
+                  title={companionAuto ? '🤖 Companions act automatically — click for MANUAL command' : '🎮 Manual command — companions wait for your orders'}>
+                  {companionAuto ? '🤖' : '🎮'}
+                </button>
+              )}
+              {(active as any).legendaryActions !== undefined && (active as any).bossGroup && (
+                <span className="legendary-badge" title={`Legendary actions: ${(active as any).legendaryActions} remaining this round`}>👑 {(active as any).legendaryActions}</span>
+              )}
+              {(active.movementLeft <= 0 && !active.hasAction && !active.hasBonus)
+                ? <b className="eco-done">✅ DONE</b>
+                : <span className="eco-hint">· Space = end turn</span>}
+              <button className={`end-turn ${enemyTurn ? 'disabled' : ''}`} onClick={() => !enemyTurn && engine.endTurn()} title="End turn [Space]">
+                END TURN
+              </button>
+            </span>
+          )}
+        </div>
+      )}
       {/* usable item bar — above the skill bar, usable any time */}
       {barKeys.length > 0 && (
         <div className={`item-bar ${phase === 'combat' ? '' : 'idle'}`}>
@@ -210,55 +263,6 @@ export function Hotbar({ snap, engine }: Props) {
         })}
       </div>
 
-      {/* combat extras — BG3-style phase ring + end turn (locked during the enemy phase).
-          Free-flow combat: the ring is an INDICATOR + quick-switch, not a gate —
-          clicks already attempt the natural action regardless of phase. */}
-      {phase === 'combat' && (
-        <div className={`turn-ring ${enemyTurn ? 'locked' : ''}`}>
-          <button
-            className={`turn-mode ${snap.turnMode === 'walk' ? 'on' : ''}`}
-            onClick={() => !enemyTurn && engine.setTurnMode('walk')}
-            title="🚶 Movement — click a tile to walk. Free-flow: you can move any time you have steps left.">
-            🚶
-          </button>
-          <button
-            className={`turn-mode ${snap.turnMode === 'action' ? 'on' : ''}`}
-            onClick={() => !enemyTurn && engine.setTurnMode('action')}
-            title="⚔️ Attack — click an enemy to swing your weapon (free, once per turn).">
-            ⚔️
-          </button>
-          <button
-            className={`turn-mode ${snap.turnMode === 'bonus' ? 'on' : ''}`}
-            onClick={() => !enemyTurn && engine.setTurnMode('bonus')}
-            title="🔸 Skills — arm a skill, then click a target. Free-flow: act in any order.">
-            🔸
-          </button>
-          <button className="turn-mode skip" onClick={() => !enemyTurn && engine.skipPhase()} title="⏭ Advance the phase ring (walk → attack → skills → end turn) — or just click to act">
-            ⏭
-          </button>
-          <button
-            className={`turn-mode defend ${active.conditions.some((c) => c.id === 'defending') ? 'on' : ''}`}
-            onClick={() => !enemyTurn && engine.defaultAction('defend')}
-            title="Defensive posture — +1 AC until your next turn (free)">
-            🛡️
-          </button>
-          {(active as any).legendaryActions !== undefined && (active as any).bossGroup && (
-            <span className="legendary-badge" title={`Legendary actions: ${(active as any).legendaryActions} remaining this round`}>👑 {(active as any).legendaryActions}</span>
-          )}
-          {hasCompanion && (
-            <button
-              className={`turn-mode companion-mode ${companionAuto ? 'on' : ''}`}
-              onClick={() => engine.toggleCompanionAuto()}
-              title={companionAuto ? '🤖 Companions act automatically — click for MANUAL command' : '🎮 Manual command — companions wait for your orders'}
-            >
-              {companionAuto ? '🤖' : '🎮'}
-            </button>
-          )}
-          <button className={`end-turn ${enemyTurn ? 'disabled' : ''}`} onClick={() => !enemyTurn && engine.endTurn()} title="End turn [Space]">
-            END<br />TURN
-          </button>
-        </div>
-      )}
       </div>
     </div>
   );

@@ -642,9 +642,7 @@ button:focus-visible, [tabindex]:focus-visible {
   transition: transform var(--t-fast), box-shadow var(--t-fast);
 }
 .end-turn:hover { transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255,180,140,0.2), 0 0 18px rgba(220, 80, 50, 0.45); }
-.turn-ring { display: flex; align-items: center; gap: 5px; margin-left: 9px; transition: opacity var(--t-fast); }
 /* enemy phase: the whole bar dims and refuses input */
-.turn-ring.locked { opacity: 0.45; pointer-events: none; }
 .end-turn.disabled { opacity: 0.45; pointer-events: none; }
 .hotbar-stack.enemy-phase .hotbar-bg3,
 .hotbar-stack.enemy-phase .item-bar { opacity: 0.55; filter: saturate(0.55); transition: opacity var(--t-fast), filter var(--t-fast); }
@@ -666,8 +664,8 @@ button:focus-visible, [tabindex]:focus-visible {
 /* 3-phase combat: persistent "what can I do right now" chip */
 .combat-phase-chip {
   align-self: center; font-size: 12px; font-weight: 700; letter-spacing: 0.3px;
-  border-radius: 9px; padding: 6px 10px; white-space: nowrap;
-  pointer-events: none; max-width: 320px; text-align: center; margin-bottom: 8px;
+  border-radius: 9px; padding: 5px 10px; white-space: nowrap;
+  pointer-events: auto; text-align: center;
   box-shadow: inset 0 0 0 1px #04050a, 0 6px 18px rgba(0,0,0,0.55);
   animation: chip-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
@@ -690,6 +688,11 @@ button:focus-visible, [tabindex]:focus-visible {
        border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.25); font-size: 11px; }
 .eco-on  { color: #e8ffd6; border-color: rgba(150, 220, 110, 0.55); box-shadow: inset 0 0 8px rgba(140, 220, 90, 0.15); }
 .eco-spent { color: #7a8a70; opacity: 0.55; text-decoration: line-through; border-color: rgba(255,255,255,0.07); }
+.combat-phase-chip .eco { cursor: pointer; font-family: inherit; color: inherit; }
+.combat-phase-chip .eco:hover { border-color: var(--gold); }
+/* current phase pip — gold-filled, unmistakable */
+.eco-cur { color: #171307 !important; background: linear-gradient(180deg, #ffd76b, #c9a227) !important; border-color: #ffe89a !important; opacity: 1 !important; text-decoration: none !important; box-shadow: 0 0 12px rgba(232,196,102,0.55); }
+.legendary-badge { font-size: 11px; font-weight: 800; color: var(--gold-hi); padding: 2px 8px; border-radius: 7px; border: 1px solid var(--gold-dim); background: rgba(201, 162, 39, 0.14); }
 .eco-hint { font-weight: 400; opacity: 0.75; }
 .eco-done {
   color: #fff3c2; animation: eco-done-glow 1.4s ease-in-out infinite;

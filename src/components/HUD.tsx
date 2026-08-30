@@ -720,23 +720,6 @@ export function HUD({ snap, engine }: Props) {
 
           {/* BG3-style bottom hotbar (default actions + 12 skill slots) */}
           {phase !== 'creation' && phase !== 'victory' && phase !== 'defeat' && party.length > 0 && <Hotbar snap={snap} engine={engine!} />}
-          {/* persistent phase chip — what you can do RIGHT NOW */}
-          {phase === 'combat' && activeUnit && (
-            <div className={`combat-phase-chip ${activeUnit.team === 'party' ? 'party' : 'enemy'}`}>
-              {activeUnit.team === 'party' ? (
-                <span className="action-economy" title="What you can still do this turn">
-                  <span className={activeUnit.movementLeft > 0 ? 'eco eco-on' : 'eco eco-spent'}>🚶 MOVE {activeUnit.movementLeft}</span>
-                  <span className={activeUnit.hasAction ? 'eco eco-on' : 'eco eco-spent'}>⚔ ACTION</span>
-                  <span className={activeUnit.hasBonus ? 'eco eco-on' : 'eco eco-spent'}>🔸 BONUS</span>
-                  {(activeUnit.movementLeft <= 0 && !activeUnit.hasAction && !activeUnit.hasBonus)
-                    ? <b className="eco-done">✅ DONE — Space ends the turn</b>
-                    : <span className="eco-hint">· Space = end turn</span>}
-                </span>
-              ) : (
-                <>🐀 ENEMY PHASE — {activeUnit.name ?? 'the enemy'} is acting…</>
-              )}
-            </div>
-          )}
 
           {/* right controls */}
           <div className="hud-right">
