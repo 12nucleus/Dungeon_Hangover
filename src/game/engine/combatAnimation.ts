@@ -14,10 +14,11 @@ import type { GridPos, CombatEvent, SkillDef, Unit } from '../types';
 import type { Item } from '../items';
 import { unitWorld } from './visuals';
 import { presentationForSkill } from '../skillRuntime';
-import { clearHighlights, showMoveTiles } from './targeting';
+import { clearHighlights, clearDanger, paint, showMoveTiles } from './targeting';
 import { grantKey } from './dungeonSetup';
 import { offerLoot } from './loot';
 import { GRIBNAB_BARKS, BARON_BARKS, EASTER_EGG_LINES, MAIN_QUEST_F50 } from '../../levels/floor50Text';
+import { KILL_LINES, NEAR_DEATH_LINES, CRIT_PRAISE_LINES, FUMBLE_JUDGE_LINES, maybe, pickIndexed } from './combatNarration';
 
 // art-designer contract: particles.ts gains FX.critBurst(ps, p). Guarded cast
 // keeps the build green before the helper lands (no-op until then).
@@ -78,7 +79,7 @@ export async function animate(engine: any, ev: CombatEvent) {
           FX.slash(engine.particles, wp);
           FX.blood(engine.particles, wp);
           engine.audio.hitImpact(ev.kind);
-          engine.iso.shake = Math.max(engine.iso.shake, 0.14);
+          engine.iso.shake = Math.max(engine.iso.shake, Math.min(0.6, 0.08 * ev.amount));
           await delay(45);
         }
       }
@@ -100,6 +101,13 @@ export async function animate(engine: any, ev: CombatEvent) {
       await delay(90);
       // Gribnab parley + boss HP-threshold barks (first crossing, once per fight)
       engine.maybeParley?.(ev.unitId);
+      // near-death narrator beat — once per fight, on the party side only
+      const hurt = engine.byId(ev.unitId);
+      if (hurt?.team === 'party' && hurt.alive && !engine.nearDeathNarrated
+        && hurt.hp / Math.max(1, hurt.maxHp) < 0.25) {
+        engine.nearDeathNarrated = true;
+        void engine.narrate('f50_near_death_1', pickIndexed(NEAR_DEATH_LINES).text, 3200);
+      }
       barkOnHpThreshold(engine, ev.unitId);
       break;
     }
@@ -114,6 +122,21 @@ export async function animate(engine: any, ev: CombatEvent) {
       // strike; crits get the sting and a longer hold so the read lands
       engine.showActionBanner?.('result', ev.text, ev.sub, `result ${ev.outcome}`);
       engine.emitSnapshot?.();
+      // narrator verdicts — party crits get praise, party fumbles get judged
+      if (ev.outcome === 'crit' || ev.outcome === 'miss') {
+        const caster = engine.byId(ev.unitId);
+        if (caster?.team === 'party') {
+          const now = performance.now();
+          if (ev.outcome === 'crit' && maybe(0.4, engine.lastKillNarrAt ?? 0, now)) {
+            engine.lastKillNarrAt = now;
+            void engine.narrate('f50_crit_1', pickIndexed(CRIT_PRAISE_LINES).text, 3200);
+          } else if (ev.outcome === 'miss' && (ev.sub ? parseInt(ev.sub, 10) === 1 : false)
+            && maybe(0.3, engine.lastKillNarrAt ?? 0, now)) {
+            engine.lastKillNarrAt = now;
+            void engine.narrate('f50_fumble_1', pickIndexed(FUMBLE_JUDGE_LINES).text, 3200);
+          }
+        }
+      }
       if (ev.outcome === 'crit') { engine.audio.critHit(); await delay(560); }
       else if (ev.outcome === 'miss') { engine.addPopup('MISS!', 'popup-miss'); await delay(420); }
       else if (ev.outcome === 'save-fail') { engine.addPopup('SAVE FAILED', 'popup-fail'); await delay(420); }
@@ -150,9 +173,50 @@ export async function animate(engine: any, ev: CombatEvent) {
       break;
     }
     case 'float': spawnFloater(engine, ev.unitId, ev.text, ev.cls); await delay(60); break;
+    case 'telegraph': {
+      // a foe is winding up a telegraphed attack: charge VFX + whoosh + camera
+      // lean to the caster, and the threatened tiles glow a persistent orange.
+      engine.threat = { unitId: ev.unitId, tiles: ev.tiles };
+      paint(engine, ev.tiles, 'danger');
+      const caster = engine.byId(ev.unitId);
+      if (caster) {
+        engine.iso.focus?.(unitWorld(engine, caster.pos));
+        FX.charge(engine.particles, unitWorld(engine, caster.pos).clone().add(new THREE.Vector3(0, 0.7, 0)), 0xff5a1f);
+      }
+      engine.audio.play('whoosh_soft', 0.9);
+      await delay(140);
+      break;
+    }
+    case 'telegraphCancel': {
+      const foe = engine.byId(ev.unitId);
+      if (foe) FX.scareFlash(engine.particles, unitWorld(engine, foe.pos).clone().add(new THREE.Vector3(0, 0.8, 0)));
+      clearDanger(engine);
+      engine.threat = null;
+      engine.addPopup('INTERRUPTED', 'popup-hit');
+      await delay(140);
+      break;
+    }
     case 'death': {
       const v = engine.visuals.get(ev.unitId);
       const slain = engine.byId(ev.unitId);
+      // kill slow-mo + kill cam — non-boss, non-trivial kills only (setAnimScale
+      // treats the value as a duration multiplier, so >1 = slow-mo).
+      if (slain && !slain.bossGroup && slain.xpValue >= 10) {
+        setAnimScale(2.5);
+        engine.iso.focus?.(unitWorld(engine, slain.pos));
+        engine.iso.shake = Math.max(engine.iso.shake ?? 0, 0.3);
+        await delay(90);
+        setAnimScale(1);
+      }
+      // narrator kill line — occasional, enemy kills only (throttled)
+      if (slain?.team === 'enemy') {
+        const now = performance.now();
+        if (maybe(0.15, engine.lastKillNarrAt ?? 0, now)) {
+          engine.lastKillNarrAt = now;
+          const { n, text } = pickIndexed(KILL_LINES);
+          void engine.narrate(`f50_kill_${n}`, text, 3200);
+        }
+      }
       if (v) {
         v.rig.anim.mode = 'dead'; v.rig.anim.t = 0;
         if (slain?.unconscious) {
@@ -251,6 +315,13 @@ export async function animate(engine: any, ev: CombatEvent) {
       if (u) {
         engine.iso.focus(unitWorld(engine, u.pos));
         clearHighlights(engine);
+        // keep a live telegraph's threat tiles painted across the round; once
+        // the winding unit has resolved (pendingSkill cleared) let them fade.
+        if (engine.threat) {
+          const threatUnit = engine.byId(engine.threat.unitId);
+          if (threatUnit?.pendingSkill) paint(engine, engine.threat.tiles, 'danger');
+          else engine.threat = null;
+        }
         // 3-phase combat: flash a big banner whenever the rotation crosses
         // from one team's phase to the other (party → enemy → party …).
         if (engine.lastTurnTeam !== u.team) {
@@ -335,6 +406,7 @@ export async function animate(engine: any, ev: CombatEvent) {
         engine.phaseBanner = null;    // fight over — no stale phase flash
         engine.actionBanner = null;   // and no stale action banner either
         engine.hazardUsed?.clear();   // hazards reset per fight
+        engine.mobsBarked?.clear();   // mob barks re-fire each encounter, not once per floor
         if (engine.tpkVignette) { engine.tpkVignette = false; engine.emitSnapshot?.(); }
         engine.audio.setMusicDucked(false);
         engine.audio.setAdaptiveState?.('explore', 1.4);

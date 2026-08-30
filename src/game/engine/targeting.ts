@@ -37,6 +37,11 @@ export function paint(engine: any, tiles: GridPos[], cat: string) {
     h.cat = cat;
   }
 }
+export function clearDanger(engine: any) {
+  for (const h of engine.hlPool) {
+    if (h.cat === 'danger') { h.mesh.visible = false; h.cat = ''; }
+  }
+}
 
 export function showMoveTiles(engine: any) {
   const a = engine.combat.active;

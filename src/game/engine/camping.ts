@@ -70,18 +70,28 @@ export function restAtBonfire(engine: any, idx = 0) {
   engine.audio.play('heal', 0.9);
   engine.restingAtBonfire = true;
 
+  // a real meal costs a ration — without one the party sleeps cold: wounds
+  // scab (+25% max HP) but conditions and cooldowns ride through the night.
+  // Death respawn still full-heals (that mercy is the TPK valve, not rest).
+  const fed = (engine.rations ?? 0) > 0;
+  if (fed) engine.rations -= 1;
+
   for (const u of engine.combat.units) {
     if (u.team !== 'party') continue;
     u.alive = true;
     u.unconscious = false;
-    u.hp = effMaxHp(u);
-    u.conditions = [];
-    // resting at the bonfire fully resets action points (action/bonus/move)
-    // and clears every skill cooldown so all skills are usable again
-    u.hasAction = true;
-    u.hasBonus = true;
-    u.movementLeft = u.moveRange;
-    u.cooldowns = {};
+    if (fed) {
+      u.hp = effMaxHp(u);
+      u.conditions = [];
+      // resting with food fully resets action points (action/bonus/move)
+      // and clears every skill cooldown so all skills are usable again
+      u.hasAction = true;
+      u.hasBonus = true;
+      u.movementLeft = u.moveRange;
+      u.cooldowns = {};
+    } else {
+      u.hp = Math.max(1, Math.min(effMaxHp(u), u.hp + Math.ceil(effMaxHp(u) * 0.25)));
+    }
     (u as any).restedAtBonfire = true;
     // stand back up any knocked-out companion
     const v = engine.visuals.get(u.id);
@@ -98,7 +108,9 @@ export function restAtBonfire(engine: any, idx = 0) {
     engine.flags.delete('rest_bunk_used');
   }
   engine.showBonfireUI = true;
-  engine.pushLog('🔥 You rest at the bonfire. Your wounds close. The dungeon stirs...', 'system');
+  engine.pushLog(fed
+    ? `🔥 You rest at the bonfire. A proper meal (🍖 ${engine.rations} left) and the wounds close. The dungeon stirs...`
+    : '🔥 You rest cold and hungry — no ration, no healing. The wounds scab. The dungeon stirs...', 'system');
   engine.pushLog('Spend your XP here to level up, or change your skill loadout.', 'system');
   engine.bigMessage = 'Bonfire Rest';
   engine.emitSnapshot();

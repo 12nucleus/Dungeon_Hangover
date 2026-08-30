@@ -137,7 +137,7 @@ export function canEquipSkill(u: Unit, id: SkillId): SkillRuleResult {
 export function canUseSkill(u: Unit, skill: SkillDef): string | null {
   if (!u.alive) return 'dead';
   if (skill.passive) return 'Passive skills cannot be activated.';
-  if (skill.id !== 'attack' && skill.id !== 'shove' && !activeSkillIds(u).includes(skill.id) && u.team === 'party') return 'Skill is not equipped.';
+  if (skill.id !== 'attack' && skill.id !== 'shove' && skill.id !== 'interrupt' && !activeSkillIds(u).includes(skill.id) && u.team === 'party') return 'Skill is not equipped.';
   if (skill.id === 'attack') return u.attackUsed ? 'Already attacked this turn' : null;
   if (skill.oncePerFight && u.cooldowns[`once_${skill.id}`]) return 'Already used this fight';
   if ((u.cooldowns[skill.id] ?? 0) > 0) return `${skill.name} is on cooldown`;

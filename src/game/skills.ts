@@ -227,6 +227,13 @@ export const SKILLS: Record<string, SkillDef> = {
     attackAbility: 'str', damageDice: '', damageType: 'bludgeoning',
     fxColor: 0x9aa0a8, fx: 'bash',
   },
+  interrupt: {
+    id: 'interrupt', name: 'Interrupt', icon: '🥊', kind: 'melee',
+    desc: 'Bonus action: interrupt an adjacent foe winding up a telegraphed attack. Strength contest; on success their attack fizzles and they are Dazed 1 round.',
+    range: 1, aoeRadius: 0, cost: 'bonus', cooldown: 0,
+    attackAbility: 'str', damageDice: '', damageType: 'bludgeoning',
+    fxColor: 0xffd76b, fx: 'bash',
+  },
   // ── the Hermit companion (floor 50) ──
   hermit_cane: {
     id: 'hermit_cane', name: 'Cane Thwack', icon: '🦯', kind: 'melee',
@@ -270,7 +277,7 @@ export const SKILLS: Record<string, SkillDef> = {
     desc: 'Baron Gnaw sweeps his tail in a full circle. 1d6+2 slashing to all adjacent foes; Prone on a hit. (Below 50% HP, Legendary 1)',
     range: 0, aoeRadius: 1, cost: 'action', cooldown: 2,
     attackAbility: 'str', damageDice: '1d6+2', damageType: 'slashing',
-    selfCentered: true, appliesCondition: 'prone', appliesRounds: 1, hpBelowPct: 0.5, legendaryCost: 1,
+    selfCentered: true, appliesCondition: 'prone', appliesRounds: 1, hpBelowPct: 0.5, legendaryCost: 1, windup: 1,
     fxColor: 0xff8a5a, fx: 'slash',
   },
   soap_storm: {
@@ -278,7 +285,7 @@ export const SKILLS: Record<string, SkillDef> = {
     desc: 'A foaming tidal wave of scalding soap: 2d6 bludgeoning to all foes within 3 tiles. CON save DC 13 for half; failures are Scalded AND Slippery. (Below 50% HP, once)',
     range: 0, aoeRadius: 3, cost: 'action', cooldown: 0,
     attackAbility: 'con', damageDice: '2d6', damageType: 'bludgeoning',
-    saveAbility: 'con', saveDC: 13, selfCentered: true, oncePerFight: true, hpBelowPct: 0.5,
+    saveAbility: 'con', saveDC: 13, selfCentered: true, oncePerFight: true, hpBelowPct: 0.5, windup: 1,
     appliesCondition: 'scalded', appliesRounds: 2,
     appliesCondition2: 'slippery', appliesRounds2: 2,
     fxColor: 0xffd6f0, fx: 'ice',
@@ -308,6 +315,14 @@ export const SKILLS: Record<string, SkillDef> = {
     summonId: 'small_rat', hpBelowPct: 0.75, oncePerFight: true,
     fxColor: 0x9a7a55, fx: 'buff',
   },
+  pack_call: {
+    id: 'pack_call', name: 'Squeak of Distress', icon: '🐀', kind: 'buff',
+    desc: 'Below 34% HP, once: a Pack Rat answers the squeak and joins the fray.',
+    range: 0, aoeRadius: 0, cost: 'action', cooldown: 0, selfOnly: true,
+    attackAbility: 'cha', damageDice: '', damageType: 'force',
+    summonId: 'elite_rat', summonCount: 1, hpBelowPct: 0.34, oncePerFight: true,
+    fxColor: 0xffd76b, fx: 'buff',
+  },
   frenzy: {
     id: 'frenzy', name: 'Frenzy', icon: '🔥', kind: 'buff', passive: true,
     desc: 'Below 50% HP, Baron Gnaw attacks twice per turn.',
@@ -336,7 +351,7 @@ export const SKILLS: Record<string, SkillDef> = {
     desc: '1d6 bludgeoning to all foes within 2 tiles; they get Slippery.',
     range: 0, aoeRadius: 2, cost: 'action', cooldown: 2, selfCentered: true,
     attackAbility: 'str', damageDice: '1d6', damageType: 'bludgeoning',
-    appliesCondition: 'slippery', appliesRounds: 2,
+    appliesCondition: 'slippery', appliesRounds: 2, windup: 1,
     fxColor: 0xffd6f0, fx: 'ice',
   },
   bubble_shield: {
@@ -400,7 +415,7 @@ export const SKILLS: Record<string, SkillDef> = {
     desc: '2d4 poison to everything within 2 tiles; 25% Poisoned.',
     range: 0, aoeRadius: 2, cost: 'action', cooldown: 2, selfCentered: true,
     attackAbility: 'con', damageDice: '2d4', damageType: 'poison',
-    appliesCondition: 'poisoned', appliesRounds: 3, appliesChance: 0.25,
+    appliesCondition: 'poisoned', appliesRounds: 3, appliesChance: 0.25, windup: 1,
     fxColor: 0xb06af0, fx: 'arcane',
   },
   root_grab: {
@@ -595,6 +610,13 @@ export const SUMMON_TEMPLATES: Record<string, () => Unit> = {
     knownSkills: ['bite'], moveRange: 7, xpValue: 10, fleesAtHp: 1,
     scheme: { ...ratScheme }, weapon: 'dagger',
   }),
+  elite_rat: () => mkSummon({
+    name: 'Pack Rat', title: 'Distress Caller', team: 'enemy', klass: 'goblin', pos: { x: 0, z: 0 },
+    maxHp: 5, hp: 5, ac: 12, level: 1,
+    abilities: { str: 10, dex: 14, con: 10, int: 2, wis: 10, cha: 5 },
+    knownSkills: ['bite'], moveRange: 7, xpValue: 20, fleesAtHp: 1, aiStyle: 'pack',
+    scheme: { ...ratScheme, bulk: 1.1 }, weapon: 'dagger',
+  }),
   baby_rat: () => mkSummon({
     name: 'Baby Rat', title: 'Nursery Squeaker', team: 'enemy', klass: 'goblin', pos: { x: 0, z: 0 },
     maxHp: 1, hp: 1, ac: 10, level: 1,
@@ -732,7 +754,7 @@ export function makeCaveBat(pos: GridPos, i = 0): Unit {
     maxHp: 8, hp: 8, ac: 13, level: 1,
     abilities: { str: 6, dex: 16, con: 10, int: 3, wis: 12, cha: 6 },
     knownSkills: ['bat_bite', 'bat_screech'], moveRange: 7, xpValue: 14, fleesAtHp: 1,
-    flying: true,
+    flying: true, aiStyle: 'skirmisher',
     scheme: { ...batScheme },
     weapon: 'unarmed',
   });
@@ -935,6 +957,38 @@ export function createFloor50Roster(sp: Floor50Spawns, seed: number): Unit[] {
     deathDrops: { itemIds: ['drowned_majesty', 'soap_crown'], gold: 50 },
   }));
 
+  // ── archetype AI + champion (elite) modifiers ──
+  const AI_STYLE: Record<string, Unit['aiStyle']> = {
+    'Small Rat': 'pack',
+    'Rat': 'pack',
+    'Mother Rat': 'pack',
+    'Sewer Leech': 'skirmisher',
+    'Giant Leech': 'skirmisher',
+    'Mold Blob': 'controller',
+    'Bone Rat': 'brute',
+    'Goblin Guard': 'brute',
+    'Baron Gnaw': 'brute',
+    'Gribnab': 'brute',
+  };
+  for (const en of units) {
+    if (en.team !== 'enemy') continue;
+    const style = AI_STYLE[en.name];
+    if (style) en.aiStyle = style;
+    if (!en.bossGroup && rng() < 0.08) {
+      const prevName = en.name;
+      en.elite = true;
+      en.maxHp = Math.ceil(en.maxHp * 1.5);
+      en.hp = en.maxHp;
+      en.ac += 2;
+      en.xpValue = Math.ceil(en.xpValue * 1.5);
+      en.name = 'Champion ' + prevName;
+      en.scheme = { ...en.scheme, accent: 0xffd76b };
+      if (prevName === 'Small Rat' || prevName === 'Rat') {
+        en.knownSkills = [...en.knownSkills, 'pack_call'];
+      }
+    }
+  }
+
   return units;
 }
 
@@ -1128,6 +1182,31 @@ export function createFloor49Roster(sp: Floor49Spawns, seed: number): Unit[] {
     npcId: 'spore_mother',
     deathDrops: { itemIds: ['spore_crown', 'mycelial_staff'], gold: 30 },
   }));
+
+  // ── archetype AI + champion (elite) modifiers ──
+  const AI_STYLE: Record<string, Unit['aiStyle']> = {
+    'Small Mushroom': 'pack',
+    'Cave Fish': 'pack',
+    'Vine Crawler': 'skirmisher',
+    'Giant Frog': 'controller',
+    'Mushroom Guardian': 'brute',
+    'Mushroom Mimic': 'ambusher',
+    'The Spore Mother': 'brute',
+  };
+  for (const en of units) {
+    if (en.team !== 'enemy') continue;
+    const style = AI_STYLE[en.name];
+    if (style) en.aiStyle = style;
+    if (!en.bossGroup && rng() < 0.08) {
+      en.elite = true;
+      en.maxHp = Math.ceil(en.maxHp * 1.5);
+      en.hp = en.maxHp;
+      en.ac += 2;
+      en.xpValue = Math.ceil(en.xpValue * 1.5);
+      en.name = 'Champion ' + en.name;
+      en.scheme = { ...en.scheme, accent: 0xffd76b };
+    }
+  }
 
   return units;
 }

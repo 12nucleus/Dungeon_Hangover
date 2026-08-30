@@ -494,6 +494,12 @@ button:focus-visible, [tabindex]:focus-visible {
 .pf-hp { font-size: 11px; color: var(--text-dim); }
 .pf-cond { display: flex; gap: 3px; min-height: 12px; font-size: 10px; }
 .cond-pip { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
+.pf-lv { font-size: 10px; color: var(--gold); opacity: 0.85; margin-left: 5px; letter-spacing: 0.4px; }
+.pf-xp { width: 100%; height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; margin-top: 2px; }
+.pf-xp i { display: block; height: 100%; background: linear-gradient(90deg, #b9a04e, #fde047); }
+.party-header { display: flex; justify-content: flex-end; gap: 10px; pointer-events: auto; }
+.party-gold { font-size: 12px; font-weight: 700; color: #ffd76b; font-family: var(--font-display); letter-spacing: 0.4px; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+.party-gold.ration { color: #d9a04a; }
 
 /* torch fuel */
 .torch-indicator {

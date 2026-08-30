@@ -20,7 +20,7 @@ interface Props {
 
 const KEYMAP = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='];
 
-type DefaultAction = 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack' | 'shove' | 'defend';
+type DefaultAction = 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack' | 'shove' | 'interrupt' | 'defend';
 
 /** default actions shown before the 12 skill slots */
 const DEFAULTS: { id: DefaultAction; icon: string; label: string }[] = [
@@ -31,6 +31,7 @@ const DEFAULTS: { id: DefaultAction; icon: string; label: string }[] = [
   { id: 'attack', icon: '⚔️', label: 'Attack (weapon)' },
   { id: 'bonusAttack', icon: '🔸', label: 'Bonus Attack' },
   { id: 'shove', icon: '🫸', label: 'Shove' },
+  { id: 'interrupt', icon: '🥊', label: 'Interrupt' },
 ];
 
 export function Hotbar({ snap, engine }: Props) {

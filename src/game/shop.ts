@@ -33,6 +33,7 @@ export const SPORE_MERCHANT_STOCK: ShopStockItem[] = [
   { baseId: 'spore_crown', price: 125, levelReq: 3, requiresFlag: 'vendor_favor', pitch: 'A crown of living fungi. It hums. I am legally obligated to tell you it is not for sale to royalty. There is no royalty. Buy it.' },
   // ── consumables & bits ──
   { baseId: 'potion', price: 20, pitch: 'Heals. Tastes like a basement that has given up.' },
+  { baseId: 'ration', price: 15, pitch: 'Dehydrated. Pre-chewed, some say. Rest at a fire with one of these and your wounds close PROPER.' },
   { baseId: 'moon_cap', price: 55, pitch: 'A mushroom that only grows in moonlight it has never seen. I have two. They are not for me. I do not deserve them.' },
   { baseId: 'hallucinogenic_spore', price: 18, pitch: 'I can sell you more of these. I cannot sell you FEWER of these.' },
   { baseId: 'crystal_shard', price: 20, pitch: 'Warm. Glows when it is quiet. Like me, before the economy.' },

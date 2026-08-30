@@ -372,3 +372,46 @@ You are dead. The rats are already holding a meeting about who gets your socks. 
 
 [f50_tpk_3]   (src/levels/floor50Text.ts)
 Game over, Greg. The bath wins. The bath ALWAYS wins. But hey. You can try again. The dungeon has a sense of humor. It wants to see what you do next.
+
+───────────────────────────────────────────────────────────────
+── COMBAT NARRATION (in-fight kills / wounds / crits / fumbles)
+───────────────────────────────────────────────────────────────
+
+[f50_kill_1]   (src/game/engine/combatNarration.ts)
+And down he goes. The dungeon bills his estate.
+
+[f50_kill_2]   (src/game/engine/combatNarration.ts)
+One less thing to be afraid of. The list remains long.
+
+[f50_kill_3]   (src/game/engine/combatNarration.ts)
+He's dead. The dungeon does not send flowers.
+
+[f50_kill_4]   (src/game/engine/combatNarration.ts)
+You put him down like a bad habit.
+
+[f50_kill_5]   (src/game/engine/combatNarration.ts)
+Clean kill. Ish. There's a lot of blood, but it's CLEAN-adjacent.
+
+[f50_kill_6]   (src/game/engine/combatNarration.ts)
+Another one for the losing team.
+
+[f50_kill_7]   (src/game/engine/combatNarration.ts)
+Dead. The floor did not see that coming. The floor sees everything, so this is a problem.
+
+[f50_kill_8]   (src/game/engine/combatNarration.ts)
+He folds. The dungeon does not reimburse him.
+
+[f50_kill_9]   (src/game/engine/combatNarration.ts)
+Down like the drink prices when Greg wakes up.
+
+[f50_kill_10]   (src/game/engine/combatNarration.ts)
+One less monster. The grotto takes it personally.
+
+[f50_near_death_1]   (src/game/engine/combatNarration.ts)
+You're hurt bad. The dungeon can smell it.
+
+[f50_crit_1]   (src/game/engine/combatNarration.ts)
+CRITICAL. The dice have chosen violence.
+
+[f50_fumble_1]   (src/game/engine/combatNarration.ts)
+A miss. The floor snickers.

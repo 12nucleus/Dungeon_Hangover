@@ -135,11 +135,7 @@ export function endTurn(engine: any) {
 }
 
 // ══ game state ═════════════════════════════════════════════
-export function continueAfterVictory(engine: any) {
-  engine.phase = 'explore';
-  engine.pushLog('The shrine falls quiet. The realm is yours to wander.', 'system');
-  engine.emitSnapshot();
-}
+
 
 export function toggleMute(engine: any) {
   const m = engine.audio.toggleMute();

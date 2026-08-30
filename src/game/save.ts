@@ -45,6 +45,8 @@ export interface SaveData {
   floorName?: string;
   units: Unit[];
   gold: number;
+  /** trail rations (additive — legacy saves default to 2) */
+  rations?: number;
   inventory: Item[];
   questStates: QuestState[];
   bonfirePos: GridPos | null;

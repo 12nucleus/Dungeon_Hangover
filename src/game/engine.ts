@@ -46,7 +46,7 @@ import { setupDungeon, spawnNpc, attachHeroTorch, updateDungeon, aggroGroup, inE
 import { smashProp, checkCombatTrigger, enqueue, setAnimScale, spawnFloater, refreshBar, triggerTrap as triggerTrapModule, disarmTrap as disarmTrapModule } from './engine/combatAnimation';
 import { updateFog, executeDialogueAction as executeDialogueActionModule, dialogueChoice as dialogueChoiceModule, pickTile as pickTileModule, pickInteractable as pickInteractableModule, updateHover as updateHoverModule, clickExplore as clickExploreModule, clickCombat as clickCombatModule, moveUnitAlong as moveUnitAlongModule, talkToNpc as talkToNpcModule, hidePathPreview, type InteractPick } from './engine/interaction';
 import { spawnBonfireFlame as spawnBonfireFlameModule } from './engine/gameFlow';
-import { respawn as respawnModule, levelUpAtBonfire as levelUpAtBonfireModule, resetSkillBuild as resetSkillBuildModule, unlockNode as unlockNodeModule } from './engine/camping';
+import { respawn as respawnModule, levelUpAtBonfire as levelUpAtBonfireModule, resetSkillBuild as resetSkillBuildModule, unlockNode as unlockNodeModule, lightBonfire as lightBonfireModule, restAtBonfire as restAtBonfireModule } from './engine/camping';
 import { executeCheatCommand as executeCheatCommandModule } from './engine/cheats';
 import { offerLoot, flushLootQueue, takeAllLoot, takeLootItem, leaveLootItem, dismissLoot, clearLoot } from './engine/loot';
 import { showTargeting as showTargetingModule, showMoveTiles as showMoveTilesModule } from './engine/targeting';
@@ -160,6 +160,8 @@ export class GameEngine {
   public loot: string[] = [];            // victory-screen recap lines
   public inventory: Item[] = [];
   public gold = 0;
+  /** trail rations — a bonfire rest consumes one for the full-heal/reset */
+  public rations = 0;
   public showInventory = false;
   public showSkillTree = false;
   public showStats = false;
@@ -328,6 +330,11 @@ export class GameEngine {
   public defeatedSpecialMobs = new Set<string>();
   /** monster bark voices already played this floor (reset on goToFloor) */
   public mobsBarked = new Set<string>();
+  /** last kill-narration/verdict timestamp (throttle) + once-per-fight near-death flag */
+  public lastKillNarrAt = 0;
+  public nearDeathNarrated = false;
+  /** active telegraphed threat — winding unit + its threatened tiles (painted orange) */
+  public threat: { unitId: string; tiles: GridPos[] } | null = null;
   /** ids of destroyed props — persisted so rests/loads keep them gone */
   public destroyedProps = new Set<string>();
   /** player-curated item-bar keys (baseIds, max 6) — persisted */
@@ -947,6 +954,7 @@ export class GameEngine {
       range: new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.16, depthWrite: false }),
       hover: new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false }),
       ally: new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.4, depthWrite: false }),
+      danger: new THREE.MeshBasicMaterial({ color: 0xff5a1f, transparent: true, opacity: 0.45, depthWrite: false }),
     };
     const hlGeo = new THREE.PlaneGeometry(0.94, 0.94);
     hlGeo.rotateX(-Math.PI / 2);
@@ -1345,9 +1353,14 @@ export class GameEngine {
       this.emitSnapshot();
       return false;
     }
-    const it = makeItem(baseId);
-    this.inventory.push(it);
-    this.pushLog(`🛒 You bought ${it.icon} ${it.name} for ${price} gold. Myke pockets the coin with a sad, experienced smile.`, 'system');
+    if (baseId === 'ration') {
+      this.rations += 1;
+      this.pushLog(`🛒 You bought 🍖 Trail Ration for ${price} gold. Myke wraps it in yesterday's news.`, 'system');
+    } else {
+      const it = makeItem(baseId);
+      this.inventory.push(it);
+      this.pushLog(`🛒 You bought ${it.icon} ${it.name} for ${price} gold. Myke pockets the coin with a sad, experienced smile.`, 'system');
+    }
     this.audio?.play?.('dice', 0.8);
     this.emitSnapshot();
     return true;
@@ -2256,11 +2269,6 @@ export class GameEngine {
     this.emitSnapshot();
   }
 
-  continueAfterVictory() {
-    this.phase = 'explore';
-    this.pushLog('The shrine falls quiet. The realm is yours to wander.', 'system');
-    this.emitSnapshot();
-  }
 
   toggleMute() {
     const m = this.audio.toggleMute();
@@ -2395,6 +2403,7 @@ export class GameEngine {
     this.runSeed = (Math.floor(Date.now() / 1000) ^ 0x5eed ^ Math.floor(Math.random() * 0xffff)) >>> 0;
     this.flags = new Set();
     this.gold = 0;
+    this.rations = 3;
     this.inventory = [];
     this.questLog = new QuestLog();
     this.defeatedSpecialMobs = new Set();
@@ -2492,6 +2501,7 @@ export class GameEngine {
       floorName: FLOORS[this.floorNumber]?.name ?? 'Unknown',
       units: this.combat.units.map((u) => this.clone(u)),
       gold: this.gold,
+      rations: this.rations,
       inventory: this.inventory.map((i) => this.clone(i)),
       questStates: this.questLog.statesEntries(),
       bonfirePos: this.bonfirePos ? { ...this.bonfirePos } : null,
@@ -2558,6 +2568,7 @@ export class GameEngine {
     }
     for (const u of this.combat.units) ensureSkillState(u);
     this.gold = data.gold;
+    this.rations = typeof data.rations === 'number' ? data.rations : 2;
     this.inventory = data.inventory.map((i) => this.clone(i));
     this.questLog.load(data.questStates);
     this.bonfirePos = data.bonfirePos ? { ...data.bonfirePos } : null;
@@ -3037,7 +3048,7 @@ export class GameEngine {
   }
 
   /** BG3-style default hotbar actions: walk/run/jump/throw/attack + bonus attack. */
-  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack' | 'shove' | 'defend' | 'sit') {
+  defaultAction(action: 'walk' | 'run' | 'jump' | 'throw' | 'attack' | 'bonusAttack' | 'shove' | 'interrupt' | 'defend' | 'sit') {
     this.audio.play('ui_click', 0.5);
     switch (action) {
       case 'walk':
@@ -3125,6 +3136,18 @@ export class GameEngine {
         this.setHoverInfoOnce('Shove is a combat action.');
         return;
       }
+      case 'interrupt': {
+        // universal BONUS-action counterplay (like shove) — lives in the default
+        // bar, never the loadout. Only meaningful against a foe mid-windup.
+        const a = this.combat.active;
+        if (a && a.team === 'party' && this.phase === 'combat') {
+          if (!a.hasBonus) { this.setHoverInfoOnce('Interrupt needs a bonus action.'); return; }
+          this.selectSkill('interrupt');
+          return;
+        }
+        this.setHoverInfoOnce('Interrupt is a combat bonus action.');
+        return;
+      }
       case 'defend': {
         const a = this.combat.active;
         if (this.phase === 'combat' && a && a.team === 'party') {
@@ -3210,47 +3233,16 @@ export class GameEngine {
   }
 
   lightBonfire(idx = 0) {
-    const spot = this.bonfireSpots[idx] ?? this.structures?.checkpoint ?? { x: 10, z: 10 };
-    if (this.bonfireLit && this.bonfirePos?.x === spot.x && this.bonfirePos?.z === spot.z) return;
-    this.bonfireLit = true;
-    // kindling a fire moves the checkpoint (respawn + save) to THAT fire
-    this.bonfirePos = { ...spot };
-    this.spawnBonfireFlame();
-    this.pushLog('The bonfire roars to life. This place feels safer now...', 'system');
-    this.audio.play('ui_click', 0.6);
-    this.audio.play('bonfire_lit', 1.0); // placeholder: add lit_bonfire.wav to public/audio/
-    this.bigMessage = 'Bonfire Lit!';
-    this.emitSnapshot();
-    setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2500);
-    // auto-save to the active slot the moment a checkpoint is established
-    this.saveGame(this.currentSlotId ?? undefined, 'Bonfire Lit');
+    lightBonfireModule(this, idx);
+    // camping.lightBonfire is the canonical path (per-floor kindle narration);
+    // this engine method delegates so both paths agree.
   }
 
   restAtBonfire(idx = 0) {
-    if (!this.bonfireLit || !this.bonfirePos) return;
-    // the checkpoint follows the fire you actually rest at
-    const spot = this.bonfireSpots[idx];
-    if (spot) this.bonfirePos = { ...spot };
-    this.audio.play('heal', 0.9);
-    this.restingAtBonfire = true;
-
-    for (const u of this.combat.living('party')) {
-      u.hp = effMaxHp(u);
-      u.conditions = [];
-      (u as any).restedAtBonfire = true;
-    }
-
-    // NOTE: resting does NOT revive slain enemies or rebuild destroyed props —
-    // the dungeon stays cleared (fixed bugs: respawning enemies after a rest,
-    // and loot bags / destructibles popping back).
-    this.showBonfireUI = true;
-    this.pushLog('?? You rest at the bonfire. Your wounds close. The dungeon stirs...', 'system');
-    this.pushLog('Rest by the fire. Spend skill points in the Skill Tree, or rearrange your loadout.', 'system');
-    this.bigMessage = 'Bonfire Rest';
-    this.emitSnapshot();
-    setTimeout(() => { this.bigMessage = null; this.emitSnapshot(); }, 2000);
-    // resting re-establishes the checkpoint ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â½ keep the slot current
-    this.saveGame(this.currentSlotId ?? undefined, 'Rested');
+    restAtBonfireModule(this, idx);
+    // camping.restAtBonfire is the canonical path (ration-gated full heal,
+    // KO revival, cooldown reset). This engine method delegates so both the
+    // interaction click-path and the module path agree.
   }
 
   closeBonfireUI() {
@@ -4736,6 +4728,7 @@ export class GameEngine {
       loot: [...this.loot],
       inventory: [...this.inventory],
       gold: this.gold,
+      rations: this.rations,
       showInventory: this.showInventory,
       showSkillTree: this.showSkillTree,
       showStats: this.showStats,

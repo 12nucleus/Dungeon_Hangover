@@ -145,7 +145,13 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   // Q/E rotate the iso camera; in first person they turn the view instead
   // (handled per-frame in the engine update loop via engine.keys)
   if (k === 'q' && !cutscene && !engine.firstPerson) engine.iso.rotate(1);
-  if (k === 'e' && !cutscene && !engine.firstPerson) engine.iso.rotate(-1);
+  // E rotates the camera EXCEPT when an interact prompt is live — then it
+  // interacts (ARPG muscle memory: E = use). R keeps working everywhere.
+  if (k === 'e' && !cutscene && !engine.firstPerson) {
+    if (engine.activeInteractable && !engine.isOverlayOpen()
+      && engine.phase === 'explore' && !engine.combat.inCombat) engine.triggerActiveInteractable();
+    else engine.iso.rotate(-1);
+  }
   if (k === 'r' && !cutscene && !engine.isOverlayOpen()) {
     // interact with the active prompt (puddle, chest, valve…)
     if (engine.activeInteractable && engine.phase === 'explore' && !engine.combat.inCombat) engine.triggerActiveInteractable();
@@ -162,7 +168,7 @@ export function onKeyDown(engine: any, e: KeyboardEvent) {
   if (k === 'v') { engine.followCam = !engine.followCam; engine.pushLog(`Follow camera ${engine.followCam ? 'ON' : 'OFF'}`, 'system'); engine.emitSnapshot(); return; }
   if (k === 'm') { engine.showFullMap = !engine.showFullMap; engine.emitSnapshot(); return; }
   if (k === 'p' && engine.phase === 'explore' && !engine.combat.inCombat) { engine.toggleFirstPerson(); return; }
-  if (k === 'b') { engine.debugWarpToBoss(); return; }
+  if (k === 'b' && import.meta.env.DEV) { engine.debugWarpToBoss(); return; }
   if (k === 'escape') {
     if (engine.busy && (engine.introActive || engine.bossCineActive || (engine.phase === 'menu' && engine.titleExt))) {
       engine.introSkipped = true;

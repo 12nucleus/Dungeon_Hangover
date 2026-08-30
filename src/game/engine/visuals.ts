@@ -39,6 +39,28 @@ export function addUnit(engine: GameEngine, u: Unit) {
   const barFill = bar.querySelector('i') as HTMLElement;
 
   engine.visuals.set(u.id, { rig, proxy, bar, barFill, walker: null, yaw: rig.group.rotation.y, targetYaw: rig.group.rotation.y });
+  // champion (elite) units get a flat gold ring at their feet — it follows
+  // the unit and slowly spins; removed the moment the unit dies.
+  if (u.elite) {
+    const ringGeo = new THREE.RingGeometry(0.55, 0.68, 32);
+    ringGeo.rotateX(-Math.PI / 2);
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffd76b, transparent: true, opacity: 0.6, depthWrite: false }));
+    ring.renderOrder = 3;
+    ring.position.copy(wp);
+    ring.position.y += 0.05;
+    engine.scene.add(ring);
+    engine.propAnims.push((dt) => {
+      if (!u.alive) {
+        engine.scene.remove(ring);
+        (ring.material as THREE.Material).dispose();
+        return true;
+      }
+      const p = unitWorld(engine, u.pos);
+      ring.position.set(p.x, p.y + 0.05, p.z);
+      ring.rotation.y += dt * 1.2;
+      return false;
+    });
+  }
 }
 
 /** Convert a grid tile to world position — delegates to the world's canonical

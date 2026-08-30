@@ -76,9 +76,17 @@ export function flushLootQueue(engine: any) {
 }
 
 function grant(engine: any, items: Item[], gold: number) {
-  engine.inventory.push(...items);
+  // rations are camp currency, not bag cargo — convert to the counter so a
+  // rest eats one automatically (they never render in inventory/shop-sell)
+  const rations = items.filter((it) => it._baseId === 'ration');
+  const cargo = items.filter((it) => it._baseId !== 'ration');
+  if (rations.length) {
+    engine.rations = (engine.rations ?? 0) + rations.length;
+    engine.loot.push(`🍖 ${rations.length}× Trail Ration (rest fodder)`);
+  }
+  engine.inventory.push(...cargo);
   engine.gold += gold;
-  for (const it of items) engine.loot.push(`${it.icon} ${it.name}`);
+  for (const it of cargo) engine.loot.push(`${it.icon} ${it.name}`);
   if (gold) engine.loot.push(`🪙 ${gold} gold`);
 }
 

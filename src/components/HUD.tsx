@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameEngine } from '@/game/engine';
 import type { UISnapshot, Unit } from '@/game/types';
-import { SKILLS } from '@/game/skills';
+import { CONDITIONS, SKILLS } from '@/game/skills';
 import { ALL_CLASS_SKILLS } from '@/game/classSkills';
-import { effMaxHp } from '@/game/stats';
+import { effMaxHp, xpProgress } from '@/game/stats';
 import { InventoryPanel } from './InventoryPanel';
 import { ShopPanel } from './ShopPanel';
 import { SkillTreePanel } from './SkillTreePanel';
@@ -471,8 +471,8 @@ export function HUD({ snap, engine }: Props) {
       {(phase === 'victory' || phase === 'defeat') && (
         <div className={`overlay-screen ${phase}`}>
           <div className="menu-inner">
-            <h1>{phase === 'victory' ? '🏆 FLOOR 50 CLEARED' : '💀 DEFEAT'}</h1>
-            <h2>{phase === 'victory' ? 'The Sewer Cellar is behind you. The bath is behind you. The bottom of everything is behind you. Only up remains.' : 'Your party has fallen...'}</h2>
+            <h1>{phase === 'victory' ? '🏆 THE BOTTOM IS BEHIND YOU' : '💀 DEFEAT'}</h1>
+            <h2>{phase === 'victory' ? 'The sewer is behind you. The grotto is behind you. The waterfall roars somewhere below. Forty-eight floors of Spire remain. Only up remains.' : 'Your party has fallen...'}</h2>
             {phase === 'victory' && (
               <div className="loot-box">
                 <div className="loot-title">Run summary</div>
@@ -680,16 +680,27 @@ export function HUD({ snap, engine }: Props) {
       )}
       {phase !== 'menu' && party.length > 0 && (
         <div className="party-sidebar">
+          <div className="party-header">
+            <span className="party-gold ration" title="Trail rations — a bonfire rest eats one. Rest without food and the wounds stay.">🍖 {snap.rations}</span>
+            <span className="party-gold" title="Gold">🪙 {snap.gold}</span>
+          </div>
           {party.map((u) => {
             const size = party.length >= 5 ? 40 : party.length >= 3 ? 46 : 52;
             return (
               <div key={u.id} className={`party-frame ${u.id === snap.activeId ? 'active' : ''}`}>
                 <Portrait u={u} size={size} active={u.id === snap.activeId} />
                 <div className="pf-info">
-                  <div className="pf-name" style={{ color: TEAM_COLOR[u.team] }}>{u.name}</div>
+                  <div className="pf-name" style={{ color: TEAM_COLOR[u.team] }}>{u.name} <span className="pf-lv">Lv{u.level}</span></div>
                   <div className="pf-hp">{u.hp}/{effMaxHp(u)}{u.equipment?.weapon?.enchantId ? ' ✦' : ''}</div>
+                  {(() => { const xp = xpProgress(u); return (
+                    <div className="pf-xp" title={`XP ${xp.cur}/${xp.need}`}><i style={{ width: `${Math.round(xp.pct * 100)}%` }} /></div>
+                  ); })()}
                   <div className="pf-cond">
-                    {u.conditions.map((c, ci) => <span key={`${ci}-${c.id}`} className="cond-pip" title={c.name}>{c.id === 'blessed' ? '✨' : '❄'}</span>)}
+                    {u.conditions.map((c, ci) => (
+                      <span key={`${ci}-${c.id}`} className="cond-pip" title={`${c.name}: ${CONDITIONS[c.id]?.desc ?? ''}`}>
+                        {c.id === 'blessed' ? '✨' : '❄'}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>

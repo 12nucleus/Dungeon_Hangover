@@ -34,6 +34,12 @@ export const COMBOS: ComboDef[] = [
   { id: 'chef-salt', name: 'Seasoned Violence', skills: ['salt', 'burnt_offer'], description: 'Burnt Offer deals bonus damage after both skills are learned.', requiresEquipped: true, trigger: 'on-hit', bonusDamage: 3 },
   { id: 'totem-curse', name: 'Hexed Ground', skills: ['hex', 'totem'], description: 'Cursed targets entering your totem radius become Slowed.', requiresEquipped: true, trigger: 'on-condition', requiresTargetCondition: 'cursed', appliesCondition: 'slowed' },
   { id: 'mortician-kill', name: 'Death Dividend', skills: ['grave_marker', 'embalm'], description: 'Killing a marked target restores 10% maximum HP.', requiresEquipped: false, trigger: 'on-kill', healPercent: 0.1 },
+  { id: 'velvet-slam', name: 'Velvet Slam', skills: ['velvet_rope', 'slam_all'], description: 'Slam All deals +30% damage to rooted targets.', requiresEquipped: true, trigger: 'on-hit', requiresTargetCondition: 'rooted', bonusDamageMultiplier: 0.30 },
+  { id: 'royal-crescendo', name: 'Royal Crescendo', skills: ['royal_shove', 'power_chord'], description: 'Power Chord gains bonus force after Royal Shove.', requiresEquipped: true, trigger: 'on-hit', bonusDamage: 4 },
+  { id: 'headlock-tuneup', name: 'Tune-Up', skills: ['headlock_highway', 'stool_smash'], description: 'Stool Smash gains bonus damage after a Headlock Highway setup.', requiresEquipped: true, trigger: 'on-hit', bonusDamage: 4 },
+  { id: 'door-slam', name: 'Door Slam', skills: ['the_door', 'slam_all'], description: 'Slam All gains bonus damage while The Door is standing.', requiresEquipped: true, trigger: 'on-hit', bonusDamage: 3 },
+  { id: 'bell-curfew', name: 'Last Bell', skills: ['the_bell', 'last_call_absolute'], description: 'Kills restore 8% of max HP while the Last Bell tolls.', requiresEquipped: false, trigger: 'on-kill', healPercent: 0.08 },
+  { id: 'crashout-charge', name: 'Crash-Out', skills: ['bouncer_charge', 'bouncer_crashout'], description: 'Kills restore 6% of max HP for the crashing bouncer.', requiresEquipped: false, trigger: 'on-kill', healPercent: 0.06 },
 ];
 
 export function comboForSkill(skillId: string): ComboDef[] {

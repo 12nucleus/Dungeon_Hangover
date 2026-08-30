@@ -72,6 +72,8 @@ export class Combat {
   /** unit ids of enemies that DIED during the current fight (most-recent last) —
    *  the raise-dead skills (reanimate / undead_army) resurrect from here */
   private corpses: string[] = [];
+  /** true while aiStep is resolving a telegraphed skill — suppresses re-entrant windup declaration */
+  private resolvingTelegraph = false;
 
   /**
    * Place a fresh copy of `template` on the nearest free walkable tile to
@@ -351,6 +353,8 @@ export class Combat {
       u.hasAction = false; u.hasBonus = false; u.movementLeft = 0;
       ev.push({ type: 'log', text: `${u.name} is surprised and skips their turn!`, kind: 'system' });
       ev.push({ type: 'turn', unitId: u.id, round: this.round });
+      u.pendingSkill = undefined; u.pendingTarget = undefined; u.pendingRounds = undefined;
+      ev.push({ type: 'telegraphCancel', unitId: u.id });
       return ev;
     }
     // stunned: skips the turn entirely (like surprised)
@@ -359,6 +363,8 @@ export class Combat {
       u.hasAction = false; u.hasBonus = false; u.movementLeft = 0;
       ev.push({ type: 'log', text: `${u.name} is stunned and skips their turn!`, kind: 'system' });
       ev.push({ type: 'turn', unitId: u.id, round: this.round });
+      u.pendingSkill = undefined; u.pendingTarget = undefined; u.pendingRounds = undefined;
+      ev.push({ type: 'telegraphCancel', unitId: u.id });
       return ev;
     }
     // charmed: entranced — the unit skips its turn this round
@@ -366,6 +372,8 @@ export class Combat {
       u.hasAction = false; u.hasBonus = false; u.movementLeft = 0;
       ev.push({ type: 'log', text: `${u.name} is charmed — they gaze in wonder and do nothing.`, kind: 'system' });
       ev.push({ type: 'turn', unitId: u.id, round: this.round });
+      u.pendingSkill = undefined; u.pendingTarget = undefined; u.pendingRounds = undefined;
+      ev.push({ type: 'telegraphCancel', unitId: u.id });
       return ev;
     }
     // prone: the unit stands back up at the start of its turn
@@ -676,7 +684,7 @@ export class Combat {
             name: melee ? `Attack (${melee.name ?? 'weapon'})` : w ? `Attack (${w.name ?? 'weapon'})` : 'Punch',
           } as SkillDef;
     }
-    if (!s || (skillId !== 'attack' && skillId !== 'shove' && !activeSkillIds(u).includes(skillId))) return [];
+    if (!s || (skillId !== 'attack' && skillId !== 'shove' && skillId !== 'interrupt' && !activeSkillIds(u).includes(skillId))) return [];
     const deny = this.canUse(u, s);
     if (deny) return [{ type: 'log', text: deny, kind: 'info' }];
     // BG3 phase advance: action → bonus (if any left), bonus → back to walk
@@ -729,6 +737,31 @@ export class Combat {
     }
 
     const ev: CombatEvent[] = [];
+    // ── telegraphed windup (ENEMY SKILLS ONLY): the enemy spends its action
+    // at declaration and the skill pays out one full round later. The winding
+    // enemy does not move or act while charging. (Cost is spent by the normal
+    // pay-cost block when the skill actually resolves next round.)
+    if (s.windup && s.windup > 0 && !this.resolvingTelegraph) {
+      let threatTiles: GridPos[] = [];
+      if (s.selfCentered || s.aoeRadius > 0) {
+        const cx = s.selfCentered ? u.pos.x : center.x;
+        const cz = s.selfCentered ? u.pos.z : center.z;
+        for (let dx = -s.aoeRadius; dx <= s.aoeRadius; dx++) {
+          for (let dz = -s.aoeRadius; dz <= s.aoeRadius; dz++) {
+            if (Math.max(Math.abs(dx), Math.abs(dz)) <= s.aoeRadius) threatTiles.push({ x: cx + dx, z: cz + dz });
+          }
+        }
+      } else {
+        threatTiles = targets.map((t) => ({ ...t.pos }));
+      }
+      u.pendingSkill = s.id;
+      u.pendingTarget = target;
+      u.pendingRounds = s.windup;
+      ev.push({ type: 'telegraph', unitId: u.id, skillId: s.id, tiles: threatTiles });
+      ev.push({ type: 'log', text: `${u.name} is winding up ${s.name}!`, kind: 'system' });
+      ev.push({ type: 'float', unitId: u.id, text: `⚠ ${s.name}`, cls: 'warn' });
+      return ev;
+    }
     // ── action announce — every action opens with a readable beat: a banner
     // ("Gnaw is casting Soap Storm"), a caster charge VFX and a cast cue ──
     {
@@ -820,6 +853,37 @@ export class Combat {
       ev.push(...this.checkEnd());
       return ev;
     }
+    // ── interrupt: universal bonus action — fizzle an adjacent foe's windup ──
+    if (s.id === 'interrupt') {
+      const t = targets[0];
+      if (!t) return ev;
+      if (!t.pendingSkill) {
+        ev.push({ type: 'log', text: "They aren't winding up an attack.", kind: 'info' });
+        return ev;
+      }
+      const atk = rollD20(abilityMod(u.abilities.str));
+      const dc = 10 + abilityMod(t.abilities.str);
+      ev.push({ type: 'log', text: `${u.name} tries to interrupt ${t.name}: STR ${atk.roll}${fmtMod(atk.bonus)} vs DC ${dc}`, kind: 'roll' });
+      if (atk.total >= dc) {
+        t.pendingSkill = undefined;
+        t.pendingTarget = undefined;
+        t.pendingRounds = undefined;
+        ev.push({ type: 'telegraphCancel', unitId: t.id });
+        ev.push({ type: 'float', unitId: t.id, text: 'Interrupted!', cls: 'buff' });
+        if (!t.conditions.some((c) => c.id === 'dazed')) {
+          t.conditions.push({ id: 'dazed', name: CONDITIONS.dazed.name, roundsLeft: 1 });
+          ev.push({ type: 'float', unitId: t.id, text: 'Dazed!', cls: 'debuff' });
+        }
+        ev.push({ type: 'log', text: `${u.name} interrupts ${t.name}'s swing!`, kind: 'hit' });
+      } else {
+        ev.push({ type: 'actionResult', unitId: u.id, targetId: t.id, text: `${u.name} fails to interrupt ${t.name}`, sub: `STR ${atk.roll}${fmtMod(atk.bonus)} = ${atk.total} vs DC ${dc}`, outcome: 'miss' });
+        ev.push({ type: 'float', unitId: t.id, text: 'Too slow!', cls: 'miss' });
+        ev.push({ type: 'log', text: `${t.name} ducks away — the windup continues!`, kind: 'info' });
+      }
+      ev.push(...this.checkEnd());
+      return ev;
+    }
+
 
     // ── summons (boss minions): clone the template onto a free tile ──
     if (s.summonId) {
@@ -1150,7 +1214,7 @@ export class Combat {
       if (atk.crit || atk.fumble) ev.push({ type: 'dice', die: 'd20', total: atk.total, reason: `Attack vs ${t.name}` });
       const auto = s.id === 'magic_missile';
       // prone targets are easier to hit (+2); cover makes harder (+2/+5)
-      const cover = isRanged ? this.coverBonus(u.pos, t.pos) : 0;
+      const cover = (isRanged && u.aiStyle !== 'brute') ? this.coverBonus(u.pos, t.pos) : 0;
       const tgtAC = effAC(t) - (t.conditions.some((x) => x.id === 'prone') ? 2 : 0) + cover;
       const surpriseCrit = this.surpriseRound && u.team === 'party' && this.surpriseHits.has(u.id) && !!diceExpr;
       if (surpriseCrit) this.surpriseHits.delete(u.id);
@@ -1483,6 +1547,20 @@ export class Combat {
     }
     return ev;
   }
+  /** foes of `t`'s team adjacent (Chebyshev ≤1) to another living `pack`-styled
+   *  ally of `t` — these are already flanked and are priority prey. */
+  private flankedTargets(t: Unit): Unit[] {
+    const foes = this.living(t.team === 'party' ? 'enemy' : 'party');
+    return foes.filter((f) =>
+      this.living(t.team).some((a) => a.id !== t.id && a.aiStyle === 'pack' && Combat.dist(a.pos, f.pos) <= 1));
+  }
+
+  /** true when tile (x,z) is adjacent (Chebyshev ≤1) to any living foe of `t` */
+  private adjacentToFoes(x: number, z: number, t: Unit): boolean {
+    const foes = this.living(t.team === 'party' ? 'enemy' : 'party');
+    return foes.some((f) => Combat.dist(f.pos, { x, z }) <= 1);
+  }
+
 
   // ── enemy AI: one step per call (the 'turn' animator drives these) ──
   // Behaviors (M8): weak-target focus, AoE on clusters, ranged kiting,
@@ -1492,6 +1570,24 @@ export class Combat {
     if (!u || u.team !== 'enemy' || !u.alive) return null;
     const foes = this.living('party');
     if (!foes.length) return null;
+    // telegraphed windup in flight: the enemy holds its charge and does not
+    // move or act until the pendingRounds timer reaches zero, then resolves.
+    if (u.pendingSkill) {
+      u.pendingRounds = (u.pendingRounds ?? 0) - 1;
+      if (u.pendingRounds <= 0) {
+        const id = u.pendingSkill;
+        const tgt = u.pendingTarget;
+        u.pendingSkill = undefined;
+        u.pendingTarget = undefined;
+        u.pendingRounds = undefined;
+        this.resolvingTelegraph = true;
+        const ev = this.useSkill(u, id, tgt as GridPos | string);
+        this.resolvingTelegraph = false;
+        return ev;
+      }
+      return [{ type: 'log', text: `${u.name} keeps winding up…`, kind: 'system' }];
+    }
+    const style: Unit['aiStyle'] = u.aiStyle ?? 'melee';
 
     const hasMelee = u.equippedSkills.some((id) => {
       const s = skillById(id);
@@ -1502,7 +1598,7 @@ export class Combat {
       return s ? Math.max(m, s.range) : m;
     }, 1);
     // keep a safe ranged distance when we only have ranged tools
-    const wantsRange = !hasMelee && maxRange > 1;
+    const wantsRange = style === 'skirmisher' || (!hasMelee && maxRange > 1);
 
     // ── 1. flee: below 30% HP (or a unit's fleesAtHp), back off. Fleeing is
     //    bounded so wounded enemies are catchable: only flee while a foe is
@@ -1513,7 +1609,7 @@ export class Combat {
     const inLeash = (x: number, z: number) =>
       !u.leash || (x >= u.leash.x0 && x <= u.leash.x1 && z >= u.leash.z0 && z <= u.leash.z1);
     const hpPct = u.hp / effMaxHp(u);
-    const shouldFlee = u.fleesAtHp !== undefined ? u.hp <= u.fleesAtHp : hpPct < 0.3;
+    const shouldFlee = style === 'brute' ? false : (u.fleesAtHp !== undefined ? u.hp <= u.fleesAtHp : hpPct < 0.3);
     if (shouldFlee && u.movementLeft > 0) {
       const nearestFoe = foes.reduce((a, b) => Combat.dist(u.pos, a.pos) < Combat.dist(u.pos, b.pos) ? a : b);
       const FLEE_CAP = 3; // max tiles per flee — rats can't outrun the hero forever
@@ -1563,6 +1659,56 @@ export class Combat {
         return this.useSkill(u, summonSkill.id, u.id);
       }
     }
+    // ── archetype act overrides (before the generic AoE/single loops) ──
+    // controller: condition/buff/heal skill on the highest-threat foe.
+    if (style === 'controller') {
+      const cond = usable.filter((s) => s.appliesCondition || s.appliesCondition2 || s.kind === 'buff' || s.kind === 'heal');
+      if (cond.length) {
+        const threat = (f: Unit) => effAtkBonus(f) + abilityMod(f.abilities.str);
+        const target = foes.slice().sort((a, b) => threat(b) - threat(a))[0];
+        const hitNow = cond.find((s) => Combat.dist(u.pos, target.pos) <= Math.max(1, s.range));
+        if (hitNow) {
+          return this.useSkill(u, hitNow.id, hitNow.targetsAllies || hitNow.selfOnly ? u.id : target.id);
+        }
+        // move to hold the leading condition skill's range, hugging a melee ally
+        if (u.movementLeft > 0) {
+          const s = cond[0];
+          const preferred = Math.max(2, s.range);
+          const reach = this.reachable(u, u.movementLeft);
+          let best: GridPos[] | null = null; let bestScore = -Infinity;
+          for (const [k, path] of reach) {
+            if (!path.length) continue;
+            const [x, z] = k.split(',').map(Number);
+            if (!inLeash(x, z)) continue;
+            const d = Combat.dist({ x, z }, target.pos);
+            let score = -Math.abs(d - preferred);
+            const nearMeleeAlly = this.living('enemy').some((a) => a.id !== u.id
+              && Combat.dist(a.pos, { x, z }) <= 1
+              && a.equippedSkills.some((id) => { const sk = skillById(id); return !!sk && sk.kind === 'melee'; }));
+            if (nearMeleeAlly) score += 5;
+            if (score > bestScore) { bestScore = score; best = path; }
+          }
+          if (best && best.length) {
+            const dest = best[best.length - 1];
+            const from = { ...u.pos };
+            u.movementLeft -= best.length;
+            u.pos = { ...dest };
+            const ev: CombatEvent[] = [{ type: 'move', unitId: u.id, path: best }];
+            ev.push(...this.provokedAttacks(u, from, dest));
+            return ev;
+          }
+        }
+      }
+    }
+    // brute: a gated (hpBelowPct) finisher takes priority the moment it unlocks.
+    if (style === 'brute') {
+      const gated = usable.find((s) => s.hpBelowPct !== undefined);
+      if (gated) {
+        const t: GridPos | string = gated.selfCentered || gated.aoeRadius > 0 ? u.pos : (foes[0]?.id ?? u.id);
+        return this.useSkill(u, gated.id, t);
+      }
+    }
+
 
     // AoE: self-centered sweep hits the most foes; else find a center
     for (const s of usable) {
@@ -1589,7 +1735,20 @@ export class Combat {
       const inRange = foes.filter((f) => Combat.dist(u.pos, f.pos) <= Math.max(1, s.range));
       if (!inRange.length) continue;
       if (s.targetsAllies || s.selfOnly || s.kind === 'buff' || s.kind === 'heal') continue;
-      const target = inRange.reduce((a, b) => a.hp <= b.hp ? a : b);
+      let pool = inRange;
+      if (style === 'pack') {
+        const flanked = this.flankedTargets(u);
+        if (flanked.length) {
+          const fl = inRange.filter((f) => flanked.some((ft) => ft.id === f.id));
+          if (fl.length) pool = fl;
+        }
+      } else if (style === 'ambusher') {
+        const isolated = inRange.filter((f) => !foes.some((a) => a.id !== f.id && Combat.dist(a.pos, f.pos) <= 1));
+        if (isolated.length) pool = isolated;
+      }
+      const target = style === 'brute'
+        ? pool.reduce((a, b) => effAC(a) <= effAC(b) ? a : b)
+        : pool.reduce((a, b) => a.hp <= b.hp ? a : b);
       return this.useSkill(u, s.id, target.id);
     }
     // buffs/heals: only when hurt or as a fallback so the turn isn't wasted
@@ -1621,7 +1780,9 @@ export class Combat {
         const d = Combat.dist({ x, z }, nearest.pos);
         // melee: get as close as possible; ranged: hold at maxRange
         const ideal = wantsRange ? Math.max(2, maxRange - 1) : 1;
-        const score = wantsRange ? -Math.abs(d - ideal) : -d;
+        let score = wantsRange ? -Math.abs(d - ideal) : -d;
+        if (style === 'skirmisher' && this.adjacentToFoes(x, z, u)) score -= 1000; // never get flanked
+        if (style === 'pack' && this.flankedTargets(u).some((ft) => Combat.dist(ft.pos, { x, z }) <= 1)) score += 100; // step into the flank
         if (score > bestScore) { bestScore = score; best = path; }
       }
       if (best && best.length) {

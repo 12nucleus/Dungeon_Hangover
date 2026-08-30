@@ -166,6 +166,9 @@ export interface SkillDef {
   concentration?: boolean;
   /** AAA: legendary action cost (1-3, bosses) */
   legendaryCost?: number;
+  /** ENEMY SKILLS ONLY — a windup spends its cost at declaration, resolves
+   *  `windup` full rounds later (0/undefined = instant). */
+  windup?: number;
 }
 
 /** A playable class from the design bible (15 total). */
@@ -246,11 +249,18 @@ export interface Unit {
   /** voice-id for the monster bark audio (npc/<id>_bark.mp3) */
   npcId?: string;
   bossGroup?: boolean;    // only activated by the boss cutscene, never by proximity
+  elite?: boolean;        // champion modifier flag (more HP/AC/XP, gold ring)
+  /** telegraphed skill awaiting resolution */
+  pendingSkill?: string;
+  pendingTarget?: GridPos | string;
+  pendingRounds?: number;
   dropKey?: 'iron' | 'golden';  // guaranteed key drop on death
   flying?: boolean;       // hovers above the floor (bats)
   restedAtBonfire?: boolean;
   /** AI flees (full-move away) once HP drops to this value or below */
   fleesAtHp?: number;
+  /** combat decision archetype; `melee` = current legacy behavior */
+  aiStyle?: 'melee' | 'pack' | 'skirmisher' | 'controller' | 'brute' | 'ambusher';
   /** room leash: enemy AI movement (chase AND flee) never leaves this world
    *  rect — dungeon groups can't leak into neighbouring rooms mid-fight */
   leash?: { x0: number; z0: number; x1: number; z1: number };
@@ -315,6 +325,8 @@ export interface UISnapshot {
   loot: string[];         // human-readable recap lines (victory screen)
   inventory: import('./items').Item[];
   gold: number;
+  /** trail rations — a bonfire rest consumes one for the full-heal/reset */
+  rations: number;
   showInventory: boolean;
   showSkillTree: boolean;
   showStats: boolean;
@@ -413,3 +425,5 @@ export type CombatEvent =
   | { type: 'shake'; power: number }
   | { type: 'summon'; unit: Unit; summonerId?: string }  // a new unit fades in (boss summons, Scrag hostile)
   | { type: 'popup'; text: string; sub?: string; cls: string }
+  | { type: 'telegraph'; unitId: string; skillId: string; tiles: GridPos[] }   // declaration; tiles = threatened tiles snapshot
+  | { type: 'telegraphCancel'; unitId: string }

@@ -141,6 +141,9 @@ export const ITEM_BASES: Record<string, ItemBase> = {
   // consumables
   potion: B({ kind: 'consumable', name: 'Potion of Healing', icon: '🧪', tier: 1, healDice: '2d4+2', value: 20, desc: 'Restores 2d4+2 HP. Bonus action.' }),
   potion_greater: B({ kind: 'consumable', name: 'Greater Potion of Healing', icon: '⚗️', tier: 2, healDice: '4d4+4', value: 60, desc: 'Restores 4d4+4 HP. Bonus action.' }),
+  // camp currency — grant() converts these into engine.rations, they never
+  // sit in the bag: a bonfire rest eats one for the full-heal/reset
+  ration: B({ kind: 'trinket', name: 'Trail Ration', icon: '🍖', tier: 1, value: 8, desc: 'Camp food. Eaten automatically when you rest at a bonfire — without one, the wounds stay.' }),
   // ── quest keys (trinkets, no combat effect) ──
   iron_key: B({ kind: 'trinket', name: 'Iron Key', icon: '🗝️', tier: 1, value: 0, desc: 'A heavy, cold key. It fits a great iron door.' }),
   golden_key: B({ kind: 'trinket', name: 'Golden Key', icon: '🔑', tier: 3, value: 0, desc: 'Ornate and warm to the touch. It hums with promise.' }),
@@ -353,6 +356,7 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
       // The quality roll determines whether the top tier is available.
       items.push(generateLoot({ minTier: 2, maxTier: (lootRoll ?? 10) >= 13 ? 3 : 2, rarityBoost: (lootRoll ?? 10) >= 16 ? 2.2 : 1.6 }));
       if (Math.random() < 0.7) items.push(generateLoot({ minTier: 1, maxTier: 2, kind: 'consumable' }));
+      items.push(makeItem('ration'));
       gold = g(30, 60);
       break;
     case 'goldenkey':
@@ -373,9 +377,12 @@ export function rollLootTable(source: LootSource): { items: Item[]; gold: number
       break;
     case 'floor49_supply':
       // Floor 49 entry supply bag: exactly 3 healing potions (user request)
+      // + 2 rations — the climb is long and the bonfires are earned
       items.push(makeItem('potion'));
       items.push(makeItem('potion'));
       items.push(makeItem('potion'));
+      items.push(makeItem('ration'));
+      items.push(makeItem('ration'));
       items.push(makeItem('bow1'));
       items.push(makeItem('arrow_basic'));
       gold = 0;
